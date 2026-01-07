@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import html
 import json
+import logging
+import os
 import re
 import uuid
 from datetime import datetime
@@ -13,6 +15,9 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from app import models
+from app.llm import get_llm_provider, LLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -49,60 +54,46 @@ def get_or_create_source(
 
 
 # ---------------------------------------------------------------------------
-# Option B stubs: Summary + Neutrality analysis
+# LLM Provider singleton (lazy initialization)
 # ---------------------------------------------------------------------------
 
-def generate_neutral_summary_stub(
+_llm_provider: Optional[LLMProvider] = None
+
+
+def get_provider() -> LLMProvider:
+    """Get or create the LLM provider instance."""
+    global _llm_provider
+    if _llm_provider is None:
+        _llm_provider = get_llm_provider()
+    return _llm_provider
+
+
+def set_provider(provider: LLMProvider) -> None:
+    """Set a custom LLM provider (useful for testing)."""
+    global _llm_provider
+    _llm_provider = provider
+
+
+# ---------------------------------------------------------------------------
+# Summary + Neutrality analysis (LLM-powered)
+# ---------------------------------------------------------------------------
+
+def generate_neutral_summary(
     title: str,
     description: Optional[str],
     body: Optional[str],
 ) -> Dict[str, str]:
     """
-    STUB for neutral summary generation.
-    Replace later with an LLM call.
+    Generate a neutral summary using the configured LLM provider.
     """
-    base_text = body or description or title or "No article text provided."
-
-    short = base_text.strip()
-    if len(short) > 280:
-        short = short[:277] + "..."
-
-    extended = base_text.strip()
-    if len(extended) > 1000:
-        extended = extended[:997] + "..."
-
-    neutral_title = title or "Neutral summary of article"
+    provider = get_provider()
+    result = provider.generate_neutral_summary(title, description, body)
 
     return {
-        "neutral_title": neutral_title,
-        "neutral_summary_short": short,
-        "neutral_summary_extended": extended,
+        "neutral_title": result.neutral_title,
+        "neutral_summary_short": result.neutral_summary_short,
+        "neutral_summary_extended": result.neutral_summary_extended or "",
     }
-
-
-# Opinionated keyword list for stub (expand later).
-_BIAS_KEYWORDS: List[str] = [
-    "shocking",
-    "you won't believe",
-    "explosive",
-    "furious",
-    "slams",
-    "destroyed",
-    "goes viral",
-    "must see",
-]
-
-# Stub severities for UI weighting (0.0–1.0)
-_SEVERITY_MAP: Dict[str, float] = {
-    "shocking": 0.70,
-    "you won't believe": 0.75,
-    "explosive": 0.65,
-    "furious": 0.60,
-    "slams": 0.55,
-    "destroyed": 0.55,
-    "goes viral": 0.60,
-    "must see": 0.60,
-}
 
 
 def _safe_json(raw_payload: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -116,52 +107,40 @@ def _safe_json(raw_payload: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]
     return json.loads(json.dumps(raw_payload, default=str))
 
 
-def _find_bias_spans(text: str, terms: List[str], *, field: str) -> List[Dict[str, Any]]:
+def analyze_neutrality(
+    title: str,
+    description: Optional[str],
+    body: Optional[str],
+) -> Dict[str, Any]:
     """
-    Find case-insensitive spans for each term in `text`.
-    Offsets are relative to the exact `text` string scanned.
-    Returns a de-overlapped list sorted by start index.
+    Analyze content for bias using the configured LLM provider.
     """
-    if not text or not terms:
-        return []
+    provider = get_provider()
+    result = provider.analyze_neutrality(title, description, body)
 
-    matches: List[Dict[str, Any]] = []
-    for term in terms:
-        t = (term or "").strip()
-        if not t:
-            continue
+    # Choose the exact field for redlining (body > description > title)
+    if body:
+        span_text, field = body, "original_body"
+    elif description:
+        span_text, field = description, "original_description"
+    else:
+        span_text, field = title or "", "original_title"
 
-        pat = re.compile(re.escape(t), re.IGNORECASE)
-        for m in pat.finditer(text):
-            term_lc = t.lower()
-            matches.append(
-                {
-                    "start": int(m.start()),
-                    "end": int(m.end()),
-                    "text": text[m.start() : m.end()],
-                    "label": "non_neutral",
-                    "severity": float(_SEVERITY_MAP.get(term_lc, 0.60)),
-                    "term": t,
-                    "field": field,
-                }
-            )
+    # Convert BiasSpan objects to dicts
+    bias_spans = [span.to_dict() for span in result.bias_spans]
 
-    if not matches:
-        return []
-
-    # Sort by start asc; for same start, prefer longer match
-    matches.sort(key=lambda x: (x["start"], -(x["end"] - x["start"])))
-
-    # Drop overlaps: keep earliest; if overlap, skip the later one
-    spans: List[Dict[str, Any]] = []
-    occupied_until = -1
-    for m in matches:
-        if m["start"] < occupied_until:
-            continue
-        spans.append(m)
-        occupied_until = m["end"]
-
-    return spans
+    return {
+        "neutrality_score": result.neutrality_score,
+        "bias_terms": result.bias_terms,
+        "bias_spans": bias_spans,
+        "reading_level": result.reading_level,
+        "political_lean": result.political_lean,
+        "redline": {
+            "field": field,
+            "text": span_text,
+            "html": build_redline_html(span_text, bias_spans),
+        },
+    }
 
 
 def build_redline_html(text: str, spans: List[Dict[str, Any]]) -> str:
@@ -211,59 +190,6 @@ def build_redline_html(text: str, spans: List[Dict[str, Any]]) -> str:
     return "".join(out)
 
 
-def analyze_neutrality_stub(
-    title: str,
-    description: Optional[str],
-    body: Optional[str],
-    summary: Dict[str, str],
-) -> Dict[str, Any]:
-    """
-    STUB for neutrality analysis.
-    Replace later with an LLM call that returns:
-      - neutrality_score (0–100),
-      - bias_terms,
-      - bias_spans,
-      - reading_level,
-      - political_lean
-    """
-    combined = " ".join([p for p in [title, description, body] if p])
-    combined_lower = combined.lower()
-
-    found_terms: List[str] = [kw for kw in _BIAS_KEYWORDS if kw in combined_lower]
-
-    neutrality_score = max(0, 100 - 10 * len(found_terms))
-
-    word_count = len(combined.split()) if combined else 0
-    reading_level = max(1, min(18, word_count // 25 or 1))
-
-    political_lean = 0.0  # placeholder for [-1.0, 1.0] later
-
-    # Choose the exact field you'll "redline" first (body > description > title)
-    if body:
-        span_text, field = body, "original_body"
-    elif description:
-        span_text, field = description, "original_description"
-    else:
-        span_text, field = title or "", "original_title"
-
-    bias_spans = _find_bias_spans(span_text, found_terms, field=field)
-
-    return {
-        "neutrality_score": int(neutrality_score),
-        "bias_terms": found_terms,
-        # IMPORTANT: return [] (not None) when no spans found
-        "bias_spans": bias_spans or [],
-        "reading_level": int(reading_level),
-        "political_lean": float(political_lean),
-        # Optional helper payload for UI debugging later
-        "redline": {
-            "field": field,
-            "text": span_text,
-            "html": build_redline_html(span_text, bias_spans or []),
-        },
-    }
-
-
 # ---------------------------------------------------------------------------
 # Core pipeline function
 # ---------------------------------------------------------------------------
@@ -282,14 +208,18 @@ def run_neutral_pipeline(
     """
     End-to-end pipeline for a single article.
 
-    Stages (Option B):
+    Stages:
       1) INGEST raw article into articles_raw
-      2) GENERATE_NEUTRAL_SUMMARY  (stubbed)
-      3) ANALYZE_NEUTRALITY        (stubbed)
+      2) GENERATE_NEUTRAL_SUMMARY (LLM-powered)
+      3) ANALYZE_NEUTRALITY (LLM-powered)
       4) SAVE_RESULTS into article_summaries (including bias_spans)
       5) Record PipelineRun
     """
     started_at = datetime.utcnow()
+
+    # Get provider info for metadata
+    provider = get_provider()
+    model_name = f"{provider.name}/{provider.model_name}"
 
     # 1) Resolve domain from URL
     parsed = urlparse(source_url)
@@ -323,11 +253,13 @@ def run_neutral_pipeline(
     db.add(article_raw)
     db.flush()  # ensure article_raw.id exists
 
-    # 5) Generate neutral summary (stub)
-    summary_data = generate_neutral_summary_stub(title, description, body)
+    # 5) Generate neutral summary (LLM-powered)
+    logger.info(f"Generating neutral summary for article: {title[:50]}...")
+    summary_data = generate_neutral_summary(title, description, body)
 
-    # 6) Analyze neutrality + build bias spans (stub)
-    neutrality_data = analyze_neutrality_stub(title, description, body, summary_data)
+    # 6) Analyze neutrality + build bias spans (LLM-powered)
+    logger.info(f"Analyzing neutrality for article: {title[:50]}...")
+    neutrality_data = analyze_neutrality(title, description, body)
 
     # Hard guarantee: never store NULL for bias_spans
     bias_spans_value: List[Dict[str, Any]] = neutrality_data.get("bias_spans") or []
@@ -337,7 +269,7 @@ def run_neutral_pipeline(
         id=uuid.uuid4(),
         article_raw_id=article_raw.id,
         version_tag="v1",
-        model_name="stub-model",
+        model_name=model_name,
         prompt_version="v1-summary+score",
         generated_at=datetime.utcnow(),
         neutral_title=summary_data["neutral_title"],
@@ -350,7 +282,7 @@ def run_neutral_pipeline(
         is_current=True,
         neutrality_score=neutrality_data["neutrality_score"],
         bias_terms=neutrality_data["bias_terms"],
-        bias_spans=bias_spans_value,  # <-- will be [] not NULL
+        bias_spans=bias_spans_value,
         reading_level=neutrality_data["reading_level"],
         political_lean=neutrality_data["political_lean"],
     )
@@ -372,7 +304,7 @@ def run_neutral_pipeline(
         article_raw_id=article_raw.id,
         stage="FULL_PIPELINE",
         status="COMPLETED",
-        model_name="stub-model",
+        model_name=model_name,
         prompt_version="v1-summary+score",
         started_at=started_at,
         finished_at=datetime.utcnow(),
@@ -384,6 +316,7 @@ def run_neutral_pipeline(
                 "ANALYZE_NEUTRALITY",
                 "SAVE_RESULTS",
             ],
+            "llm_provider": provider.name,
             "bias_term_count": len(neutrality_data.get("bias_terms") or []),
             "bias_span_count": len(bias_spans_value),
             "redline_field": (neutrality_data.get("redline") or {}).get("field"),
@@ -408,6 +341,5 @@ def run_neutral_pipeline(
         "bias_spans": article_summary.bias_spans,
         "reading_level": article_summary.reading_level,
         "political_lean": article_summary.political_lean,
-        # helpful for debugging UI quickly (optional)
         "redline": neutrality_data.get("redline"),
     }
