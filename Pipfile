@@ -4,8 +4,24 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+fastapi = ">=0.109.0"
+uvicorn = {extras = ["standard"], version = ">=0.27.0"}
+sqlalchemy = ">=2.0.0"
+psycopg2-binary = ">=2.9.9"
+python-dotenv = ">=1.0.0"
+pydantic = ">=2.0.0"
+feedparser = ">=6.0.0"
+alembic = ">=1.13.0"
 
 [dev-packages]
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.23.0"
+httpx = ">=0.26.0"
 
 [requires]
 python_version = "3.11"
+
+[scripts]
+dev = "uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+start = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+migrate = "alembic upgrade head"
