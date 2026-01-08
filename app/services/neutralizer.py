@@ -28,8 +28,23 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.models import PipelineStage, PipelineStatus, SpanAction, SpanReason
+from app.storage.factory import get_storage_provider
 
 logger = logging.getLogger(__name__)
+
+
+def _get_body_from_storage(story: models.StoryRaw) -> Optional[str]:
+    """Retrieve body content from object storage."""
+    if not story.raw_content_available or not story.raw_content_uri:
+        return None
+    try:
+        storage = get_storage_provider()
+        result = storage.download(story.raw_content_uri)
+        if result and result.exists:
+            return result.content.decode("utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to retrieve body from storage: {e}")
+    return None
 
 
 # -----------------------------------------------------------------------------
@@ -312,40 +327,88 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             from openai import OpenAI
             client = OpenAI(api_key=self._api_key)
 
-            prompt = f"""Analyze this news content and provide a neutral version.
+            system_prompt = """You are a neutral news editor for NTRL, a calm news service that removes manipulative language while preserving facts.
+
+YOUR GOAL: Transform sensationalized news into calm, factual reporting. Think BBC World Service or AP wire style.
+
+DETECT AND FLAG THESE MANIPULATIVE PATTERNS:
+
+1. CLICKBAIT: Language designed to provoke curiosity without informing
+   - "You won't believe...", "What happened next...", "The reason will surprise you"
+   - ALL CAPS for emphasis, excessive punctuation (!!, ?!)
+   - Vague teasers that withhold key information
+
+2. URGENCY INFLATION: False or exaggerated time pressure
+   - "BREAKING" (when not actually breaking), "JUST IN", "DEVELOPING"
+   - "Act now", "Don't miss", implying scarcity where none exists
+
+3. EMOTIONAL TRIGGERS: Words chosen to provoke reaction over understanding
+   - Conflict words: "slams", "destroys", "eviscerates", "blasts", "rips"
+   - Fear words: "terrifying", "alarming", "dangerous", "threat"
+   - Outrage words: "shocking", "disgusting", "unbelievable", "insane"
+
+4. AGENDA SIGNALING: Editorializing disguised as reporting
+   - "Finally", "It's about time", "Long overdue" (implies the writer's view)
+   - Loaded adjectives: "controversial", "divisive", "embattled" (without evidence)
+   - Scare quotes around legitimate terms
+
+5. RHETORICAL FRAMING: Structure that manipulates interpretation
+   - Leading questions: "Is this the end of...?"
+   - False equivalence or false balance
+   - Burying the lede to prioritize sensational details
+
+6. SELLING: Promotional language disguised as news
+   - "Must-read", "Essential", "You need to know"
+   - Superlatives without evidence: "best", "worst", "most important"
+
+PRESERVE:
+- All facts, data, statistics, dates, names, places
+- Direct quotes with attribution
+- Nuance, uncertainty, and complexity
+- Multiple perspectives when present
+
+OUTPUT STYLE:
+- Calm, measured, factual
+- Active voice, clear structure
+- Present what is known, acknowledge what is not
+- No judgment, no urgency, no hype"""
+
+            user_prompt = f"""Analyze this news content and provide a neutral version.
 
 ORIGINAL TITLE: {title}
 
 ORIGINAL DESCRIPTION: {description or 'N/A'}
 
-ORIGINAL BODY: {(body or '')[:2000]}
+ORIGINAL BODY: {(body or '')[:3000]}
 
 Respond with JSON:
 {{
-  "neutral_headline": "Neutral headline, no hype or emotional language",
-  "neutral_summary": "2-3 sentence neutral summary",
-  "what_happened": "One sentence: what happened",
-  "why_it_matters": "One sentence: why it matters",
-  "what_is_known": "What facts are confirmed",
-  "what_is_uncertain": "What is still unknown",
+  "neutral_headline": "Rewrite the headline to be factual and calm. Remove hype but keep it informative.",
+  "neutral_summary": "2-3 sentence summary answering: What happened? Why does it matter? Keep it factual.",
+  "what_happened": "One clear sentence stating the core event/news.",
+  "why_it_matters": "One sentence on significance or impact. Say 'Significance unclear' if not evident.",
+  "what_is_known": "Confirmed facts from the article.",
+  "what_is_uncertain": "What questions remain unanswered? What is speculation vs fact?",
   "manipulative_spans": [
     {{
-      "field": "title|description|body",
+      "field": "title or description or body",
       "start_char": 0,
       "end_char": 10,
-      "original_text": "shocking",
-      "action": "removed|replaced|softened",
-      "reason": "clickbait|urgency_inflation|emotional_trigger|selling|agenda_signaling|rhetorical_framing",
-      "replacement_text": "notable"
+      "original_text": "exact text that is manipulative",
+      "action": "removed or replaced or softened",
+      "reason": "clickbait or urgency_inflation or emotional_trigger or selling or agenda_signaling or rhetorical_framing",
+      "replacement_text": "neutral replacement if action is replaced/softened, null if removed"
     }}
   ]
-}}"""
+}}
+
+If the content is already neutral and factual, return empty manipulative_spans array."""
 
             response = client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": "You are a neutral news editor. Remove all manipulative language."},
-                    {"role": "user", "content": prompt},
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,
                 response_format={"type": "json_object"},
@@ -476,11 +539,14 @@ class NeutralizerService:
             return None
 
         try:
+            # Fetch body from storage
+            body = _get_body_from_storage(story)
+
             # Run neutralization
             result = self.provider.neutralize(
                 title=story.original_title,
                 description=story.original_description,
-                body=story.original_body,
+                body=body,
             )
 
             # Determine version

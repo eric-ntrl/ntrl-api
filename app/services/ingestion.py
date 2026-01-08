@@ -7,12 +7,14 @@ Pipeline:
 2. Normalize entries
 3. Deduplicate against existing stories
 4. Classify into sections
-5. Store raw articles
-6. Log pipeline steps
+5. Store raw content in S3
+6. Store metadata in Postgres
+7. Log pipeline steps
 """
 
 import hashlib
 import logging
+import os
 import ssl
 import uuid
 from datetime import datetime
@@ -26,6 +28,8 @@ from app import models
 from app.models import PipelineStage, PipelineStatus
 from app.services.deduper import Deduper
 from app.services.classifier import SectionClassifier
+from app.storage.factory import get_storage_provider
+from app.storage.base import ContentType
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +42,60 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 class IngestionService:
     """RSS ingestion and normalization service."""
 
+    # Default retention period for raw content (days)
+    DEFAULT_RETENTION_DAYS = int(os.getenv("RAW_CONTENT_RETENTION_DAYS", "30"))
+
     def __init__(self):
         self.deduper = Deduper()
         self.classifier = SectionClassifier()
+        self._storage = None
+
+    @property
+    def storage(self):
+        """Lazy-load storage provider."""
+        if self._storage is None:
+            self._storage = get_storage_provider()
+        return self._storage
+
+    def _upload_body_to_storage(
+        self,
+        story_id: str,
+        body: str,
+        published_at: datetime,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Upload body content to object storage.
+
+        Returns dict with storage metadata or None if no body.
+        """
+        if not body:
+            return None
+
+        body_bytes = body.encode("utf-8")
+        key = self.storage.generate_key(
+            story_id=story_id,
+            field="body",
+            timestamp=published_at,
+        )
+
+        try:
+            metadata = self.storage.upload(
+                key=key,
+                content=body_bytes,
+                content_type=ContentType.TEXT_PLAIN,
+                expires_days=self.DEFAULT_RETENTION_DAYS,
+                metadata={"story_id": story_id},
+            )
+            return {
+                "uri": metadata.uri,
+                "hash": metadata.content_hash,
+                "type": metadata.content_type.value,
+                "encoding": metadata.content_encoding.value,
+                "size": metadata.original_size_bytes,
+            }
+        except Exception as e:
+            logger.error(f"Failed to upload body to storage for {story_id}: {e}")
+            return None
 
     def _log_pipeline(
         self,
@@ -67,7 +122,7 @@ class IngestionService:
             finished_at=now,
             duration_ms=duration_ms,
             error_message=error_message,
-            metadata=metadata,
+            log_metadata=metadata,
         )
         db.add(log)
         return log
@@ -193,13 +248,21 @@ class IngestionService:
                     )
 
                     # Create story
+                    story_id = uuid.uuid4()
+
+                    # Upload body to object storage
+                    storage_meta = self._upload_body_to_storage(
+                        story_id=str(story_id),
+                        body=normalized['body'],
+                        published_at=normalized['published_at'],
+                    )
+
                     story = models.StoryRaw(
-                        id=uuid.uuid4(),
+                        id=story_id,
                         source_id=source.id,
                         original_url=normalized['url'],
                         original_title=normalized['title'],
                         original_description=normalized['description'],
-                        original_body=normalized['body'],
                         original_author=normalized['author'],
                         url_hash=self.deduper.hash_url(normalized['url']),
                         title_hash=self.deduper.hash_title(normalized['title']),
@@ -207,9 +270,17 @@ class IngestionService:
                         ingested_at=datetime.utcnow(),
                         section=section.value,
                         is_duplicate=False,
-                        raw_payload=normalized['raw_entry'],
+                        feed_entry_id=normalized['raw_entry'].get('id'),
+                        # S3 storage references
+                        raw_content_uri=storage_meta['uri'] if storage_meta else None,
+                        raw_content_hash=storage_meta['hash'] if storage_meta else None,
+                        raw_content_type=storage_meta['type'] if storage_meta else None,
+                        raw_content_encoding=storage_meta['encoding'] if storage_meta else None,
+                        raw_content_size=storage_meta['size'] if storage_meta else None,
+                        raw_content_available=storage_meta is not None,
                     )
                     db.add(story)
+                    db.flush()  # Flush to satisfy FK constraint for pipeline log
                     result['ingested'] += 1
 
                     # Log successful ingest
@@ -229,7 +300,9 @@ class IngestionService:
             db.commit()
 
         except Exception as e:
-            logger.error(f"Error fetching feed from {source.slug}: {e}")
+            db.rollback()  # Rollback any pending changes before logging
+            source_slug = source.slug if source else "unknown"
+            logger.error(f"Error fetching feed from {source_slug}: {e}")
             result['errors'].append(f"Feed fetch failed: {e}")
             self._log_pipeline(
                 db,
@@ -237,8 +310,9 @@ class IngestionService:
                 status=PipelineStatus.FAILED,
                 started_at=started_at,
                 error_message=str(e),
-                metadata={'source': source.slug},
+                metadata={'source': source_slug},
             )
+            db.commit()  # Commit the error log
 
         return result
 

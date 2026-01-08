@@ -42,3 +42,6 @@ Thumbs.db
 # Database
 *.db
 *.sqlite3
+
+# Local storage for development
+storage/

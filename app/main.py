@@ -12,7 +12,7 @@ No urgency language or "breaking" alerts.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import brief_router, stories_router, admin_router
+from app.routers import brief_router, stories_router, admin_router, sources_router
 
 # Create app
 app = FastAPI(
@@ -36,6 +36,7 @@ app.add_middleware(
 app.include_router(brief_router)
 app.include_router(stories_router)
 app.include_router(admin_router)
+app.include_router(sources_router)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +65,8 @@ def root() -> dict:
             "brief": "GET /v1/brief",
             "story": "GET /v1/stories/{id}",
             "transparency": "GET /v1/stories/{id}/transparency",
+            "sources": "GET /v1/sources",
+            "add_source": "POST /v1/sources",
             "ingest": "POST /v1/ingest/run",
             "neutralize": "POST /v1/neutralize/run",
             "brief_run": "POST /v1/brief/run",

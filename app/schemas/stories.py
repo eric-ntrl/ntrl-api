@@ -64,7 +64,9 @@ class StoryTransparency(BaseModel):
     # Original content (for comparison)
     original_title: str = Field(..., description="Original title as published")
     original_description: Optional[str] = Field(None, description="Original description")
-    original_body: Optional[str] = Field(None, description="Original body text")
+    original_body: Optional[str] = Field(None, description="Original body text (from S3)")
+    original_body_available: bool = Field(True, description="Whether body is available in storage")
+    original_body_expired: bool = Field(False, description="Whether body has expired per retention policy")
 
     # Neutralized for comparison
     neutral_headline: str = Field(..., description="Neutralized headline")

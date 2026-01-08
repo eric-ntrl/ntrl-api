@@ -118,18 +118,37 @@ class Source(Base):
 # -----------------------------------------------------------------------------
 
 class StoryRaw(Base):
-    """Raw articles stored exactly as published."""
+    """
+    Raw articles - metadata stored in Postgres, body content in S3.
+
+    Storage strategy:
+    - Title/description stored in Postgres (used for display/dedupe)
+    - Full body content stored in S3 (compressed)
+    - Postgres stores only S3 references for body
+    - Raw content may expire per retention policy
+    - Metadata, summaries, and transparency spans persist
+    """
     __tablename__ = "stories_raw"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id = Column(UUID(as_uuid=True), ForeignKey("sources.id"), nullable=False)
 
-    # Original content - stored exactly as received
+    # Metadata stored in Postgres (for display and dedupe)
     original_url = Column(Text, nullable=False)
     original_title = Column(Text, nullable=False)
-    original_description = Column(Text, nullable=True)
-    original_body = Column(Text, nullable=True)
+    original_description = Column(Text, nullable=True)  # Short, kept in Postgres
     original_author = Column(String(255), nullable=True)
+
+    # S3 references for raw body content (not stored in Postgres)
+    raw_content_uri = Column(String(512), nullable=True)  # S3 object key
+    raw_content_hash = Column(String(64), nullable=True)  # SHA256 of extracted text
+    raw_content_type = Column(String(64), nullable=True)  # e.g., "text/plain"
+    raw_content_encoding = Column(String(16), nullable=True)  # e.g., "gzip"
+    raw_content_size = Column(Integer, nullable=True)  # Original size in bytes
+
+    # Lifecycle management
+    raw_content_available = Column(Boolean, default=True, nullable=False)
+    raw_content_expired_at = Column(DateTime, nullable=True)
 
     # Normalized fields for processing
     url_hash = Column(String(64), nullable=False)  # SHA256 of URL for dedupe
@@ -142,8 +161,8 @@ class StoryRaw(Base):
     is_duplicate = Column(Boolean, default=False, nullable=False)
     duplicate_of_id = Column(UUID(as_uuid=True), ForeignKey("stories_raw.id"), nullable=True)
 
-    # Raw payload for debugging
-    raw_payload = Column(JSONB, nullable=True)
+    # Minimal metadata (no full raw_payload to save space)
+    feed_entry_id = Column(String(512), nullable=True)  # RSS entry ID if available
 
     # Relationships
     source = relationship("Source", back_populates="stories")
@@ -157,6 +176,7 @@ class StoryRaw(Base):
         Index("ix_stories_raw_published_at", "published_at"),
         Index("ix_stories_raw_section", "section"),
         Index("ix_stories_raw_ingested_at", "ingested_at"),
+        Index("ix_stories_raw_content_available", "raw_content_available"),
     )
 
 
@@ -333,7 +353,7 @@ class PipelineLog(Base):
     finished_at = Column(DateTime, nullable=True)
     duration_ms = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
-    metadata = Column(JSONB, nullable=True)
+    log_metadata = Column(JSONB, nullable=True)
 
     __table_args__ = (
         Index("ix_pipeline_logs_stage", "stage"),

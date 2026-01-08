@@ -149,7 +149,7 @@ def upgrade() -> None:
         sa.Column('finished_at', sa.DateTime, nullable=True),
         sa.Column('duration_ms', sa.Integer, nullable=True),
         sa.Column('error_message', sa.Text, nullable=True),
-        sa.Column('metadata', postgresql.JSONB, nullable=True),
+        sa.Column('log_metadata', postgresql.JSONB, nullable=True),
     )
     op.create_index('ix_pipeline_logs_stage', 'pipeline_logs', ['stage'])
     op.create_index('ix_pipeline_logs_started_at', 'pipeline_logs', ['started_at'])
