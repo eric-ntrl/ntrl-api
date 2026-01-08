@@ -138,12 +138,21 @@ def delete_source(
     """
     Remove a source.
 
-    Note: This does not delete stories already ingested from this source.
+    If stories exist from this source, deactivates it instead of deleting.
     """
     source = db.query(models.Source).filter(models.Source.slug == slug).first()
     if not source:
         raise HTTPException(status_code=404, detail=f"Source '{slug}' not found")
 
-    db.delete(source)
-    db.commit()
+    # Check if there are stories from this source
+    story_count = db.query(models.StoryRaw).filter(models.StoryRaw.source_id == source.id).count()
+
+    if story_count > 0:
+        # Deactivate instead of delete to preserve data integrity
+        source.is_active = False
+        db.commit()
+    else:
+        db.delete(source)
+        db.commit()
+
     return None
