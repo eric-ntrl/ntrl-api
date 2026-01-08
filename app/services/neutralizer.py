@@ -29,8 +29,11 @@ from sqlalchemy.orm import Session
 from app import models
 from app.models import PipelineStage, PipelineStatus, SpanAction, SpanReason
 from app.storage.factory import get_storage_provider
+from app.services.auditor import Auditor, AuditVerdict
 
 logger = logging.getLogger(__name__)
+
+MAX_RETRY_ATTEMPTS = 2  # Max retries for audit failures
 
 
 def _get_body_from_storage(story: models.StoryRaw) -> Optional[str]:
@@ -101,9 +104,14 @@ class NeutralizerProvider(ABC):
         title: str,
         description: Optional[str],
         body: Optional[str],
+        repair_instructions: Optional[str] = None,
     ) -> NeutralizationResult:
         """
         Neutralize content and return result with spans.
+
+        Args:
+            repair_instructions: If provided, additional instructions from auditor
+                                 to correct a previous failed attempt.
         """
         pass
 
@@ -244,8 +252,10 @@ class MockNeutralizerProvider(NeutralizerProvider):
         title: str,
         description: Optional[str],
         body: Optional[str],
+        repair_instructions: Optional[str] = None,
     ) -> NeutralizationResult:
         """Neutralize content using pattern matching."""
+        # Note: repair_instructions ignored in mock provider
         # Find spans in each field
         title_spans = self._find_spans(title, "title")
         desc_spans = self._find_spans(description or "", "description") if description else []
@@ -317,63 +327,56 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
         title: str,
         description: Optional[str],
         body: Optional[str],
+        repair_instructions: Optional[str] = None,
     ) -> NeutralizationResult:
         """Neutralize using OpenAI API."""
         if not self._api_key:
             # Fallback to mock if no API key
-            return MockNeutralizerProvider().neutralize(title, description, body)
+            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
 
         try:
             from openai import OpenAI
             client = OpenAI(api_key=self._api_key)
 
-            system_prompt = """You are a neutral news editor for NTRL, a calm news service that removes manipulative language while preserving facts.
+            system_prompt = """You are a neutral language filter for NTRL.
 
-YOUR GOAL: Transform sensationalized news into calm, factual reporting. Think BBC World Service or AP wire style.
+NTRL is not a publisher, explainer, or editor. It is a filter.
+Your role is to REMOVE manipulative language while preserving the original facts,
+tension, conflict, and uncertainty exactly as they exist in the source.
 
-DETECT AND FLAG THESE MANIPULATIVE PATTERNS:
+Neutrality is discipline, not balance.
+Clarity is achieved through removal, not replacement.
 
-1. CLICKBAIT: Language designed to provoke curiosity without informing
-   - "You won't believe...", "What happened next...", "The reason will surprise you"
-   - ALL CAPS for emphasis, excessive punctuation (!!, ?!)
-   - Vague teasers that withhold key information
+REMOVE THESE MANIPULATIVE PATTERNS:
 
-2. URGENCY INFLATION: False or exaggerated time pressure
-   - "BREAKING" (when not actually breaking), "JUST IN", "DEVELOPING"
-   - "Act now", "Don't miss", implying scarcity where none exists
+1. CLICKBAIT: "You won't believe...", "What happened next...", ALL CAPS for emphasis, excessive punctuation (!!, ?!)
 
-3. EMOTIONAL TRIGGERS: Words chosen to provoke reaction over understanding
-   - Conflict words: "slams", "destroys", "eviscerates", "blasts", "rips"
-   - Fear words: "terrifying", "alarming", "dangerous", "threat"
-   - Outrage words: "shocking", "disgusting", "unbelievable", "insane"
+2. URGENCY INFLATION: "BREAKING" (when not breaking), "JUST IN", "DEVELOPING", false time pressure
 
-4. AGENDA SIGNALING: Editorializing disguised as reporting
-   - "Finally", "It's about time", "Long overdue" (implies the writer's view)
-   - Loaded adjectives: "controversial", "divisive", "embattled" (without evidence)
-   - Scare quotes around legitimate terms
+3. EMOTIONAL TRIGGERS:
+   - Conflict theater: "slams", "destroys", "eviscerates", "blasts", "rips", "torches"
+   - Fear amplifiers: "terrifying", "alarming", "chilling"
+   - Outrage bait: "shocking", "disgusting", "unbelievable", "insane"
 
-5. RHETORICAL FRAMING: Structure that manipulates interpretation
-   - Leading questions: "Is this the end of...?"
-   - False equivalence or false balance
-   - Burying the lede to prioritize sensational details
+4. AGENDA SIGNALING: "Finally", "Long overdue", loaded adjectives like "controversial" or "embattled" without evidence, scare quotes
 
-6. SELLING: Promotional language disguised as news
-   - "Must-read", "Essential", "You need to know"
-   - Superlatives without evidence: "best", "worst", "most important"
+5. RHETORICAL MANIPULATION: Leading questions ("Is this the end of...?"), false equivalence
 
-PRESERVE:
-- All facts, data, statistics, dates, names, places
+6. SELLING: "Must-read", "Essential", superlatives without evidence
+
+PRESERVE EXACTLY:
+- All facts, names, dates, numbers, places
 - Direct quotes with attribution
-- Nuance, uncertainty, and complexity
-- Multiple perspectives when present
+- Real tension, conflict, and uncertainty (these are news, not manipulation)
+- The original structure where possible
 
-OUTPUT STYLE:
-- Calm, measured, factual
-- Active voice, clear structure
-- Present what is known, acknowledge what is not
-- No judgment, no urgency, no hype"""
+DO NOT:
+- Soften real conflict into blandness
+- Add context or explanation not in the original
+- Editorialize about significance
+- Turn news into summaries"""
 
-            user_prompt = f"""Analyze this news content and provide a neutral version.
+            user_prompt = f"""Filter this news content. Remove manipulative language, preserve everything else.
 
 ORIGINAL TITLE: {title}
 
@@ -383,26 +386,32 @@ ORIGINAL BODY: {(body or '')[:3000]}
 
 Respond with JSON:
 {{
-  "neutral_headline": "Rewrite the headline to be factual and calm. Remove hype but keep it informative.",
-  "neutral_summary": "2-3 sentence summary answering: What happened? Why does it matter? Keep it factual.",
-  "what_happened": "One clear sentence stating the core event/news.",
-  "why_it_matters": "One sentence on significance or impact. Say 'Significance unclear' if not evident.",
-  "what_is_known": "Confirmed facts from the article.",
-  "what_is_uncertain": "What questions remain unanswered? What is speculation vs fact?",
-  "manipulative_spans": [
-    {{
-      "field": "title or description or body",
-      "start_char": 0,
-      "end_char": 10,
-      "original_text": "exact text that is manipulative",
-      "action": "removed or replaced or softened",
-      "reason": "clickbait or urgency_inflation or emotional_trigger or selling or agenda_signaling or rhetorical_framing",
-      "replacement_text": "neutral replacement if action is replaced/softened, null if removed"
-    }}
-  ]
+  "neutral_headline": "The title with manipulative words removed. Keep structure, remove hype.",
+  "neutral_summary": "The description with manipulative language removed. Do not summarize - filter.",
+  "what_happened": "One sentence: the core fact.",
+  "why_it_matters": null,
+  "what_is_known": null,
+  "what_is_uncertain": null,
+  "has_manipulative_content": true or false,
+  "removed_phrases": ["list", "of", "phrases", "you", "removed"]
 }}
 
-If the content is already neutral and factual, return empty manipulative_spans array."""
+IMPORTANT:
+- Filter, don't rewrite. The output should be recognizable as the original minus manipulation.
+- If "Senator SLAMS critics" becomes "Senator criticizes critics", you've rewritten.
+- It should become "Senator [spoke against] critics" or similar minimal change.
+- If content is already neutral, return it unchanged with has_manipulative_content: false.
+- NO QUESTION MARKS in neutral_headline or neutral_summary. Convert rhetorical questions to statements.
+- If death/killing is central to the story, state it plainly. Do not downshift "killed" to "shot"."""
+
+            # Add repair instructions if this is a retry
+            if repair_instructions:
+                user_prompt += f"""
+
+REPAIR REQUIRED - PREVIOUS OUTPUT FAILED AUDIT:
+{repair_instructions}
+
+Fix the issues above. Be strict."""
 
             response = client.chat.completions.create(
                 model=self._model,
@@ -417,20 +426,9 @@ If the content is already neutral and factual, return empty manipulative_spans a
             import json
             data = json.loads(response.choices[0].message.content)
 
-            spans = []
-            for span_data in data.get("manipulative_spans", []):
-                try:
-                    spans.append(TransparencySpan(
-                        field=span_data.get("field", "title"),
-                        start_char=span_data.get("start_char", 0),
-                        end_char=span_data.get("end_char", 0),
-                        original_text=span_data.get("original_text", ""),
-                        action=SpanAction(span_data.get("action", "removed")),
-                        reason=SpanReason(span_data.get("reason", "clickbait")),
-                        replacement_text=span_data.get("replacement_text"),
-                    ))
-                except (ValueError, KeyError):
-                    continue
+            # Get removed phrases for logging (no complex span positions)
+            removed_phrases = data.get("removed_phrases", [])
+            has_manipulative = data.get("has_manipulative_content", len(removed_phrases) > 0)
 
             return NeutralizationResult(
                 neutral_headline=data.get("neutral_headline", title),
@@ -439,8 +437,8 @@ If the content is already neutral and factual, return empty manipulative_spans a
                 why_it_matters=data.get("why_it_matters"),
                 what_is_known=data.get("what_is_known"),
                 what_is_uncertain=data.get("what_is_uncertain"),
-                has_manipulative_content=len(spans) > 0,
-                spans=spans,
+                has_manipulative_content=has_manipulative,
+                spans=[],  # Simplified: no granular spans for v1
             )
 
         except Exception as e:
@@ -506,14 +504,19 @@ class NeutralizerService:
         force: bool = False,
     ) -> Optional[models.StoryNeutralized]:
         """
-        Neutralize a single story.
+        Neutralize a single story with audit validation.
+
+        Two-pass system:
+        1. Neutralize content
+        2. Audit output against NTRL rules
+        3. Retry if audit fails (up to MAX_RETRY_ATTEMPTS)
 
         Args:
             story: The raw story to neutralize
             force: Re-neutralize even if already done
 
         Returns:
-            The neutralized story record, or None if skipped
+            The neutralized story record, or None if skipped/failed
         """
         started_at = datetime.utcnow()
 
@@ -542,12 +545,77 @@ class NeutralizerService:
             # Fetch body from storage
             body = _get_body_from_storage(story)
 
-            # Run neutralization
-            result = self.provider.neutralize(
-                title=story.original_title,
-                description=story.original_description,
-                body=body,
-            )
+            # Initialize auditor
+            auditor = Auditor()
+            repair_instructions = None
+            result = None
+            audit_result = None
+
+            # Neutralize with retry loop
+            for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+                # Run neutralization
+                result = self.provider.neutralize(
+                    title=story.original_title,
+                    description=story.original_description,
+                    body=body,
+                    repair_instructions=repair_instructions,
+                )
+
+                # Build model output for audit
+                model_output = {
+                    "neutral_headline": result.neutral_headline,
+                    "neutral_summary": result.neutral_summary,
+                    "has_manipulative_content": result.has_manipulative_content,
+                    "removed_phrases": [],  # We don't track these granularly yet
+                }
+
+                # Run audit
+                audit_result = auditor.audit(
+                    original_title=story.original_title,
+                    original_description=story.original_description,
+                    original_body=body,
+                    model_output=model_output,
+                )
+
+                logger.info(f"Story {story.id} audit attempt {attempt + 1}: {audit_result.verdict.value}")
+
+                if audit_result.verdict == AuditVerdict.PASS:
+                    break
+                elif audit_result.verdict == AuditVerdict.SKIP:
+                    # Content should be skipped (thin, promotional, etc.)
+                    self._log_pipeline(
+                        db,
+                        stage=PipelineStage.NEUTRALIZE,
+                        status=PipelineStatus.SKIPPED,
+                        story_raw_id=story.id,
+                        started_at=started_at,
+                        metadata={
+                            'reason': 'audit_skip',
+                            'audit_reasons': [r.code for r in audit_result.reasons],
+                        },
+                    )
+                    return None
+                elif audit_result.verdict == AuditVerdict.FAIL:
+                    # Permanent failure
+                    self._log_pipeline(
+                        db,
+                        stage=PipelineStage.NEUTRALIZE,
+                        status=PipelineStatus.FAILED,
+                        story_raw_id=story.id,
+                        started_at=started_at,
+                        error_message="Audit failed permanently",
+                        metadata={
+                            'audit_reasons': [r.code for r in audit_result.reasons],
+                        },
+                    )
+                    return None
+                elif audit_result.verdict == AuditVerdict.RETRY:
+                    if attempt < MAX_RETRY_ATTEMPTS:
+                        repair_instructions = audit_result.suggested_action.repair_instructions
+                        logger.info(f"Retrying with: {repair_instructions}")
+                    else:
+                        # Max retries exceeded
+                        logger.warning(f"Story {story.id} failed audit after {MAX_RETRY_ATTEMPTS} retries")
 
             # Determine version
             version = 1
@@ -570,26 +638,11 @@ class NeutralizerService:
                 disclosure="Manipulative language removed." if result.has_manipulative_content else "",
                 has_manipulative_content=result.has_manipulative_content,
                 model_name=self.provider.model_name,
-                prompt_version="v1",
+                prompt_version="v2",  # Updated prompt version
                 created_at=datetime.utcnow(),
             )
             db.add(neutralized)
             db.flush()
-
-            # Create transparency spans
-            for span in result.spans:
-                span_record = models.TransparencySpan(
-                    id=uuid.uuid4(),
-                    story_neutralized_id=neutralized.id,
-                    field=span.field,
-                    start_char=span.start_char,
-                    end_char=span.end_char,
-                    original_text=span.original_text,
-                    action=span.action.value,
-                    reason=span.reason.value,
-                    replacement_text=span.replacement_text,
-                )
-                db.add(span_record)
 
             # Log success
             self._log_pipeline(
@@ -602,7 +655,8 @@ class NeutralizerService:
                     'provider': self.provider.name,
                     'model': self.provider.model_name,
                     'has_manipulative': result.has_manipulative_content,
-                    'span_count': len(result.spans),
+                    'audit_verdict': audit_result.verdict.value if audit_result else 'none',
+                    'retry_count': attempt if 'attempt' in dir() else 0,
                 },
             )
 
