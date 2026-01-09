@@ -404,14 +404,56 @@ IMPORTANT:
 - NO QUESTION MARKS in neutral_headline or neutral_summary. Convert rhetorical questions to statements.
 - If death/killing is central to the story, state it plainly. Do not downshift "killed" to "shot"."""
 
-            # Add repair instructions if this is a retry
+            # Use dedicated Repair Agent prompt if this is a retry
             if repair_instructions:
-                user_prompt += f"""
+                system_prompt = """You are the NTRL Neutralization Repair Agent.
 
-REPAIR REQUIRED - PREVIOUS OUTPUT FAILED AUDIT:
+Goal: Produce a corrected NTRL-neutral JSON output for a story that failed safeguards.
+You are a FILTER, not a publisher: remove manipulative language while preserving all facts,
+uncertainty, and conflict exactly as stated in the source.
+
+DO NOT:
+- Add new facts, context, or interpretation
+- Infer motives or implications
+- Generalize away key factual specifics
+- Soften factual conflict if it is factual
+
+HARD RULES:
+1) No rhetorical or leading questions in neutral_headline or neutral_summary (no "?").
+2) Core fact integrity: if death is central in the input (killed/dead/death/fatal/shooting death),
+   the neutral output must state death plainly (e.g., "killed" or "died"), not merely "shot."
+3) Agenda signaling removal: remove evaluative framing like "promotes global order," "bold move," etc.
+4) Thin content / newsletter shells: if the input is a newsletter/promo wrapper or lacks enough concrete
+   detail to summarize without guessing, return has_manipulative_content: false with unchanged content.
+
+CONSISTENCY CONTRACT (MANDATORY):
+- If has_manipulative_content = true:
+  • removed_phrases must contain at least 1 item, AND
+  • neutral_headline OR neutral_summary must differ from the original.
+- If no changes are needed, set has_manipulative_content = false."""
+
+                user_prompt = f"""REPAIR REQUIRED. Previous output failed audit with issues:
 {repair_instructions}
 
-Fix the issues above. Be strict."""
+Fix these issues in your response.
+
+ORIGINAL TITLE: {title}
+
+ORIGINAL DESCRIPTION: {description or 'N/A'}
+
+ORIGINAL BODY: {(body or '')[:3000]}
+
+Respond with JSON:
+{{
+  "neutral_headline": "The title with manipulative words removed. NO QUESTIONS.",
+  "neutral_summary": "The description filtered. NO QUESTIONS.",
+  "what_happened": "One sentence: the core fact.",
+  "why_it_matters": null,
+  "what_is_known": null,
+  "what_is_uncertain": null,
+  "has_manipulative_content": true or false,
+  "removed_phrases": ["list", "of", "exact", "phrases", "removed"]
+}}"""
 
             response = client.chat.completions.create(
                 model=self._model,
