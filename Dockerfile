@@ -35,6 +35,9 @@ COPY migrations/ migrations/
 COPY app/ app/
 COPY scripts/ scripts/
 
+# Create storage directory with proper permissions
+RUN mkdir -p /app/storage && chown appuser:appuser /app/storage
+
 # Switch to non-root user
 USER appuser
 
