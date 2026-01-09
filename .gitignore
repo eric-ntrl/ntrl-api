@@ -43,5 +43,5 @@ Thumbs.db
 *.db
 *.sqlite3
 
-# Local storage for development
-storage/
+# Local storage for development (root level only, not app/storage module)
+/storage
