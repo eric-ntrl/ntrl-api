@@ -32,7 +32,7 @@ htmlcov
 # Local development
 .env
 .env.local
-storage/
+/storage
 *.log
 
 # Documentation
