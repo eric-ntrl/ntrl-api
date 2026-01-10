@@ -70,6 +70,12 @@ class NeutralizeRunRequest(BaseModel):
         le=200,
         description="Max stories to process"
     )
+    max_workers: int = Field(
+        5,
+        ge=1,
+        le=10,
+        description="Number of parallel workers for LLM calls"
+    )
 
 
 class NeutralizeStoryResult(BaseModel):

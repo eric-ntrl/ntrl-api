@@ -136,6 +136,7 @@ def run_neutralize(
         story_ids=request.story_ids,
         force=request.force,
         limit=request.limit,
+        max_workers=request.max_workers,
     )
 
     return NeutralizeRunResponse(

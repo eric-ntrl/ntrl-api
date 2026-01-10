@@ -926,19 +926,119 @@ class NeutralizerService:
             )
             raise
 
+    def _neutralize_content(
+        self,
+        story_id: uuid.UUID,
+        title: str,
+        description: Optional[str],
+        body: Optional[str],
+    ) -> Dict[str, Any]:
+        """
+        Neutralize content using LLM (thread-safe, no db operations).
+
+        This method can be called in parallel from multiple threads.
+
+        Returns:
+            Dict with neutralization result or error
+        """
+        from app.services.auditor import Auditor, AuditVerdict
+
+        try:
+            auditor = Auditor()
+            repair_instructions = None
+            result = None
+            audit_result = None
+            attempt = 0
+
+            # Neutralize with retry loop
+            for attempt in range(MAX_RETRY_ATTEMPTS + 1):
+                result = self.provider.neutralize(
+                    title=title,
+                    description=description,
+                    body=body,
+                    repair_instructions=repair_instructions,
+                )
+
+                # Build model output for audit
+                model_output = {
+                    "neutral_headline": result.neutral_headline,
+                    "neutral_summary": result.neutral_summary,
+                    "has_manipulative_content": result.has_manipulative_content,
+                    "removed_phrases": [],
+                }
+
+                # Run audit
+                audit_result = auditor.audit(
+                    original_title=title,
+                    original_description=description,
+                    original_body=body,
+                    model_output=model_output,
+                )
+
+                logger.info(f"Story {story_id} audit attempt {attempt + 1}: {audit_result.verdict.value}")
+
+                if audit_result.verdict == AuditVerdict.PASS:
+                    break
+                elif audit_result.verdict == AuditVerdict.SKIP:
+                    return {
+                        'story_id': story_id,
+                        'status': 'skipped',
+                        'reason': 'audit_skip',
+                        'audit_reasons': [r.code for r in audit_result.reasons],
+                    }
+                elif audit_result.verdict == AuditVerdict.FAIL:
+                    return {
+                        'story_id': story_id,
+                        'status': 'failed',
+                        'error': 'Audit failed permanently',
+                        'audit_reasons': [r.code for r in audit_result.reasons],
+                    }
+                elif audit_result.verdict == AuditVerdict.RETRY:
+                    if attempt < MAX_RETRY_ATTEMPTS:
+                        repair_instructions = audit_result.suggested_action.repair_instructions
+                        logger.info(f"Retrying with: {repair_instructions}")
+                    else:
+                        logger.warning(f"Story {story_id} failed audit after {MAX_RETRY_ATTEMPTS} retries")
+
+            return {
+                'story_id': story_id,
+                'status': 'completed',
+                'result': result,
+                'audit_verdict': audit_result.verdict.value if audit_result else 'none',
+                'retry_count': attempt,
+            }
+
+        except Exception as e:
+            logger.error(f"Neutralization failed for story {story_id}: {e}")
+            return {
+                'story_id': story_id,
+                'status': 'failed',
+                'error': str(e),
+            }
+
     def neutralize_pending(
         self,
         db: Session,
         story_ids: Optional[List[str]] = None,
         force: bool = False,
         limit: int = 50,
+        max_workers: int = 5,
     ) -> Dict[str, Any]:
         """
-        Neutralize pending stories.
+        Neutralize pending stories with parallel processing.
+
+        Args:
+            db: Database session
+            story_ids: Specific story IDs to process (optional)
+            force: Re-neutralize even if already done
+            limit: Max stories to process
+            max_workers: Number of parallel workers (default: 5)
 
         Returns:
             Dict with processing results
         """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         started_at = datetime.utcnow()
 
         # Get stories to process
@@ -965,33 +1065,155 @@ class NeutralizerService:
             'total_skipped': 0,
             'total_failed': 0,
             'story_results': [],
+            'max_workers': max_workers,
         }
 
+        if not stories:
+            result['finished_at'] = datetime.utcnow()
+            result['duration_ms'] = int((result['finished_at'] - started_at).total_seconds() * 1000)
+            return result
+
+        # Prepare data for parallel processing (extract from ORM objects)
+        story_data = []
         for story in stories:
+            body = _get_body_from_storage(story)
+            story_data.append({
+                'story_id': story.id,
+                'title': story.original_title,
+                'description': story.original_description,
+                'body': body,
+                'story_obj': story,  # Keep reference for db operations
+            })
+
+        # Check for existing neutralizations
+        existing_map = {}
+        if force:
+            existing_neutralized = (
+                db.query(models.StoryNeutralized)
+                .filter(
+                    models.StoryNeutralized.story_raw_id.in_([s['story_id'] for s in story_data]),
+                    models.StoryNeutralized.is_current == True,
+                )
+                .all()
+            )
+            existing_map = {n.story_raw_id: n for n in existing_neutralized}
+
+        # Run LLM calls in parallel
+        llm_results = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._neutralize_content,
+                    sd['story_id'],
+                    sd['title'],
+                    sd['description'],
+                    sd['body'],
+                ): sd['story_id']
+                for sd in story_data
+            }
+
+            for future in as_completed(futures):
+                story_id = futures[future]
+                try:
+                    llm_result = future.result()
+                    llm_results[story_id] = llm_result
+                except Exception as e:
+                    logger.error(f"Future failed for story {story_id}: {e}")
+                    llm_results[story_id] = {
+                        'story_id': story_id,
+                        'status': 'failed',
+                        'error': str(e),
+                    }
+
+        # Save results to database (sequential)
+        for sd in story_data:
+            story_id = sd['story_id']
+            story = sd['story_obj']
+            llm_result = llm_results.get(story_id, {'status': 'failed', 'error': 'No result'})
+
             story_result = {
-                'story_id': str(story.id),
-                'status': 'completed',
+                'story_id': str(story_id),
+                'status': llm_result['status'],
                 'neutral_headline': None,
                 'has_manipulative_content': False,
                 'span_count': 0,
-                'error': None,
+                'error': llm_result.get('error'),
             }
 
-            try:
-                neutralized = self.neutralize_story(db, story, force=force)
+            if llm_result['status'] == 'completed':
+                neutralization = llm_result['result']
 
-                if neutralized:
-                    story_result['neutral_headline'] = neutralized.neutral_headline
-                    story_result['has_manipulative_content'] = neutralized.has_manipulative_content
-                    story_result['span_count'] = len(neutralized.spans)
-                    result['total_processed'] += 1
-                else:
-                    story_result['status'] = 'skipped'
-                    result['total_skipped'] += 1
+                # Determine version
+                version = 1
+                existing = existing_map.get(story_id)
+                if existing:
+                    existing.is_current = False
+                    version = existing.version + 1
 
-            except Exception as e:
-                story_result['status'] = 'failed'
-                story_result['error'] = str(e)
+                # Create neutralized record
+                neutralized = models.StoryNeutralized(
+                    id=uuid.uuid4(),
+                    story_raw_id=story_id,
+                    version=version,
+                    is_current=True,
+                    neutral_headline=neutralization.neutral_headline,
+                    neutral_summary=neutralization.neutral_summary,
+                    what_happened=neutralization.what_happened,
+                    why_it_matters=neutralization.why_it_matters,
+                    what_is_known=neutralization.what_is_known,
+                    what_is_uncertain=neutralization.what_is_uncertain,
+                    disclosure="Manipulative language removed." if neutralization.has_manipulative_content else "",
+                    has_manipulative_content=neutralization.has_manipulative_content,
+                    model_name=self.provider.model_name,
+                    prompt_version="v2",
+                    created_at=datetime.utcnow(),
+                )
+                db.add(neutralized)
+
+                # Log success
+                self._log_pipeline(
+                    db,
+                    stage=PipelineStage.NEUTRALIZE,
+                    status=PipelineStatus.COMPLETED,
+                    story_raw_id=story_id,
+                    started_at=started_at,
+                    metadata={
+                        'provider': self.provider.name,
+                        'model': self.provider.model_name,
+                        'has_manipulative': neutralization.has_manipulative_content,
+                        'audit_verdict': llm_result.get('audit_verdict', 'none'),
+                        'retry_count': llm_result.get('retry_count', 0),
+                    },
+                )
+
+                story_result['neutral_headline'] = neutralization.neutral_headline
+                story_result['has_manipulative_content'] = neutralization.has_manipulative_content
+                story_result['span_count'] = 0
+                result['total_processed'] += 1
+
+            elif llm_result['status'] == 'skipped':
+                self._log_pipeline(
+                    db,
+                    stage=PipelineStage.NEUTRALIZE,
+                    status=PipelineStatus.SKIPPED,
+                    story_raw_id=story_id,
+                    started_at=started_at,
+                    metadata={
+                        'reason': llm_result.get('reason', 'unknown'),
+                        'audit_reasons': llm_result.get('audit_reasons', []),
+                    },
+                )
+                result['total_skipped'] += 1
+
+            else:  # failed
+                self._log_pipeline(
+                    db,
+                    stage=PipelineStage.NEUTRALIZE,
+                    status=PipelineStatus.FAILED,
+                    story_raw_id=story_id,
+                    started_at=started_at,
+                    error_message=llm_result.get('error', 'Unknown error'),
+                )
                 result['total_failed'] += 1
 
             result['story_results'].append(story_result)
