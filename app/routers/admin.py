@@ -56,6 +56,9 @@ class StatusResponse(BaseModel):
     has_google_api_key: bool
     has_openai_api_key: bool
     has_anthropic_api_key: bool
+    total_articles_ingested: int = 0
+    total_articles_neutralized: int = 0
+    total_sources: int = 0
     last_ingest: Optional[LastRunInfo] = None
     last_neutralize: Optional[LastRunInfo] = None
     last_brief: Optional[LastRunInfo] = None
@@ -92,6 +95,15 @@ def get_status(
             )
         return None
 
+    # Get counts
+    total_ingested = db.query(models.StoryRaw).count()
+    total_neutralized = db.query(models.StoryNeutralized).filter(
+        models.StoryNeutralized.is_current == True
+    ).count()
+    total_sources = db.query(models.Source).filter(
+        models.Source.is_active == True
+    ).count()
+
     return StatusResponse(
         status="ok",
         neutralizer_provider=provider.name,
@@ -99,6 +111,9 @@ def get_status(
         has_google_api_key=bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
         has_openai_api_key=bool(os.getenv("OPENAI_API_KEY")),
         has_anthropic_api_key=bool(os.getenv("ANTHROPIC_API_KEY")),
+        total_articles_ingested=total_ingested,
+        total_articles_neutralized=total_neutralized,
+        total_sources=total_sources,
         last_ingest=get_last_run("ingest"),
         last_neutralize=get_last_run("neutralize"),
         last_brief=get_last_run("brief_assemble"),
