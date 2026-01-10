@@ -195,6 +195,8 @@ class BriefAssemblyService:
                     result['total_stories'] = existing.total_stories
                     result['is_empty'] = existing.is_empty
                     result['empty_reason'] = existing.empty_reason
+                    result['finished_at'] = datetime.utcnow()
+                    result['duration_ms'] = int((result['finished_at'] - started_at).total_seconds() * 1000)
                     return result
 
             # Get qualifying stories
