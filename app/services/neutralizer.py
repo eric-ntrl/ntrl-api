@@ -304,41 +304,10 @@ class MockNeutralizerProvider(NeutralizerProvider):
 
 
 # -----------------------------------------------------------------------------
-# OpenAI provider (actual LLM)
+# Shared prompts (used by all LLM providers)
 # -----------------------------------------------------------------------------
 
-class OpenAINeutralizerProvider(NeutralizerProvider):
-    """OpenAI-based neutralizer."""
-
-    def __init__(self, model: str = "gpt-4o-mini"):
-        self._model = model
-        self._api_key = os.getenv("OPENAI_API_KEY")
-
-    @property
-    def name(self) -> str:
-        return "openai"
-
-    @property
-    def model_name(self) -> str:
-        return self._model
-
-    def neutralize(
-        self,
-        title: str,
-        description: Optional[str],
-        body: Optional[str],
-        repair_instructions: Optional[str] = None,
-    ) -> NeutralizationResult:
-        """Neutralize using OpenAI API."""
-        if not self._api_key:
-            # Fallback to mock if no API key
-            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
-
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=self._api_key)
-
-            system_prompt = """You are a neutral language filter for NTRL.
+SYSTEM_PROMPT = """You are a neutral language filter for NTRL.
 
 NTRL is not a publisher, explainer, or editor. It is a filter.
 Your role is to REMOVE manipulative language while preserving the original facts,
@@ -376,7 +345,36 @@ DO NOT:
 - Editorialize about significance
 - Turn news into summaries"""
 
-            user_prompt = f"""Filter this news content. Remove manipulative language, preserve everything else.
+REPAIR_SYSTEM_PROMPT = """You are the NTRL Neutralization Repair Agent.
+
+Goal: Produce a corrected NTRL-neutral JSON output for a story that failed safeguards.
+You are a FILTER, not a publisher: remove manipulative language while preserving all facts,
+uncertainty, and conflict exactly as stated in the source.
+
+DO NOT:
+- Add new facts, context, or interpretation
+- Infer motives or implications
+- Generalize away key factual specifics
+- Soften factual conflict if it is factual
+
+HARD RULES:
+1) No rhetorical or leading questions in neutral_headline or neutral_summary (no "?").
+2) Core fact integrity: if death is central in the input (killed/dead/death/fatal/shooting death),
+   the neutral output must state death plainly (e.g., "killed" or "died"), not merely "shot."
+3) Agenda signaling removal: remove evaluative framing like "promotes global order," "bold move," etc.
+4) Thin content / newsletter shells: if the input is a newsletter/promo wrapper or lacks enough concrete
+   detail to summarize without guessing, return has_manipulative_content: false with unchanged content.
+
+CONSISTENCY CONTRACT (MANDATORY):
+- If has_manipulative_content = true:
+  • removed_phrases must contain at least 1 item, AND
+  • neutral_headline OR neutral_summary must differ from the original.
+- If no changes are needed, set has_manipulative_content = false."""
+
+
+def build_user_prompt(title: str, description: Optional[str], body: Optional[str]) -> str:
+    """Build the user prompt for neutralization."""
+    return f"""Filter this news content. Remove manipulative language, preserve everything else.
 
 ORIGINAL TITLE: {title}
 
@@ -404,35 +402,15 @@ IMPORTANT:
 - NO QUESTION MARKS in neutral_headline or neutral_summary. Convert rhetorical questions to statements.
 - If death/killing is central to the story, state it plainly. Do not downshift "killed" to "shot"."""
 
-            # Use dedicated Repair Agent prompt if this is a retry
-            if repair_instructions:
-                system_prompt = """You are the NTRL Neutralization Repair Agent.
 
-Goal: Produce a corrected NTRL-neutral JSON output for a story that failed safeguards.
-You are a FILTER, not a publisher: remove manipulative language while preserving all facts,
-uncertainty, and conflict exactly as stated in the source.
-
-DO NOT:
-- Add new facts, context, or interpretation
-- Infer motives or implications
-- Generalize away key factual specifics
-- Soften factual conflict if it is factual
-
-HARD RULES:
-1) No rhetorical or leading questions in neutral_headline or neutral_summary (no "?").
-2) Core fact integrity: if death is central in the input (killed/dead/death/fatal/shooting death),
-   the neutral output must state death plainly (e.g., "killed" or "died"), not merely "shot."
-3) Agenda signaling removal: remove evaluative framing like "promotes global order," "bold move," etc.
-4) Thin content / newsletter shells: if the input is a newsletter/promo wrapper or lacks enough concrete
-   detail to summarize without guessing, return has_manipulative_content: false with unchanged content.
-
-CONSISTENCY CONTRACT (MANDATORY):
-- If has_manipulative_content = true:
-  • removed_phrases must contain at least 1 item, AND
-  • neutral_headline OR neutral_summary must differ from the original.
-- If no changes are needed, set has_manipulative_content = false."""
-
-                user_prompt = f"""REPAIR REQUIRED. Previous output failed audit with issues:
+def build_repair_prompt(
+    title: str,
+    description: Optional[str],
+    body: Optional[str],
+    repair_instructions: str,
+) -> str:
+    """Build the repair prompt for failed neutralization attempts."""
+    return f"""REPAIR REQUIRED. Previous output failed audit with issues:
 {repair_instructions}
 
 Fix these issues in your response.
@@ -455,6 +433,70 @@ Respond with JSON:
   "removed_phrases": ["list", "of", "exact", "phrases", "removed"]
 }}"""
 
+
+def parse_llm_response(
+    data: dict,
+    title: str,
+    description: Optional[str],
+) -> NeutralizationResult:
+    """Parse LLM JSON response into NeutralizationResult."""
+    removed_phrases = data.get("removed_phrases", [])
+    has_manipulative = data.get("has_manipulative_content", len(removed_phrases) > 0)
+
+    return NeutralizationResult(
+        neutral_headline=data.get("neutral_headline", title),
+        neutral_summary=data.get("neutral_summary", description or title),
+        what_happened=data.get("what_happened"),
+        why_it_matters=data.get("why_it_matters"),
+        what_is_known=data.get("what_is_known"),
+        what_is_uncertain=data.get("what_is_uncertain"),
+        has_manipulative_content=has_manipulative,
+        spans=[],  # Simplified: no granular spans for v1
+    )
+
+
+# -----------------------------------------------------------------------------
+# OpenAI provider
+# -----------------------------------------------------------------------------
+
+class OpenAINeutralizerProvider(NeutralizerProvider):
+    """OpenAI-based neutralizer (GPT-4o-mini, GPT-4o, etc.)."""
+
+    def __init__(self, model: str = "gpt-4o-mini"):
+        self._model = model
+        self._api_key = os.getenv("OPENAI_API_KEY")
+
+    @property
+    def name(self) -> str:
+        return "openai"
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    def neutralize(
+        self,
+        title: str,
+        description: Optional[str],
+        body: Optional[str],
+        repair_instructions: Optional[str] = None,
+    ) -> NeutralizationResult:
+        """Neutralize using OpenAI API."""
+        if not self._api_key:
+            logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
+
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=self._api_key)
+
+            if repair_instructions:
+                system_prompt = REPAIR_SYSTEM_PROMPT
+                user_prompt = build_repair_prompt(title, description, body, repair_instructions)
+            else:
+                system_prompt = SYSTEM_PROMPT
+                user_prompt = build_user_prompt(title, description, body)
+
             response = client.chat.completions.create(
                 model=self._model,
                 messages=[
@@ -467,40 +509,208 @@ Respond with JSON:
 
             import json
             data = json.loads(response.choices[0].message.content)
-
-            # Get removed phrases for logging (no complex span positions)
-            removed_phrases = data.get("removed_phrases", [])
-            has_manipulative = data.get("has_manipulative_content", len(removed_phrases) > 0)
-
-            return NeutralizationResult(
-                neutral_headline=data.get("neutral_headline", title),
-                neutral_summary=data.get("neutral_summary", description or title),
-                what_happened=data.get("what_happened"),
-                why_it_matters=data.get("why_it_matters"),
-                what_is_known=data.get("what_is_known"),
-                what_is_uncertain=data.get("what_is_uncertain"),
-                has_manipulative_content=has_manipulative,
-                spans=[],  # Simplified: no granular spans for v1
-            )
+            return parse_llm_response(data, title, description)
 
         except Exception as e:
             logger.error(f"OpenAI neutralization failed: {e}")
-            # Fallback to mock
             return MockNeutralizerProvider().neutralize(title, description, body)
 
 
 # -----------------------------------------------------------------------------
-# Neutralizer service
+# Gemini provider
 # -----------------------------------------------------------------------------
 
-def get_neutralizer_provider() -> NeutralizerProvider:
-    """Get the configured neutralizer provider."""
-    provider_name = os.getenv("NEUTRALIZER_PROVIDER", "mock")
+class GeminiNeutralizerProvider(NeutralizerProvider):
+    """Google Gemini-based neutralizer (Gemini 1.5 Flash, Gemini 2.0 Flash, etc.)."""
 
-    if provider_name == "openai":
-        return OpenAINeutralizerProvider()
-    else:
+    # Available Gemini models
+    MODELS = {
+        "gemini-1.5-flash": "gemini-1.5-flash",
+        "gemini-1.5-flash-latest": "gemini-1.5-flash-latest",
+        "gemini-1.5-pro": "gemini-1.5-pro",
+        "gemini-2.0-flash": "gemini-2.0-flash-exp",
+        "gemini-2.0-flash-exp": "gemini-2.0-flash-exp",
+    }
+
+    def __init__(self, model: str = "gemini-1.5-flash"):
+        self._model = self.MODELS.get(model, model)
+        self._api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+
+    @property
+    def name(self) -> str:
+        return "gemini"
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    def neutralize(
+        self,
+        title: str,
+        description: Optional[str],
+        body: Optional[str],
+        repair_instructions: Optional[str] = None,
+    ) -> NeutralizationResult:
+        """Neutralize using Google Gemini API."""
+        if not self._api_key:
+            logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
+
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=self._api_key)
+
+            model = genai.GenerativeModel(
+                self._model,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.3,
+                ),
+            )
+
+            if repair_instructions:
+                prompt = f"{REPAIR_SYSTEM_PROMPT}\n\n{build_repair_prompt(title, description, body, repair_instructions)}"
+            else:
+                prompt = f"{SYSTEM_PROMPT}\n\n{build_user_prompt(title, description, body)}"
+
+            response = model.generate_content(prompt)
+
+            import json
+            data = json.loads(response.text)
+            return parse_llm_response(data, title, description)
+
+        except Exception as e:
+            logger.error(f"Gemini neutralization failed: {e}")
+            return MockNeutralizerProvider().neutralize(title, description, body)
+
+
+# -----------------------------------------------------------------------------
+# Anthropic provider
+# -----------------------------------------------------------------------------
+
+class AnthropicNeutralizerProvider(NeutralizerProvider):
+    """Anthropic Claude-based neutralizer (Claude 3.5 Haiku, Sonnet, etc.)."""
+
+    MODELS = {
+        "claude-3-5-haiku": "claude-3-5-haiku-latest",
+        "claude-3-5-sonnet": "claude-3-5-sonnet-latest",
+        "claude-3-haiku": "claude-3-haiku-20240307",
+    }
+
+    def __init__(self, model: str = "claude-3-5-haiku"):
+        self._model = self.MODELS.get(model, model)
+        self._api_key = os.getenv("ANTHROPIC_API_KEY")
+
+    @property
+    def name(self) -> str:
+        return "anthropic"
+
+    @property
+    def model_name(self) -> str:
+        return self._model
+
+    def neutralize(
+        self,
+        title: str,
+        description: Optional[str],
+        body: Optional[str],
+        repair_instructions: Optional[str] = None,
+    ) -> NeutralizationResult:
+        """Neutralize using Anthropic Claude API."""
+        if not self._api_key:
+            logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
+
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=self._api_key)
+
+            if repair_instructions:
+                system_prompt = REPAIR_SYSTEM_PROMPT
+                user_prompt = build_repair_prompt(title, description, body, repair_instructions)
+            else:
+                system_prompt = SYSTEM_PROMPT
+                user_prompt = build_user_prompt(title, description, body)
+
+            response = client.messages.create(
+                model=self._model,
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+
+            import json
+            # Claude returns text, need to extract JSON
+            text = response.content[0].text
+            # Handle potential markdown code blocks
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0]
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0]
+
+            data = json.loads(text.strip())
+            return parse_llm_response(data, title, description)
+
+        except Exception as e:
+            logger.error(f"Anthropic neutralization failed: {e}")
+            return MockNeutralizerProvider().neutralize(title, description, body)
+
+
+# -----------------------------------------------------------------------------
+# Provider factory
+# -----------------------------------------------------------------------------
+
+# Provider registry - maps provider names to classes
+PROVIDERS = {
+    "mock": MockNeutralizerProvider,
+    "openai": OpenAINeutralizerProvider,
+    "gemini": GeminiNeutralizerProvider,
+    "google": GeminiNeutralizerProvider,  # Alias
+    "anthropic": AnthropicNeutralizerProvider,
+    "claude": AnthropicNeutralizerProvider,  # Alias
+}
+
+# Default models for each provider
+DEFAULT_MODELS = {
+    "openai": "gpt-4o-mini",
+    "gemini": "gemini-1.5-flash",
+    "google": "gemini-1.5-flash",
+    "anthropic": "claude-3-5-haiku",
+    "claude": "claude-3-5-haiku",
+}
+
+
+def get_neutralizer_provider() -> NeutralizerProvider:
+    """
+    Get the configured neutralizer provider.
+
+    Configuration via environment variables:
+        NEUTRALIZER_PROVIDER: Provider name (gemini, openai, anthropic, mock)
+        NEUTRALIZER_MODEL: Optional model override
+
+    Examples:
+        NEUTRALIZER_PROVIDER=gemini                    -> Gemini 1.5 Flash
+        NEUTRALIZER_PROVIDER=gemini NEUTRALIZER_MODEL=gemini-2.0-flash -> Gemini 2.0 Flash
+        NEUTRALIZER_PROVIDER=openai                    -> GPT-4o-mini
+        NEUTRALIZER_PROVIDER=openai NEUTRALIZER_MODEL=gpt-4o -> GPT-4o
+        NEUTRALIZER_PROVIDER=anthropic                 -> Claude 3.5 Haiku
+        NEUTRALIZER_PROVIDER=mock                      -> Mock (pattern-based)
+    """
+    provider_name = os.getenv("NEUTRALIZER_PROVIDER", "gemini").lower()
+    model_override = os.getenv("NEUTRALIZER_MODEL")
+
+    provider_class = PROVIDERS.get(provider_name)
+    if not provider_class:
+        logger.warning(f"Unknown provider '{provider_name}', falling back to mock")
         return MockNeutralizerProvider()
+
+    if provider_name == "mock":
+        return MockNeutralizerProvider()
+
+    model = model_override or DEFAULT_MODELS.get(provider_name)
+    return provider_class(model=model)
 
 
 class NeutralizerService:
