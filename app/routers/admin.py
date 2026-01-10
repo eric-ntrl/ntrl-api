@@ -5,12 +5,14 @@ Admin pipeline endpoints.
 POST /v1/ingest/run - Trigger RSS ingestion
 POST /v1/neutralize/run - Trigger neutralization
 POST /v1/brief/run - Trigger brief assembly
+GET  /v1/status - Get system status and configuration
 """
 
 import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -26,10 +28,43 @@ from app.schemas.admin import (
     BriefSectionResult,
 )
 from app.services.ingestion import IngestionService
-from app.services.neutralizer import NeutralizerService
+from app.services.neutralizer import NeutralizerService, get_neutralizer_provider
 from app.services.brief_assembly import BriefAssemblyService
 
 router = APIRouter(prefix="/v1", tags=["admin"])
+
+
+# -----------------------------------------------------------------------------
+# Status endpoint
+# -----------------------------------------------------------------------------
+
+class StatusResponse(BaseModel):
+    """System status response."""
+    status: str = "ok"
+    neutralizer_provider: str
+    neutralizer_model: str
+    has_google_api_key: bool
+    has_openai_api_key: bool
+    has_anthropic_api_key: bool
+
+
+@router.get("/status", response_model=StatusResponse)
+def get_status() -> StatusResponse:
+    """
+    Get system status and current LLM configuration.
+
+    Returns which neutralizer provider and model are active.
+    """
+    provider = get_neutralizer_provider()
+
+    return StatusResponse(
+        status="ok",
+        neutralizer_provider=provider.name,
+        neutralizer_model=provider.model_name,
+        has_google_api_key=bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
+        has_openai_api_key=bool(os.getenv("OPENAI_API_KEY")),
+        has_anthropic_api_key=bool(os.getenv("ANTHROPIC_API_KEY")),
+    )
 
 
 def require_admin_key(
