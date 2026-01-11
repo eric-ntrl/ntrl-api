@@ -307,7 +307,8 @@ class MockNeutralizerProvider(NeutralizerProvider):
 # Shared prompts (used by all LLM providers)
 # -----------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are a neutral language filter for NTRL.
+# Default prompts (fallback if DB is empty or unavailable)
+DEFAULT_SYSTEM_PROMPT = """You are a neutral language filter for NTRL.
 
 NTRL is not a publisher, explainer, or editor. It is a filter.
 Your role is to REMOVE manipulative language while preserving the original facts,
@@ -345,7 +346,7 @@ DO NOT:
 - Editorialize about significance
 - Turn news into summaries"""
 
-REPAIR_SYSTEM_PROMPT = """You are the NTRL Neutralization Repair Agent.
+DEFAULT_REPAIR_SYSTEM_PROMPT = """You are the NTRL Neutralization Repair Agent.
 
 Goal: Produce a corrected NTRL-neutral JSON output for a story that failed safeguards.
 You are a FILTER, not a publisher: remove manipulative language while preserving all facts,
@@ -371,16 +372,13 @@ CONSISTENCY CONTRACT (MANDATORY):
   • neutral_headline OR neutral_summary must differ from the original.
 - If no changes are needed, set has_manipulative_content = false."""
 
-
-def build_user_prompt(title: str, description: Optional[str], body: Optional[str]) -> str:
-    """Build the user prompt for neutralization."""
-    return f"""Filter this news content. Remove manipulative language, preserve everything else.
+DEFAULT_USER_PROMPT_TEMPLATE = """Filter this news content. Remove manipulative language, preserve everything else.
 
 ORIGINAL TITLE: {title}
 
-ORIGINAL DESCRIPTION: {description or 'N/A'}
+ORIGINAL DESCRIPTION: {description}
 
-ORIGINAL BODY: {(body or '')[:3000]}
+ORIGINAL BODY: {body}
 
 Respond with JSON:
 {{
@@ -401,6 +399,83 @@ IMPORTANT:
 - If content is already neutral, return it unchanged with has_manipulative_content: false.
 - NO QUESTION MARKS in neutral_headline or neutral_summary. Convert rhetorical questions to statements.
 - If death/killing is central to the story, state it plainly. Do not downshift "killed" to "shot"."""
+
+
+# -----------------------------------------------------------------------------
+# Prompt loading from DB (with fallback to defaults)
+# -----------------------------------------------------------------------------
+
+_prompt_cache: Dict[str, str] = {}
+_prompt_cache_time: Optional[datetime] = None
+PROMPT_CACHE_TTL_SECONDS = 60  # Refresh from DB every 60 seconds
+
+
+def get_prompt(name: str, default: str) -> str:
+    """
+    Get a prompt from the database with fallback to default.
+
+    Caches prompts for PROMPT_CACHE_TTL_SECONDS to avoid DB hits on every call.
+    """
+    global _prompt_cache, _prompt_cache_time
+
+    # Check if cache is stale
+    now = datetime.utcnow()
+    if _prompt_cache_time is None or (now - _prompt_cache_time).total_seconds() > PROMPT_CACHE_TTL_SECONDS:
+        _prompt_cache = {}
+        _prompt_cache_time = now
+
+    # Return from cache if available
+    if name in _prompt_cache:
+        return _prompt_cache[name]
+
+    # Try to load from DB
+    try:
+        from app.database import SessionLocal
+        from app import models
+
+        db = SessionLocal()
+        try:
+            prompt = db.query(models.Prompt).filter(
+                models.Prompt.name == name,
+                models.Prompt.is_active == True
+            ).first()
+
+            if prompt:
+                _prompt_cache[name] = prompt.content
+                return prompt.content
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to load prompt '{name}' from DB, using default: {e}")
+
+    # Fallback to default
+    _prompt_cache[name] = default
+    return default
+
+
+def get_system_prompt() -> str:
+    """Get the system prompt for neutralization."""
+    return get_prompt("system_prompt", DEFAULT_SYSTEM_PROMPT)
+
+
+def get_repair_system_prompt() -> str:
+    """Get the repair system prompt."""
+    return get_prompt("repair_system_prompt", DEFAULT_REPAIR_SYSTEM_PROMPT)
+
+
+def get_user_prompt_template() -> str:
+    """Get the user prompt template."""
+    return get_prompt("user_prompt_template", DEFAULT_USER_PROMPT_TEMPLATE)
+
+
+def build_user_prompt(title: str, description: Optional[str], body: Optional[str]) -> str:
+    """Build the user prompt for neutralization using template from DB."""
+    template = get_user_prompt_template()
+    return template.format(
+        title=title,
+        description=description or 'N/A',
+        body=(body or '')[:3000]
+    )
 
 
 def build_repair_prompt(
@@ -491,10 +566,10 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             client = OpenAI(api_key=self._api_key)
 
             if repair_instructions:
-                system_prompt = REPAIR_SYSTEM_PROMPT
+                system_prompt = get_repair_system_prompt()
                 user_prompt = build_repair_prompt(title, description, body, repair_instructions)
             else:
-                system_prompt = SYSTEM_PROMPT
+                system_prompt = get_system_prompt()
                 user_prompt = build_user_prompt(title, description, body)
 
             response = client.chat.completions.create(
@@ -569,9 +644,9 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             )
 
             if repair_instructions:
-                prompt = f"{REPAIR_SYSTEM_PROMPT}\n\n{build_repair_prompt(title, description, body, repair_instructions)}"
+                prompt = f"{get_repair_system_prompt()}\n\n{build_repair_prompt(title, description, body, repair_instructions)}"
             else:
-                prompt = f"{SYSTEM_PROMPT}\n\n{build_user_prompt(title, description, body)}"
+                prompt = f"{get_system_prompt()}\n\n{build_user_prompt(title, description, body)}"
 
             response = model.generate_content(prompt)
 
@@ -626,10 +701,10 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             client = anthropic.Anthropic(api_key=self._api_key)
 
             if repair_instructions:
-                system_prompt = REPAIR_SYSTEM_PROMPT
+                system_prompt = get_repair_system_prompt()
                 user_prompt = build_repair_prompt(title, description, body, repair_instructions)
             else:
-                system_prompt = SYSTEM_PROMPT
+                system_prompt = get_system_prompt()
                 user_prompt = build_user_prompt(title, description, body)
 
             response = client.messages.create(

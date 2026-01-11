@@ -359,3 +359,25 @@ class PipelineLog(Base):
         Index("ix_pipeline_logs_stage", "stage"),
         Index("ix_pipeline_logs_started_at", "started_at"),
     )
+
+
+# -----------------------------------------------------------------------------
+# Prompt
+# -----------------------------------------------------------------------------
+
+class Prompt(Base):
+    """
+    Prompts for LLM operations - stored in DB for hot-reload without redeploy.
+
+    For fast iteration during development. Version column tracks changes
+    but we overwrite rather than insert (true versioning comes later).
+    """
+    __tablename__ = "prompts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(64), unique=True, nullable=False)  # e.g., "system_prompt", "user_prompt"
+    content = Column(Text, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
