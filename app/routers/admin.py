@@ -30,7 +30,7 @@ from app.schemas.admin import (
     BriefSectionResult,
 )
 from app.services.ingestion import IngestionService
-from app.services.neutralizer import NeutralizerService, get_neutralizer_provider
+from app.services.neutralizer import NeutralizerService, get_neutralizer_provider, NeutralizerConfigError, get_active_model
 from app.services.brief_assembly import BriefAssemblyService
 
 router = APIRouter(prefix="/v1", tags=["admin"])
@@ -51,8 +51,9 @@ class LastRunInfo(BaseModel):
 class StatusResponse(BaseModel):
     """System status response."""
     status: str = "ok"
-    neutralizer_provider: str
-    neutralizer_model: str
+    neutralizer_provider: Optional[str] = None
+    neutralizer_model: Optional[str] = None
+    neutralizer_error: Optional[str] = None
     has_google_api_key: bool
     has_openai_api_key: bool
     has_anthropic_api_key: bool
@@ -76,7 +77,17 @@ def get_status(
     """
     from app import models
 
-    provider = get_neutralizer_provider()
+    # Try to get the neutralizer provider (may fail if not configured)
+    provider_name = None
+    model_name = None
+    config_error = None
+
+    try:
+        provider = get_neutralizer_provider()
+        provider_name = provider.name
+        model_name = provider.model_name
+    except NeutralizerConfigError as e:
+        config_error = str(e)
 
     # Get last run for each stage
     def get_last_run(stage: str) -> Optional[LastRunInfo]:
@@ -105,9 +116,10 @@ def get_status(
     ).count()
 
     return StatusResponse(
-        status="ok",
-        neutralizer_provider=provider.name,
-        neutralizer_model=provider.model_name,
+        status="ok" if not config_error else "error",
+        neutralizer_provider=provider_name,
+        neutralizer_model=model_name,
+        neutralizer_error=config_error,
         has_google_api_key=bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
         has_openai_api_key=bool(os.getenv("OPENAI_API_KEY")),
         has_anthropic_api_key=bool(os.getenv("ANTHROPIC_API_KEY")),
@@ -397,10 +409,14 @@ def run_pipeline(
 # Prompt management endpoints
 # -----------------------------------------------------------------------------
 
-def _get_current_model() -> str:
-    """Get the current model from environment."""
-    import os
-    return os.getenv("NEUTRALIZER_MODEL", "gemini-2.0-flash")
+def _get_active_model_from_db(db: Session) -> Optional[str]:
+    """Get the currently active model from the active system_prompt in DB."""
+    from app import models
+    prompt = db.query(models.Prompt).filter(
+        models.Prompt.name == "system_prompt",
+        models.Prompt.is_active == True
+    ).first()
+    return prompt.model if prompt else None
 
 
 class PromptResponse(BaseModel):
@@ -409,17 +425,20 @@ class PromptResponse(BaseModel):
     model: Optional[str] = None
     content: str
     version: int
+    is_active: bool = True
     updated_at: Optional[datetime] = None
 
 
 class PromptUpdateRequest(BaseModel):
     """Request to update a prompt."""
     content: str
+    model: str  # Required - must specify which model this prompt is for
 
 
 class PromptListResponse(BaseModel):
     """Response for listing all prompts."""
     prompts: List[PromptResponse]
+    active_model: Optional[str] = None
 
 
 @router.get("/prompts", response_model=PromptListResponse)
@@ -429,15 +448,18 @@ def list_prompts(
     _: None = Depends(require_admin_key),
 ) -> PromptListResponse:
     """
-    List all active prompts. Optionally filter by model.
+    List all prompts. Optionally filter by model.
+    Returns the currently active model for reference.
     """
     from app import models
 
-    query = db.query(models.Prompt).filter(models.Prompt.is_active == True)
+    query = db.query(models.Prompt)
     if model:
         query = query.filter(models.Prompt.model == model)
 
-    prompts = query.all()
+    prompts = query.order_by(models.Prompt.name, models.Prompt.model).all()
+    active_model = _get_active_model_from_db(db)
+
     return PromptListResponse(
         prompts=[
             PromptResponse(
@@ -445,10 +467,12 @@ def list_prompts(
                 model=p.model,
                 content=p.content,
                 version=p.version,
+                is_active=p.is_active,
                 updated_at=p.updated_at,
             )
             for p in prompts
-        ]
+        ],
+        active_model=active_model,
     )
 
 
@@ -460,36 +484,36 @@ def get_prompt(
     _: None = Depends(require_admin_key),
 ) -> PromptResponse:
     """
-    Get a specific prompt by name. Uses current NEUTRALIZER_MODEL if model not specified.
+    Get a specific prompt by name.
+    If model not specified, returns the currently active prompt for that name.
     """
     from app import models
 
-    # Use current model if not specified
-    target_model = model if model is not None else _get_current_model()
-
-    # First try: exact match (name + model)
-    prompt = db.query(models.Prompt).filter(
-        models.Prompt.name == name,
-        models.Prompt.model == target_model,
-        models.Prompt.is_active == True
-    ).first()
-
-    # Second try: generic fallback (name + NULL model)
-    if not prompt:
+    if model:
+        # Get specific model's prompt
         prompt = db.query(models.Prompt).filter(
             models.Prompt.name == name,
-            models.Prompt.model.is_(None),
-            models.Prompt.is_active == True
+            models.Prompt.model == model,
+        ).first()
+    else:
+        # Get the active prompt for this name
+        prompt = db.query(models.Prompt).filter(
+            models.Prompt.name == name,
+            models.Prompt.is_active == True,
         ).first()
 
     if not prompt:
-        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found for model '{target_model}'")
+        detail = f"Prompt '{name}' not found"
+        if model:
+            detail += f" for model '{model}'"
+        raise HTTPException(status_code=404, detail=detail)
 
     return PromptResponse(
         name=prompt.name,
         model=prompt.model,
         content=prompt.content,
         version=prompt.version,
+        is_active=prompt.is_active,
         updated_at=prompt.updated_at,
     )
 
@@ -498,19 +522,18 @@ def get_prompt(
 def update_prompt(
     name: str,
     request: PromptUpdateRequest,
-    model: Optional[str] = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PromptResponse:
     """
-    Update a prompt's content for the current model. Increments version automatically.
-    Creates the prompt if it doesn't exist. Uses current NEUTRALIZER_MODEL if model not specified.
+    Update or create a prompt for a specific model.
+    Model must be specified in the request body.
+    If this is a new prompt, it will be set as active (deactivating other prompts with same name).
     """
     from app import models
     from app.services.neutralizer import clear_prompt_cache
 
-    # Use current model if not specified
-    target_model = model if model is not None else _get_current_model()
+    target_model = request.model
 
     prompt = db.query(models.Prompt).filter(
         models.Prompt.name == name,
@@ -523,7 +546,13 @@ def update_prompt(
         prompt.version += 1
         prompt.updated_at = datetime.utcnow()
     else:
-        # Create new for this model
+        # Deactivate other prompts with same name (only one active per name)
+        db.query(models.Prompt).filter(
+            models.Prompt.name == name,
+            models.Prompt.is_active == True
+        ).update({"is_active": False})
+
+        # Create new for this model (set as active)
         prompt = models.Prompt(
             name=name,
             model=target_model,
@@ -546,6 +575,60 @@ def update_prompt(
         model=prompt.model,
         content=prompt.content,
         version=prompt.version,
+        is_active=prompt.is_active,
+        updated_at=prompt.updated_at,
+    )
+
+
+@router.post("/prompts/{name}/activate", response_model=PromptResponse)
+def activate_prompt(
+    name: str,
+    model: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> PromptResponse:
+    """
+    Activate a specific prompt (by name and model).
+    Deactivates all other prompts with the same name.
+    This is how you switch models without redeploying.
+    """
+    from app import models
+    from app.services.neutralizer import clear_prompt_cache
+
+    # Find the prompt to activate
+    prompt = db.query(models.Prompt).filter(
+        models.Prompt.name == name,
+        models.Prompt.model == model
+    ).first()
+
+    if not prompt:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Prompt '{name}' for model '{model}' not found"
+        )
+
+    # Deactivate all other prompts with same name
+    db.query(models.Prompt).filter(
+        models.Prompt.name == name,
+        models.Prompt.id != prompt.id
+    ).update({"is_active": False})
+
+    # Activate this prompt
+    prompt.is_active = True
+    prompt.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(prompt)
+
+    # Clear cache to pick up change immediately
+    clear_prompt_cache()
+
+    return PromptResponse(
+        name=prompt.name,
+        model=prompt.model,
+        content=prompt.content,
+        version=prompt.version,
+        is_active=prompt.is_active,
         updated_at=prompt.updated_at,
     )
 

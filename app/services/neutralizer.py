@@ -402,70 +402,103 @@ IMPORTANT:
 
 
 # -----------------------------------------------------------------------------
-# Prompt loading from DB (with fallback to defaults)
+# Prompt loading from DB - DB is source of truth for model selection
 # -----------------------------------------------------------------------------
 
 _prompt_cache: Dict[str, str] = {}
 _prompt_cache_time: Optional[datetime] = None
+_active_model_cache: Optional[str] = None
 PROMPT_CACHE_TTL_SECONDS = 60  # Refresh from DB every 60 seconds
 
 
-def _get_current_model() -> str:
-    """Get the current model from environment."""
-    return os.getenv("NEUTRALIZER_MODEL", "gemini-2.0-flash")
+class NeutralizerConfigError(Exception):
+    """Raised when neutralizer is misconfigured (no prompts, no API key, etc.)."""
+    pass
 
 
-def get_prompt(name: str, default: str, model: Optional[str] = None) -> str:
+def get_active_model() -> str:
     """
-    Get a prompt from the database with fallback logic.
+    Get the active model from the database.
 
-    Lookup order:
-    1. Try prompt matching (name + model)
-    2. Fall back to prompt matching (name + NULL model) - generic
-    3. Fall back to hardcoded default
-
-    Caches prompts for PROMPT_CACHE_TTL_SECONDS to avoid DB hits on every call.
+    The active model is determined by the active system_prompt row.
+    Raises NeutralizerConfigError if no active system_prompt found.
     """
-    global _prompt_cache, _prompt_cache_time
-
-    # Use current model if not specified
-    if model is None:
-        model = _get_current_model()
-
-    # Cache key includes model
-    cache_key = f"{name}:{model}"
+    global _active_model_cache, _prompt_cache_time
 
     # Check if cache is stale
     now = datetime.utcnow()
     if _prompt_cache_time is None or (now - _prompt_cache_time).total_seconds() > PROMPT_CACHE_TTL_SECONDS:
-        _prompt_cache = {}
+        _active_model_cache = None
         _prompt_cache_time = now
 
-    # Return from cache if available
-    if cache_key in _prompt_cache:
-        return _prompt_cache[cache_key]
+    if _active_model_cache is not None:
+        return _active_model_cache
 
-    # Try to load from DB
     try:
         from app.database import SessionLocal
         from app import models
 
         db = SessionLocal()
         try:
-            # First try: exact match (name + model)
+            # Find the active system_prompt - its model field determines which model to use
+            prompt = db.query(models.Prompt).filter(
+                models.Prompt.name == "system_prompt",
+                models.Prompt.is_active == True
+            ).first()
+
+            if not prompt:
+                raise NeutralizerConfigError(
+                    "No active system_prompt found in database. "
+                    "Please create a prompt via PUT /v1/prompts/system_prompt"
+                )
+
+            if not prompt.model:
+                raise NeutralizerConfigError(
+                    "Active system_prompt has no model specified. "
+                    "Please update the prompt with a valid model."
+                )
+
+            _active_model_cache = prompt.model
+            return prompt.model
+        finally:
+            db.close()
+    except NeutralizerConfigError:
+        raise
+    except Exception as e:
+        raise NeutralizerConfigError(f"Failed to load active model from database: {e}")
+
+
+def get_prompt(name: str, default: str) -> str:
+    """
+    Get a prompt from the database for the active model.
+
+    Raises NeutralizerConfigError if no active prompt found.
+    Caches prompts for PROMPT_CACHE_TTL_SECONDS to avoid DB hits on every call.
+    """
+    global _prompt_cache, _prompt_cache_time
+
+    # Get the active model (this also refreshes cache if stale)
+    model = get_active_model()
+
+    # Cache key includes model
+    cache_key = f"{name}:{model}"
+
+    # Return from cache if available
+    if cache_key in _prompt_cache:
+        return _prompt_cache[cache_key]
+
+    # Load from DB
+    try:
+        from app.database import SessionLocal
+        from app import models
+
+        db = SessionLocal()
+        try:
             prompt = db.query(models.Prompt).filter(
                 models.Prompt.name == name,
                 models.Prompt.model == model,
                 models.Prompt.is_active == True
             ).first()
-
-            # Second try: generic fallback (name + NULL model)
-            if not prompt:
-                prompt = db.query(models.Prompt).filter(
-                    models.Prompt.name == name,
-                    models.Prompt.model.is_(None),
-                    models.Prompt.is_active == True
-                ).first()
 
             if prompt:
                 _prompt_cache[cache_key] = prompt.content
@@ -473,18 +506,19 @@ def get_prompt(name: str, default: str, model: Optional[str] = None) -> str:
         finally:
             db.close()
     except Exception as e:
-        logger.warning(f"Failed to load prompt '{name}' for model '{model}' from DB, using default: {e}")
+        logger.warning(f"Failed to load prompt '{name}' for model '{model}' from DB: {e}")
 
-    # Fallback to hardcoded default
+    # Use default if prompt not found (e.g., user_prompt_template might not be customized)
     _prompt_cache[cache_key] = default
     return default
 
 
 def clear_prompt_cache() -> None:
     """Clear the prompt cache (called when prompts are updated via API)."""
-    global _prompt_cache, _prompt_cache_time
+    global _prompt_cache, _prompt_cache_time, _active_model_cache
     _prompt_cache = {}
     _prompt_cache_time = None
+    _active_model_cache = None
 
 
 def get_system_prompt() -> str:
@@ -772,12 +806,8 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
 
 # -----------------------------------------------------------------------------
-# Provider factory
+# Provider factory - model determined by active system_prompt in DB
 # -----------------------------------------------------------------------------
-
-# Default model if NEUTRALIZER_MODEL not set
-DEFAULT_MODEL = "gemini-2.0-flash"
-
 
 def _infer_provider_from_model(model: str) -> str:
     """Infer provider name from model string."""
@@ -792,8 +822,9 @@ def _infer_provider_from_model(model: str) -> str:
     elif model_lower.startswith("claude"):
         return "anthropic"
     else:
-        logger.warning(f"Could not infer provider from model '{model}', falling back to gemini")
-        return "gemini"
+        raise NeutralizerConfigError(
+            f"Unknown model '{model}'. Model must start with 'gpt-', 'gemini', 'claude', or be 'mock'."
+        )
 
 
 # Provider registry - maps provider names to classes
@@ -804,34 +835,69 @@ PROVIDERS = {
     "anthropic": AnthropicNeutralizerProvider,
 }
 
+# API key env var names for each provider
+PROVIDER_API_KEYS = {
+    "openai": "OPENAI_API_KEY",
+    "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
+
+def _check_api_key(provider_name: str) -> None:
+    """Check that the required API key is set for the provider."""
+    if provider_name == "mock":
+        return
+
+    key_names = PROVIDER_API_KEYS.get(provider_name)
+    if not key_names:
+        return
+
+    if isinstance(key_names, str):
+        key_names = [key_names]
+
+    for key_name in key_names:
+        if os.getenv(key_name):
+            return
+
+    raise NeutralizerConfigError(
+        f"No API key found for {provider_name}. "
+        f"Please set one of: {', '.join(key_names)}"
+    )
+
 
 def get_neutralizer_provider() -> NeutralizerProvider:
     """
-    Get the configured neutralizer provider.
+    Get the neutralizer provider based on the active system_prompt in the database.
 
-    Configuration via environment variable:
-        NEUTRALIZER_MODEL: Model name (provider is inferred automatically)
+    The model is determined by the 'model' field of the active system_prompt row.
+    Provider is inferred from model name (gpt-* -> openai, gemini-* -> gemini, etc.)
+
+    Raises NeutralizerConfigError if:
+        - No active system_prompt in database
+        - Unknown model name
+        - Required API key not set
 
     Examples:
-        NEUTRALIZER_MODEL=gemini-1.5-flash  -> Gemini 1.5 Flash
-        NEUTRALIZER_MODEL=gemini-2.0-flash  -> Gemini 2.0 Flash
-        NEUTRALIZER_MODEL=gpt-4o-mini       -> OpenAI GPT-4o-mini
-        NEUTRALIZER_MODEL=gpt-4o            -> OpenAI GPT-4o
-        NEUTRALIZER_MODEL=claude-3-5-haiku  -> Anthropic Claude 3.5 Haiku
-        NEUTRALIZER_MODEL=mock              -> Mock (pattern-based, for testing)
-
-    Default: gemini-2.0-flash
+        system_prompt.model = "gpt-4o-mini"    -> OpenAI GPT-4o-mini
+        system_prompt.model = "gemini-2.0-flash" -> Gemini 2.0 Flash
+        system_prompt.model = "claude-3-5-haiku" -> Anthropic Claude 3.5 Haiku
+        system_prompt.model = "mock"           -> Mock (pattern-based, for testing)
     """
-    model = os.getenv("NEUTRALIZER_MODEL", DEFAULT_MODEL)
+    # Get the active model from DB
+    model = get_active_model()
+
+    # Infer provider from model name
     provider_name = _infer_provider_from_model(model)
+
+    # Check API key is configured
+    _check_api_key(provider_name)
 
     if provider_name == "mock":
         return MockNeutralizerProvider()
 
     provider_class = PROVIDERS.get(provider_name)
     if not provider_class:
-        logger.warning(f"Unknown provider '{provider_name}', falling back to mock")
-        return MockNeutralizerProvider()
+        raise NeutralizerConfigError(f"Unknown provider '{provider_name}'")
 
     return provider_class(model=model)
 
