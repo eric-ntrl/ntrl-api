@@ -371,11 +371,18 @@ class Prompt(Base):
 
     For fast iteration during development. Version column tracks changes
     but we overwrite rather than insert (true versioning comes later).
+
+    The model column allows per-model prompt tuning (e.g., different prompts
+    for gpt-4o-mini vs gemini-2.0-flash). NULL model = generic fallback.
     """
     __tablename__ = "prompts"
+    __table_args__ = (
+        UniqueConstraint('name', 'model', name='prompts_name_model_key'),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(64), unique=True, nullable=False)  # e.g., "system_prompt", "user_prompt"
+    name = Column(String(64), nullable=False)  # e.g., "system_prompt", "user_prompt"
+    model = Column(String(64), nullable=True)  # e.g., "gpt-4o-mini", "gemini-2.0-flash", NULL=generic
     content = Column(Text, nullable=False)
     version = Column(Integer, default=1, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)

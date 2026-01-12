@@ -397,9 +397,16 @@ def run_pipeline(
 # Prompt management endpoints
 # -----------------------------------------------------------------------------
 
+def _get_current_model() -> str:
+    """Get the current model from environment."""
+    import os
+    return os.getenv("NEUTRALIZER_MODEL", "gemini-2.0-flash")
+
+
 class PromptResponse(BaseModel):
     """Response for a single prompt."""
     name: str
+    model: Optional[str] = None
     content: str
     version: int
     updated_at: Optional[datetime] = None
@@ -417,19 +424,25 @@ class PromptListResponse(BaseModel):
 
 @router.get("/prompts", response_model=PromptListResponse)
 def list_prompts(
+    model: Optional[str] = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PromptListResponse:
     """
-    List all active prompts.
+    List all active prompts. Optionally filter by model.
     """
     from app import models
 
-    prompts = db.query(models.Prompt).filter(models.Prompt.is_active == True).all()
+    query = db.query(models.Prompt).filter(models.Prompt.is_active == True)
+    if model:
+        query = query.filter(models.Prompt.model == model)
+
+    prompts = query.all()
     return PromptListResponse(
         prompts=[
             PromptResponse(
                 name=p.name,
+                model=p.model,
                 content=p.content,
                 version=p.version,
                 updated_at=p.updated_at,
@@ -442,24 +455,39 @@ def list_prompts(
 @router.get("/prompts/{name}", response_model=PromptResponse)
 def get_prompt(
     name: str,
+    model: Optional[str] = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PromptResponse:
     """
-    Get a specific prompt by name.
+    Get a specific prompt by name. Uses current NEUTRALIZER_MODEL if model not specified.
     """
     from app import models
 
+    # Use current model if not specified
+    target_model = model if model is not None else _get_current_model()
+
+    # First try: exact match (name + model)
     prompt = db.query(models.Prompt).filter(
         models.Prompt.name == name,
+        models.Prompt.model == target_model,
         models.Prompt.is_active == True
     ).first()
 
+    # Second try: generic fallback (name + NULL model)
     if not prompt:
-        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+        prompt = db.query(models.Prompt).filter(
+            models.Prompt.name == name,
+            models.Prompt.model.is_(None),
+            models.Prompt.is_active == True
+        ).first()
+
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found for model '{target_model}'")
 
     return PromptResponse(
         name=prompt.name,
+        model=prompt.model,
         content=prompt.content,
         version=prompt.version,
         updated_at=prompt.updated_at,
@@ -470,16 +498,24 @@ def get_prompt(
 def update_prompt(
     name: str,
     request: PromptUpdateRequest,
+    model: Optional[str] = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PromptResponse:
     """
-    Update a prompt's content. Increments version automatically.
-    Creates the prompt if it doesn't exist.
+    Update a prompt's content for the current model. Increments version automatically.
+    Creates the prompt if it doesn't exist. Uses current NEUTRALIZER_MODEL if model not specified.
     """
     from app import models
+    from app.services.neutralizer import clear_prompt_cache
 
-    prompt = db.query(models.Prompt).filter(models.Prompt.name == name).first()
+    # Use current model if not specified
+    target_model = model if model is not None else _get_current_model()
+
+    prompt = db.query(models.Prompt).filter(
+        models.Prompt.name == name,
+        models.Prompt.model == target_model
+    ).first()
 
     if prompt:
         # Update existing
@@ -487,9 +523,10 @@ def update_prompt(
         prompt.version += 1
         prompt.updated_at = datetime.utcnow()
     else:
-        # Create new
+        # Create new for this model
         prompt = models.Prompt(
             name=name,
+            model=target_model,
             content=request.content,
             version=1,
             is_active=True,
@@ -502,11 +539,11 @@ def update_prompt(
     db.refresh(prompt)
 
     # Clear prompt cache to pick up new value immediately
-    from app.services.neutralizer import _prompt_cache
-    _prompt_cache.clear()
+    clear_prompt_cache()
 
     return PromptResponse(
         name=prompt.name,
+        model=prompt.model,
         content=prompt.content,
         version=prompt.version,
         updated_at=prompt.updated_at,

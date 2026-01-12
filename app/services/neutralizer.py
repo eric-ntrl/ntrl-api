@@ -410,13 +410,30 @@ _prompt_cache_time: Optional[datetime] = None
 PROMPT_CACHE_TTL_SECONDS = 60  # Refresh from DB every 60 seconds
 
 
-def get_prompt(name: str, default: str) -> str:
+def _get_current_model() -> str:
+    """Get the current model from environment."""
+    return os.getenv("NEUTRALIZER_MODEL", "gemini-2.0-flash")
+
+
+def get_prompt(name: str, default: str, model: Optional[str] = None) -> str:
     """
-    Get a prompt from the database with fallback to default.
+    Get a prompt from the database with fallback logic.
+
+    Lookup order:
+    1. Try prompt matching (name + model)
+    2. Fall back to prompt matching (name + NULL model) - generic
+    3. Fall back to hardcoded default
 
     Caches prompts for PROMPT_CACHE_TTL_SECONDS to avoid DB hits on every call.
     """
     global _prompt_cache, _prompt_cache_time
+
+    # Use current model if not specified
+    if model is None:
+        model = _get_current_model()
+
+    # Cache key includes model
+    cache_key = f"{name}:{model}"
 
     # Check if cache is stale
     now = datetime.utcnow()
@@ -425,8 +442,8 @@ def get_prompt(name: str, default: str) -> str:
         _prompt_cache_time = now
 
     # Return from cache if available
-    if name in _prompt_cache:
-        return _prompt_cache[name]
+    if cache_key in _prompt_cache:
+        return _prompt_cache[cache_key]
 
     # Try to load from DB
     try:
@@ -435,22 +452,39 @@ def get_prompt(name: str, default: str) -> str:
 
         db = SessionLocal()
         try:
+            # First try: exact match (name + model)
             prompt = db.query(models.Prompt).filter(
                 models.Prompt.name == name,
+                models.Prompt.model == model,
                 models.Prompt.is_active == True
             ).first()
 
+            # Second try: generic fallback (name + NULL model)
+            if not prompt:
+                prompt = db.query(models.Prompt).filter(
+                    models.Prompt.name == name,
+                    models.Prompt.model.is_(None),
+                    models.Prompt.is_active == True
+                ).first()
+
             if prompt:
-                _prompt_cache[name] = prompt.content
+                _prompt_cache[cache_key] = prompt.content
                 return prompt.content
         finally:
             db.close()
     except Exception as e:
-        logger.warning(f"Failed to load prompt '{name}' from DB, using default: {e}")
+        logger.warning(f"Failed to load prompt '{name}' for model '{model}' from DB, using default: {e}")
 
-    # Fallback to default
-    _prompt_cache[name] = default
+    # Fallback to hardcoded default
+    _prompt_cache[cache_key] = default
     return default
+
+
+def clear_prompt_cache() -> None:
+    """Clear the prompt cache (called when prompts are updated via API)."""
+    global _prompt_cache, _prompt_cache_time
+    _prompt_cache = {}
+    _prompt_cache_time = None
 
 
 def get_system_prompt() -> str:
