@@ -635,20 +635,24 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             import google.generativeai as genai
             genai.configure(api_key=self._api_key)
 
+            # Use proper system instruction (not concatenated prompt)
+            if repair_instructions:
+                system_prompt = get_repair_system_prompt()
+                user_prompt = build_repair_prompt(title, description, body, repair_instructions)
+            else:
+                system_prompt = get_system_prompt()
+                user_prompt = build_user_prompt(title, description, body)
+
             model = genai.GenerativeModel(
                 self._model,
+                system_instruction=system_prompt,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json",
                     temperature=0.3,
                 ),
             )
 
-            if repair_instructions:
-                prompt = f"{get_repair_system_prompt()}\n\n{build_repair_prompt(title, description, body, repair_instructions)}"
-            else:
-                prompt = f"{get_system_prompt()}\n\n{build_user_prompt(title, description, body)}"
-
-            response = model.generate_content(prompt)
+            response = model.generate_content(user_prompt)
 
             import json
             data = json.loads(response.text)
@@ -737,23 +741,33 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 # Provider factory
 # -----------------------------------------------------------------------------
 
+# Default model if NEUTRALIZER_MODEL not set
+DEFAULT_MODEL = "gemini-2.0-flash"
+
+
+def _infer_provider_from_model(model: str) -> str:
+    """Infer provider name from model string."""
+    model_lower = model.lower()
+
+    if model_lower == "mock":
+        return "mock"
+    elif model_lower.startswith("gpt-") or model_lower.startswith("o1") or model_lower.startswith("o3"):
+        return "openai"
+    elif model_lower.startswith("gemini"):
+        return "gemini"
+    elif model_lower.startswith("claude"):
+        return "anthropic"
+    else:
+        logger.warning(f"Could not infer provider from model '{model}', falling back to gemini")
+        return "gemini"
+
+
 # Provider registry - maps provider names to classes
 PROVIDERS = {
     "mock": MockNeutralizerProvider,
     "openai": OpenAINeutralizerProvider,
     "gemini": GeminiNeutralizerProvider,
-    "google": GeminiNeutralizerProvider,  # Alias
     "anthropic": AnthropicNeutralizerProvider,
-    "claude": AnthropicNeutralizerProvider,  # Alias
-}
-
-# Default models for each provider
-DEFAULT_MODELS = {
-    "openai": "gpt-4o-mini",
-    "gemini": "gemini-1.5-flash",
-    "google": "gemini-1.5-flash",
-    "anthropic": "claude-3-5-haiku",
-    "claude": "claude-3-5-haiku",
 }
 
 
@@ -761,30 +775,30 @@ def get_neutralizer_provider() -> NeutralizerProvider:
     """
     Get the configured neutralizer provider.
 
-    Configuration via environment variables:
-        NEUTRALIZER_PROVIDER: Provider name (gemini, openai, anthropic, mock)
-        NEUTRALIZER_MODEL: Optional model override
+    Configuration via environment variable:
+        NEUTRALIZER_MODEL: Model name (provider is inferred automatically)
 
     Examples:
-        NEUTRALIZER_PROVIDER=gemini                    -> Gemini 1.5 Flash
-        NEUTRALIZER_PROVIDER=gemini NEUTRALIZER_MODEL=gemini-2.0-flash -> Gemini 2.0 Flash
-        NEUTRALIZER_PROVIDER=openai                    -> GPT-4o-mini
-        NEUTRALIZER_PROVIDER=openai NEUTRALIZER_MODEL=gpt-4o -> GPT-4o
-        NEUTRALIZER_PROVIDER=anthropic                 -> Claude 3.5 Haiku
-        NEUTRALIZER_PROVIDER=mock                      -> Mock (pattern-based)
+        NEUTRALIZER_MODEL=gemini-1.5-flash  -> Gemini 1.5 Flash
+        NEUTRALIZER_MODEL=gemini-2.0-flash  -> Gemini 2.0 Flash
+        NEUTRALIZER_MODEL=gpt-4o-mini       -> OpenAI GPT-4o-mini
+        NEUTRALIZER_MODEL=gpt-4o            -> OpenAI GPT-4o
+        NEUTRALIZER_MODEL=claude-3-5-haiku  -> Anthropic Claude 3.5 Haiku
+        NEUTRALIZER_MODEL=mock              -> Mock (pattern-based, for testing)
+
+    Default: gemini-2.0-flash
     """
-    provider_name = os.getenv("NEUTRALIZER_PROVIDER", "gemini").lower()
-    model_override = os.getenv("NEUTRALIZER_MODEL")
+    model = os.getenv("NEUTRALIZER_MODEL", DEFAULT_MODEL)
+    provider_name = _infer_provider_from_model(model)
+
+    if provider_name == "mock":
+        return MockNeutralizerProvider()
 
     provider_class = PROVIDERS.get(provider_name)
     if not provider_class:
         logger.warning(f"Unknown provider '{provider_name}', falling back to mock")
         return MockNeutralizerProvider()
 
-    if provider_name == "mock":
-        return MockNeutralizerProvider()
-
-    model = model_override or DEFAULT_MODELS.get(provider_name)
     return provider_class(model=model)
 
 
