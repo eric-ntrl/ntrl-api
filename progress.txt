@@ -22,4 +22,11 @@
 - Confirmed grade() returns {overall_pass: bool, results: list}
 - Note: Some canon rules (A2, A6, B4, B5, C1, C3, C4, D4) require semantic/LLM analysis - these are intentionally not in the deterministic grader
 
-**Next**: Story 1.2 - Create /v1/grade endpoint
+### Story 1.2 - Create /v1/grade endpoint (COMPLETE)
+- Created app/schemas/grading.py with GradeRequest, GradeResponse, RuleResult schemas
+- Added POST /v1/grade endpoint to app/routers/admin.py
+- Endpoint accepts original_text, neutral_text, original_headline, neutral_headline
+- Returns {overall_pass, results} from deterministic grader
+- FastAPI returns 422 validation error for missing required fields (standard behavior)
+
+**Next**: Story 1.3 - Create LLM quality scorer service

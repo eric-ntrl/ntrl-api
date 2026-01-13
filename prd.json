@@ -36,7 +36,7 @@
         "app/routers/admin.py",
         "app/schemas/grading.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 2
     },
     {

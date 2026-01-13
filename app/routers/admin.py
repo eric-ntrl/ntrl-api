@@ -29,6 +29,7 @@ from app.schemas.admin import (
     BriefRunResponse,
     BriefSectionResult,
 )
+from app.schemas.grading import GradeRequest, GradeResponse, RuleResult
 from app.services.ingestion import IngestionService
 from app.services.neutralizer import NeutralizerService, get_neutralizer_provider, NeutralizerConfigError, get_active_model
 from app.services.brief_assembly import BriefAssemblyService
@@ -129,6 +130,36 @@ def get_status(
         last_ingest=get_last_run("ingest"),
         last_neutralize=get_last_run("neutralize"),
         last_brief=get_last_run("brief_assemble"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# Grading endpoint
+# -----------------------------------------------------------------------------
+
+@router.post("/grade", response_model=GradeResponse)
+def grade_text(
+    request: GradeRequest,
+) -> GradeResponse:
+    """
+    Grade neutralized text against canon rules.
+
+    Runs deterministic grader checks on provided original and neutral text.
+    Returns binary pass/fail for each rule plus overall pass status.
+    No authentication required - useful for development iteration.
+    """
+    from app.services.grader import grade_article
+
+    result = grade_article(
+        original_text=request.original_text,
+        neutral_text=request.neutral_text,
+        original_headline=request.original_headline,
+        neutral_headline=request.neutral_headline,
+    )
+
+    return GradeResponse(
+        overall_pass=result["overall_pass"],
+        results=[RuleResult(**r) for r in result["results"]],
     )
 
 
