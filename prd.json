@@ -79,7 +79,7 @@
         "tests/fixtures/test_corpus/article_009.json",
         "tests/fixtures/test_corpus/article_010.json"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 4
     },
     {

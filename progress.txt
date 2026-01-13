@@ -36,4 +36,12 @@
 - Works with OpenAI (gpt-4o-mini) and Anthropic (claude-3-5-haiku) providers
 - Tested OpenAI successfully; Anthropic code is correct but account has no credits
 
-**Next**: Story 1.4 - Create 10-article test corpus
+### Story 1.4 - Create 10-article test corpus (COMPLETE)
+- Created tests/fixtures/test_corpus/ directory
+- Created 10 JSON article files with: original_title, original_body, source_url, section, length, has_manipulative_language
+- Sections covered: world (3), us (3), technology (2), business (2) - 4 unique sections
+- Lengths: short (3), medium (4), long (3)
+- 4 articles with manipulative language: 001 (urgency/clickbait), 003 (clickbait/selling), 005 (emotional), 010 (agenda signaling)
+- Note: 4 pre-existing test failures unrelated to corpus (classifier, deduper, neutralizer auth)
+
+**Next**: Story 1.5 - Schema migration for new output fields
