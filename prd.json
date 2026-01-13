@@ -53,7 +53,7 @@
       "filesToModify": [
         "app/services/quality_scorer.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 3
     },
     {

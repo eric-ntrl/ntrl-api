@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "cd20ddae45c389a3e68c3dd512e63b8aca5d876ea8493b58c729eeae2a344735"
+            "sha256": "bdb443c6180e98ede580570bed5b42fb5a5db961bf3e7514a27fbbbbd1ae7ad4"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -40,6 +40,15 @@
             ],
             "markers": "python_version >= '3.8'",
             "version": "==0.7.0"
+        },
+        "anthropic": {
+            "hashes": [
+                "sha256:e8607422f4ab616db2ea5baacc215dd5f028da99ce2f022e33c7c535b29f3dfb",
+                "sha256:ea8317271b6c15d80225a9f3c670152746e88805a7a61e14d4a374577164965b"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.9'",
+            "version": "==0.75.0"
         },
         "anyio": {
             "hashes": [
@@ -89,6 +98,14 @@
             ],
             "markers": "python_version >= '3.6'",
             "version": "==1.9.0"
+        },
+        "docstring-parser": {
+            "hashes": [
+                "sha256:583de4a309722b3315439bb31d64ba3eebada841f2e2cee23b99df001434c912",
+                "sha256:cf2569abd23dce8099b300f9b4fa8191e9582dda731fd533daf54c4551658708"
+            ],
+            "markers": "python_version >= '3.8'",
+            "version": "==0.17.0"
         },
         "fastapi": {
             "hashes": [

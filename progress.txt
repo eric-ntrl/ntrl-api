@@ -29,4 +29,11 @@
 - Returns {overall_pass, results} from deterministic grader
 - FastAPI returns 422 validation error for missing required fields (standard behavior)
 
-**Next**: Story 1.3 - Create LLM quality scorer service
+### Story 1.3 - Create LLM quality scorer service (COMPLETE)
+- Created app/services/quality_scorer.py with score_quality() function
+- Returns QualityScore dataclass with {score: float, feedback: str, rule_violations: list}
+- Embedded CANON_RUBRIC contains all A1-D4 rules as grading criteria
+- Works with OpenAI (gpt-4o-mini) and Anthropic (claude-3-5-haiku) providers
+- Tested OpenAI successfully; Anthropic code is correct but account has no credits
+
+**Next**: Story 1.4 - Create 10-article test corpus
