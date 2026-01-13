@@ -1,0 +1,180 @@
+{
+  "name": "NTRL Neutralization Grader",
+  "version": "1.0",
+  "canonical_doc": "NTRL_Neutralization_Canon_v1.0",
+  "applies_to": [
+    "headline",
+    "brief",
+    "article_output"
+  ],
+  "fields": {
+    "required": [
+      "original_text",
+      "neutral_text"
+    ],
+    "optional": [
+      "original_headline",
+      "neutral_headline",
+      "brief",
+      "extraction_json",
+      "source_url"
+    ]
+  },
+  "rules": [
+    {
+      "id": "A1_NO_NEW_FACTS",
+      "priority": "A",
+      "severity": "critical",
+      "description": "Neutral output must not introduce new facts, entities, numbers, locations, or relationships absent from the source.",
+      "check": {
+        "type": "heuristic_no_new_entities_numbers"
+      }
+    },
+    {
+      "id": "A3_SCOPE_PRESERVED",
+      "priority": "A",
+      "severity": "critical",
+      "description": "Quantifiers and totality (all, more, multiple, entire) must be preserved when present in the source.",
+      "check": {
+        "type": "scope_marker_preservation",
+        "markers": [
+          "all",
+          "every",
+          "entire",
+          "more",
+          "additional",
+          "multiple"
+        ]
+      }
+    },
+    {
+      "id": "A4_COMPOUND_TERMS_ATOMIC",
+      "priority": "A",
+      "severity": "major",
+      "description": "Compound factual terms that appear in source should not be partially removed in the neutral output (e.g., domestic abuse, sex work).",
+      "check": {
+        "type": "compound_term_atomicity",
+        "terms": [
+          "domestic abuse",
+          "sex work",
+          "military targets"
+        ]
+      }
+    },
+    {
+      "id": "A5_CERTAINTY_PRESERVED",
+      "priority": "A",
+      "severity": "critical",
+      "description": "Epistemic certainty markers must be preserved exactly (set to, plans to, expected to).",
+      "check": {
+        "type": "certainty_marker_preservation",
+        "markers": [
+          "set to",
+          "plans to",
+          "expected to",
+          "scheduled to",
+          "poised to"
+        ]
+      }
+    },
+    {
+      "id": "B1_NO_URGENCY",
+      "priority": "B",
+      "severity": "major",
+      "description": "Remove urgency framing (breaking, live, just in, developing, updates).",
+      "check": {
+        "type": "banned_token_scan",
+        "banned": [
+          "breaking",
+          "live",
+          "just in",
+          "developing",
+          "updates"
+        ]
+      }
+    },
+    {
+      "id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+      "priority": "B",
+      "severity": "major",
+      "description": "Remove emotional amplification (dramatic, shocking, explosive, terrifying).",
+      "check": {
+        "type": "banned_token_scan",
+        "banned": [
+          "dramatic",
+          "shocking",
+          "explosive",
+          "terrifying",
+          "insane",
+          "devastating"
+        ]
+      }
+    },
+    {
+      "id": "B3_NO_AGENDA_SIGNALING",
+      "priority": "B",
+      "severity": "major",
+      "description": "Remove agenda/ideological signaling unless quoted as an attributed claim.",
+      "check": {
+        "type": "agenda_token_scan_with_quote_exception",
+        "tokens": [
+          "woke",
+          "elite",
+          "deep state"
+        ]
+      }
+    },
+    {
+      "id": "C2_NO_NAMED_POSSESSIVES",
+      "priority": "C",
+      "severity": "critical",
+      "description": "No possessive constructions involving named individuals (e.g., X's group/supporters).",
+      "check": {
+        "type": "regex_forbidden",
+        "pattern": "\\\\b([A-Z][a-z]+(?:\\\\s[A-Z][a-z]+)*)'s\\\\s+(group|supporters|allies|followers|base|camp)\\\\b"
+      }
+    },
+    {
+      "id": "D1_GRAMMAR_INTACT_MIN",
+      "priority": "D",
+      "severity": "major",
+      "description": "Output must be free of obvious grammar artifacts from deletion (dangling punctuation, empty quotes).",
+      "check": {
+        "type": "grammar_lint_min"
+      }
+    },
+    {
+      "id": "D2_NO_ALL_CAPS_EMPHASIS",
+      "priority": "D",
+      "severity": "major",
+      "description": "No ALL-CAPS emphasis words except allowlisted acronyms.",
+      "check": {
+        "type": "all_caps_scan",
+        "allowlist": [
+          "US",
+          "U.S.",
+          "UK",
+          "U.K.",
+          "EU",
+          "UN",
+          "NATO",
+          "UAE",
+          "FCC",
+          "FDA",
+          "WHO",
+          "ISIS"
+        ]
+      }
+    },
+    {
+      "id": "D3_HEADLINE_MAX_12_WORDS",
+      "priority": "D",
+      "severity": "critical",
+      "description": "Neutral headline must be \u226412 words (if headline provided).",
+      "check": {
+        "type": "headline_word_limit",
+        "max_words": 12
+      }
+    }
+  ]
+}

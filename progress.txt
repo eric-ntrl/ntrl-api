@@ -1,0 +1,25 @@
+# NTRL Article Neutralization - Progress Log
+
+## Codebase Patterns
+<!-- Add reusable patterns discovered during implementation here -->
+
+---
+
+## Iteration Log
+
+### Setup (2025-01-12)
+- Created PRD: docs/prd/article-neutralization-v1.md
+- Created prd.json with 18 user stories across 5 phases
+- Stored canon: docs/canon/neutralization-canon-v1.md
+- Stored content spec: docs/canon/content-spec-v1.md
+- Integrated deterministic grader: app/services/grader.py
+- Grader spec: app/data/grader_spec_v1.json
+
+### Story 1.1 - Integrate deterministic grader (COMPLETE)
+- Verified grader.py exists at app/services/grader.py
+- Verified grader_spec_v1.json exists at app/data/grader_spec_v1.json with all deterministic canon rules
+- Confirmed `from app.services.grader import grade` works
+- Confirmed grade() returns {overall_pass: bool, results: list}
+- Note: Some canon rules (A2, A6, B4, B5, C1, C3, C4, D4) require semantic/LLM analysis - these are intentionally not in the deterministic grader
+
+**Next**: Story 1.2 - Create /v1/grade endpoint

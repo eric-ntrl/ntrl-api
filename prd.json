@@ -1,0 +1,336 @@
+{
+  "name": "Article Neutralization v1.0",
+  "branchName": "feature/article-neutralization-v1",
+  "prdDocument": "docs/prd/article-neutralization-v1.md",
+  "canonDocument": "docs/canon/neutralization-canon-v1.md",
+  "contentSpec": "docs/canon/content-spec-v1.md",
+  "userStories": [
+    {
+      "id": "1.1",
+      "title": "Integrate deterministic grader",
+      "description": "Copy grader.py into app/services/grader.py and grader spec JSON into app/data/grader_spec_v1.json. Ensure imports work and grader can be called from other services.",
+      "acceptanceCriteria": [
+        "app/services/grader.py exists and is importable",
+        "app/data/grader_spec_v1.json exists with all canon rules",
+        "Running `from app.services.grader import grade` works",
+        "grade() function returns {overall_pass: bool, results: list}"
+      ],
+      "filesToModify": [
+        "app/services/grader.py",
+        "app/data/grader_spec_v1.json"
+      ],
+      "passes": true,
+      "priority": 1
+    },
+    {
+      "id": "1.2",
+      "title": "Create /v1/grade endpoint",
+      "description": "Add API endpoint that accepts original_text, neutral_text, and optional headline fields. Returns grader results for all canon rules.",
+      "acceptanceCriteria": [
+        "POST /v1/grade endpoint exists",
+        "Accepts JSON body with original_text, neutral_text, original_headline, neutral_headline",
+        "Returns {overall_pass, results} from deterministic grader",
+        "Returns 400 for missing required fields"
+      ],
+      "filesToModify": [
+        "app/routers/admin.py",
+        "app/schemas/grading.py"
+      ],
+      "passes": false,
+      "priority": 2
+    },
+    {
+      "id": "1.3",
+      "title": "Create LLM quality scorer service",
+      "description": "Create a service that uses an LLM to score neutralized output against the canon. Returns 0-10 score with specific feedback. This is for development iteration only, not production.",
+      "acceptanceCriteria": [
+        "app/services/quality_scorer.py exists",
+        "score_quality() function accepts original and neutral text",
+        "Returns {score: float, feedback: str, rule_violations: list}",
+        "Uses canon document as grading rubric in prompt",
+        "Works with OpenAI and Anthropic providers"
+      ],
+      "filesToModify": [
+        "app/services/quality_scorer.py"
+      ],
+      "passes": false,
+      "priority": 3
+    },
+    {
+      "id": "1.4",
+      "title": "Create 10-article test corpus",
+      "description": "Create test fixtures with 10 diverse articles covering different sections (world, us, tech, business). Include original article text for each.",
+      "acceptanceCriteria": [
+        "tests/fixtures/test_corpus/ directory exists",
+        "10 JSON files, each with original_title, original_body, source_url, section",
+        "Articles cover at least 4 different sections",
+        "Articles vary in length (short, medium, long)",
+        "At least 3 articles contain manipulative language to neutralize"
+      ],
+      "filesToModify": [
+        "tests/fixtures/test_corpus/article_001.json",
+        "tests/fixtures/test_corpus/article_002.json",
+        "tests/fixtures/test_corpus/article_003.json",
+        "tests/fixtures/test_corpus/article_004.json",
+        "tests/fixtures/test_corpus/article_005.json",
+        "tests/fixtures/test_corpus/article_006.json",
+        "tests/fixtures/test_corpus/article_007.json",
+        "tests/fixtures/test_corpus/article_008.json",
+        "tests/fixtures/test_corpus/article_009.json",
+        "tests/fixtures/test_corpus/article_010.json"
+      ],
+      "passes": false,
+      "priority": 4
+    },
+    {
+      "id": "1.5",
+      "title": "Schema migration for new output fields",
+      "description": "Add new fields to StoryNeutralized model: detail_title, detail_brief, detail_full. Rename neutral_headline to feed_title and neutral_summary to feed_summary. Remove deprecated structured fields.",
+      "acceptanceCriteria": [
+        "Migration file created in migrations/versions/",
+        "StoryNeutralized model has: feed_title, feed_summary, detail_title, detail_brief, detail_full",
+        "Old fields neutral_headline, neutral_summary aliased or migrated",
+        "what_happened, why_it_matters, what_is_known, what_is_uncertain removed",
+        "Migration runs successfully: pipenv run alembic upgrade head",
+        "Migration is reversible: pipenv run alembic downgrade -1"
+      ],
+      "filesToModify": [
+        "app/models.py",
+        "migrations/versions/005_article_neutralization_fields.py"
+      ],
+      "passes": false,
+      "priority": 5
+    },
+    {
+      "id": "2.1",
+      "title": "Create shared system prompt with canon rules",
+      "description": "Create the master system prompt containing NTRL filter logic - all canon rules, manipulation patterns, and neutralization principles. This is the shared DNA for all 3 generation calls.",
+      "acceptanceCriteria": [
+        "System prompt stored in database via existing prompt infrastructure",
+        "Prompt contains all A1-D4 canon rules",
+        "Prompt contains manipulation patterns from existing neutralizer",
+        "Prompt references content spec constraints",
+        "Prompt is retrievable via get_prompt('article_system_prompt')"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 6
+    },
+    {
+      "id": "2.2",
+      "title": "Create filter prompt for Detail Full",
+      "description": "Create user prompt for Call 1 (Filter & Track). Takes original article, outputs filtered article preserving structure while removing manipulation. Also outputs transparency spans.",
+      "acceptanceCriteria": [
+        "User prompt template for detail_full generation exists",
+        "Prompt instructs to preserve structure, quotes, factual detail",
+        "Prompt instructs to remove manipulation, urgency, editorial framing",
+        "Prompt requests JSON output with filtered_article and spans array",
+        "Spans include: field, start_char, end_char, original_text, action, reason"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 7
+    },
+    {
+      "id": "2.3",
+      "title": "Implement Call 1: Filter & Track",
+      "description": "Add _neutralize_detail_full() method to neutralizer. Takes original article body, returns detail_full text and transparency spans.",
+      "acceptanceCriteria": [
+        "_neutralize_detail_full() method exists in NeutralizerProvider subclasses",
+        "Method uses shared system prompt + filter user prompt",
+        "Returns NeutralizationResult with detail_full and spans",
+        "Spans are valid TransparencySpan objects",
+        "Works with OpenAI, Anthropic, and Gemini providers"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 8
+    },
+    {
+      "id": "2.4",
+      "title": "Grade and iterate Detail Full until quality >= 8.5",
+      "description": "Run Detail Full generation on test corpus. Use LLM scorer to grade. Iterate on filter prompt until average quality score >= 8.5. Add any LLM-identified failure patterns to deterministic grader.",
+      "acceptanceCriteria": [
+        "Detail Full generated for all 10 test articles",
+        "All pass deterministic grader",
+        "Average LLM quality score >= 8.5",
+        "Any new failure patterns added to grader_spec_v1.json",
+        "Results logged to progress.txt"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py",
+        "app/data/grader_spec_v1.json",
+        "progress.txt"
+      ],
+      "passes": false,
+      "priority": 9
+    },
+    {
+      "id": "3.1",
+      "title": "Create synthesis prompt for Detail Brief",
+      "description": "Create user prompt for Call 2 (Synthesize). Takes original article, outputs 3-5 paragraph prose brief following grounding->context->knowledge->uncertainty structure.",
+      "acceptanceCriteria": [
+        "User prompt template for detail_brief generation exists",
+        "Prompt specifies 3-5 paragraphs, no headers/bullets",
+        "Prompt specifies implicit structure flow",
+        "Prompt specifies quote rules (short, attributed, non-emotional)",
+        "Prompt requests plain text output (not JSON)"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 10
+    },
+    {
+      "id": "3.2",
+      "title": "Implement Call 2: Synthesize",
+      "description": "Add _neutralize_detail_brief() method to neutralizer. Takes original article, returns detail_brief text.",
+      "acceptanceCriteria": [
+        "_neutralize_detail_brief() method exists in NeutralizerProvider subclasses",
+        "Method uses shared system prompt + synthesis user prompt",
+        "Returns detail_brief as plain text string",
+        "Output is 3-5 paragraphs without headers or bullets",
+        "Works with OpenAI, Anthropic, and Gemini providers"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 11
+    },
+    {
+      "id": "3.3",
+      "title": "Grade and iterate Detail Brief until quality >= 8.5",
+      "description": "Run Detail Brief generation on test corpus. Use LLM scorer to grade. Iterate on synthesis prompt until average quality score >= 8.5.",
+      "acceptanceCriteria": [
+        "Detail Brief generated for all 10 test articles",
+        "All pass deterministic grader",
+        "Average LLM quality score >= 8.5",
+        "Briefs follow grounding->context->knowledge->uncertainty flow",
+        "Results logged to progress.txt"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py",
+        "progress.txt"
+      ],
+      "passes": false,
+      "priority": 12
+    },
+    {
+      "id": "4.1",
+      "title": "Create compression prompt for Feed outputs",
+      "description": "Create user prompt for Call 3 (Compress). Takes original article + detail_brief, outputs feed_title (<=12 words), feed_summary (1-2 sentences), and detail_title.",
+      "acceptanceCriteria": [
+        "User prompt template for feed outputs exists",
+        "Prompt specifies feed_title constraints (<=6 preferred, 12 max)",
+        "Prompt specifies feed_summary constraints (1-2 sentences, <=3 lines)",
+        "Prompt specifies detail_title constraints (longer, precise, neutral)",
+        "Prompt requests JSON output with all 3 fields"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 13
+    },
+    {
+      "id": "4.2",
+      "title": "Implement Call 3: Compress",
+      "description": "Add _neutralize_feed_outputs() method to neutralizer. Takes original article and detail_brief, returns feed_title, feed_summary, and detail_title.",
+      "acceptanceCriteria": [
+        "_neutralize_feed_outputs() method exists in NeutralizerProvider subclasses",
+        "Method uses shared system prompt + compression user prompt",
+        "Returns dict with feed_title, feed_summary, detail_title",
+        "feed_title is <=12 words",
+        "feed_summary is 1-2 complete sentences",
+        "Works with OpenAI, Anthropic, and Gemini providers"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 14
+    },
+    {
+      "id": "4.3",
+      "title": "Grade and iterate Feed outputs until quality >= 8.5",
+      "description": "Run Feed output generation on test corpus. Use LLM scorer to grade. Iterate on compression prompt until average quality score >= 8.5.",
+      "acceptanceCriteria": [
+        "All 3 feed outputs generated for all 10 test articles",
+        "All pass deterministic grader",
+        "Average LLM quality score >= 8.5",
+        "feed_title always <=12 words",
+        "feed_summary always <=3 lines",
+        "Results logged to progress.txt"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py",
+        "progress.txt"
+      ],
+      "passes": false,
+      "priority": 15
+    },
+    {
+      "id": "5.1",
+      "title": "Wire 3 calls into neutralize_story() pipeline",
+      "description": "Update neutralize_story() to call all 3 methods in sequence: Filter & Track, Synthesize, Compress. Store all 6 outputs in StoryNeutralized record.",
+      "acceptanceCriteria": [
+        "neutralize_story() calls _neutralize_detail_full()",
+        "neutralize_story() calls _neutralize_detail_brief()",
+        "neutralize_story() calls _neutralize_feed_outputs()",
+        "All 6 fields populated in StoryNeutralized",
+        "TransparencySpans saved for detail_full",
+        "Existing auditor integration still works"
+      ],
+      "filesToModify": [
+        "app/services/neutralizer.py"
+      ],
+      "passes": false,
+      "priority": 16
+    },
+    {
+      "id": "5.2",
+      "title": "Update API schemas for all 6 outputs",
+      "description": "Update Pydantic schemas to expose all 6 outputs in API responses. Update StoryDetail and StoryTransparency schemas.",
+      "acceptanceCriteria": [
+        "StoryDetail schema includes feed_title, feed_summary, detail_title, detail_brief, detail_full",
+        "StoryTransparency schema includes spans for detail_full",
+        "GET /v1/stories/{id} returns all 6 outputs",
+        "GET /v1/stories/{id}/transparency returns ntrl view data",
+        "OpenAPI spec updated with new fields"
+      ],
+      "filesToModify": [
+        "app/schemas/stories.py",
+        "app/routers/stories.py"
+      ],
+      "passes": false,
+      "priority": 17
+    },
+    {
+      "id": "5.3",
+      "title": "End-to-end testing with test corpus",
+      "description": "Run full pipeline on test corpus. Verify all 6 outputs generated, all pass grader, overall quality >= 8.5. Run existing tests to verify no regressions.",
+      "acceptanceCriteria": [
+        "Full pipeline runs on all 10 test articles",
+        "All 6 outputs generated for each article",
+        "All outputs pass deterministic grader",
+        "Average LLM quality score >= 8.5 across all outputs",
+        "pipenv run python -m pytest tests/ passes",
+        "No regressions on existing functionality"
+      ],
+      "filesToModify": [
+        "tests/test_neutralizer.py",
+        "tests/test_article_neutralization.py"
+      ],
+      "passes": false,
+      "priority": 18
+    }
+  ]
+}
