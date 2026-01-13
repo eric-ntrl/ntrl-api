@@ -1243,7 +1243,8 @@ class NeutralizerService:
             )
             query = query.filter(~models.StoryRaw.id.in_(subq))
 
-        stories = query.limit(limit).all()
+        # Prioritize fresh articles - most recent first
+        stories = query.order_by(models.StoryRaw.published_at.desc()).limit(limit).all()
 
         result = {
             'status': 'completed',
