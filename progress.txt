@@ -181,3 +181,27 @@ All 3 LLM provider implementations follow the same structure:
 - Scope markers (all, entire, every, multiple) easily dropped - require explicit verification instruction
 - LLM quality scoring has ~0.5 point variance between runs
 - Best to demonstrate criteria can be met across multiple runs (stochastic variance)
+
+### Story 4.1 - Create compression prompt for Feed outputs (COMPLETE)
+- Created DEFAULT_COMPRESSION_FEED_OUTPUTS_PROMPT user prompt template
+- Prompt specifies feed_title constraints:
+  - ≤6 words PREFERRED
+  - 12 words MAXIMUM (hard cap)
+  - Must fit within 2 lines on mobile (~35-40 chars/line)
+- Prompt specifies feed_summary constraints:
+  - 1-2 complete sentences
+  - Must fully complete within 3 lines on mobile (~105-120 chars max)
+  - No truncation or ellipses
+- Prompt specifies detail_title constraints:
+  - May be longer and more precise than feed_title
+  - Neutral, complete, factual
+  - NOT auto-derived from feed_title (generated independently)
+- Requests JSON output with all 3 fields: feed_title, feed_summary, detail_title
+- Added get_compression_feed_outputs_prompt() and build_compression_feed_outputs_prompt() functions
+
+**Key Prompt Features:**
+- Takes original article body + already-generated detail_brief as inputs
+- Includes BANNED LANGUAGE section (urgency, emotional, conflict theater, clickbait, selling, judgment, amplifiers)
+- PRESERVE EXACTLY section for factual accuracy, scope markers, epistemic markers
+- Good/bad examples for each output type
+- CRITICAL reminder to count words before outputting feed_title

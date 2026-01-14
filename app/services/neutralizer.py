@@ -993,6 +993,160 @@ Just 3-5 paragraphs of neutral prose."""
 
 
 # -----------------------------------------------------------------------------
+# Feed Outputs Compression Prompt (Call 3: Compress)
+# -----------------------------------------------------------------------------
+
+DEFAULT_COMPRESSION_FEED_OUTPUTS_PROMPT = """Generate compressed feed outputs from the following article.
+
+═══════════════════════════════════════════════════════════════════════════════
+YOUR TASK
+═══════════════════════════════════════════════════════════════════════════════
+
+You are a COMPRESSION FILTER. Your job is to produce three distinct outputs:
+1. feed_title: Ultra-short headline for feed scanning
+2. feed_summary: 1-2 sentence preview for the feed
+3. detail_title: Precise headline for the article page
+
+These are NOT variations of the same text. Each serves a different cognitive purpose.
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT 1: feed_title
+═══════════════════════════════════════════════════════════════════════════════
+
+Purpose: Fast scanning and orientation in the feed.
+
+CONSTRAINTS:
+- ≤6 words PREFERRED (aim for this)
+- 12 words MAXIMUM (hard cap, never exceed)
+- Must fit within 2 lines on mobile (assume ~35-40 chars/line)
+- Must not truncate mid-thought
+
+CONTENT RULES:
+- Factual, neutral, descriptive
+- Lead with the core fact or subject
+- Use present tense for ongoing events, past for completed
+- NO emotional language, urgency, clickbait, questions, or teasers
+- NO colons introducing clauses (e.g., "Breaking: X happens")
+- NO ALL-CAPS except acronyms (NATO, FBI, CEO)
+
+GOOD EXAMPLES:
+- "Senate Passes Infrastructure Bill"
+- "Earthquake Strikes Northern Japan"
+- "Fed Raises Interest Rates"
+- "Tesla Recalls 2 Million Vehicles"
+
+BAD EXAMPLES:
+- "BREAKING: Senate Finally Passes Massive Bill" (urgency, caps, amplifier)
+- "You Won't Believe What the Senate Did" (clickbait)
+- "Senate Makes Historic, Game-Changing Move" (emotional amplifiers)
+- "What Does the New Bill Mean for You?" (question, teaser)
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT 2: feed_summary
+═══════════════════════════════════════════════════════════════════════════════
+
+Purpose: Lightweight context without delivering full understanding.
+
+CONSTRAINTS:
+- 1-2 complete sentences
+- Must fully complete within 3 lines on mobile (~105-120 chars max)
+- NO truncation or ellipses
+- If 2 sentences cannot fit cleanly, use a single shorter sentence
+
+CONTENT RULES:
+- Expand on the feed_title with essential context
+- Answer: What happened? (and optionally: Who/Where/When?)
+- Do NOT attempt full explanation (that's what detail_brief is for)
+- Factual, neutral tone
+- NO emotional amplifiers, urgency words, or selling language
+
+GOOD EXAMPLES:
+- "The legislation passed 65-35 with bipartisan support. It allocates $550 billion for roads and bridges."
+- "A 6.4 magnitude earthquake struck near Tokyo, causing power outages. No tsunami warning issued."
+
+BAD EXAMPLES:
+- "In a stunning victory, the bill finally..." (emotional, urgency)
+- "The bill passed, marking a historic moment that will reshape..." (editorializing)
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT 3: detail_title
+═══════════════════════════════════════════════════════════════════════════════
+
+Purpose: Precise headline on the article page.
+
+CONSTRAINTS:
+- May be longer and more precise than feed_title
+- No strict word limit, but should be readable in one breath
+- Complete and unambiguous
+
+CONTENT RULES:
+- Neutral, complete, factual
+- Include specificity that feed_title may omit (names, numbers, locations)
+- NOT auto-derived from feed_title (generate independently)
+- NO urgency framing, sensational language, or emotional amplifiers
+- NO questions or teasers
+- NO ALL-CAPS except acronyms
+
+GOOD EXAMPLES:
+- "U.S. Senate Passes $1.2 Trillion Infrastructure Bill with Bipartisan Support"
+- "6.4 Magnitude Earthquake Strikes Northern Japan, Causes Widespread Power Outages"
+- "Federal Reserve Raises Interest Rates by 0.25% to Combat Inflation"
+
+BAD EXAMPLES:
+- "Historic: Senate Achieves Breakthrough on Massive Infrastructure Package" (editorializing)
+- "Devastating Earthquake Rocks Japan in Terrifying Event" (emotional)
+
+═══════════════════════════════════════════════════════════════════════════════
+BANNED LANGUAGE (applies to all three outputs)
+═══════════════════════════════════════════════════════════════════════════════
+
+URGENCY: breaking, developing, just in, emerging, escalating, update, alert
+EMOTIONAL: shocking, stunning, devastating, terrifying, unprecedented, historic,
+           dramatic, catastrophic, dire, heartbreaking, explosive, massive
+CONFLICT THEATER: slams, blasts, destroys, eviscerates, rips, torches
+CLICKBAIT: you won't believe, here's why, everything you need to know,
+           what happened next, must see, must read
+SELLING: exclusive, insider, secret, revealed, exposed, viral, trending
+JUDGMENT: dangerous, reckless, extreme, radical (unless in attributed quote)
+AMPLIFIERS: game-changer, revolutionary, once-in-a-lifetime, monumental
+
+═══════════════════════════════════════════════════════════════════════════════
+PRESERVE EXACTLY
+═══════════════════════════════════════════════════════════════════════════════
+
+- Factual accuracy (names, numbers, dates, places)
+- Scope markers (all, every, entire, multiple) when factual
+- Epistemic markers (alleged, suspected, confirmed, reportedly, expected to)
+- Attribution when mentioned
+
+═══════════════════════════════════════════════════════════════════════════════
+ORIGINAL ARTICLE
+═══════════════════════════════════════════════════════════════════════════════
+
+{body}
+
+═══════════════════════════════════════════════════════════════════════════════
+REFERENCE: DETAIL BRIEF (for context, already generated)
+═══════════════════════════════════════════════════════════════════════════════
+
+{detail_brief}
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+Respond with JSON containing exactly these three fields:
+
+{{
+  "feed_title": "Short headline for feed (≤6 words preferred, 12 max)",
+  "feed_summary": "1-2 sentence summary for feed preview.",
+  "detail_title": "Precise headline for article page with more detail."
+}}
+
+CRITICAL: Ensure feed_title is ≤12 words. Count carefully before outputting."""
+
+
+# -----------------------------------------------------------------------------
 # Prompt loading from DB - DB is source of truth for model selection
 # -----------------------------------------------------------------------------
 
@@ -1192,6 +1346,35 @@ def build_synthesis_detail_brief_prompt(body: str) -> str:
     """
     template = get_synthesis_detail_brief_prompt()
     return template.format(body=body or "")
+
+
+def get_compression_feed_outputs_prompt() -> str:
+    """
+    Get the user prompt template for feed outputs generation (Call 3: Compress).
+
+    This prompt instructs the LLM to generate:
+    - feed_title: ≤6 words preferred, 12 words maximum
+    - feed_summary: 1-2 sentences, ≤3 lines
+    - detail_title: Longer, precise, neutral headline
+
+    Output is JSON with all 3 fields.
+    """
+    return get_prompt("compression_feed_outputs_prompt", DEFAULT_COMPRESSION_FEED_OUTPUTS_PROMPT)
+
+
+def build_compression_feed_outputs_prompt(body: str, detail_brief: str) -> str:
+    """
+    Build the user prompt for feed outputs compression.
+
+    Args:
+        body: The original article body text
+        detail_brief: The already-generated detail brief (for context)
+
+    Returns:
+        Formatted prompt with article body and detail_brief inserted
+    """
+    template = get_compression_feed_outputs_prompt()
+    return template.format(body=body or "", detail_brief=detail_brief or "")
 
 
 def build_user_prompt(title: str, description: Optional[str], body: Optional[str]) -> str:
