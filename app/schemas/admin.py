@@ -82,7 +82,7 @@ class NeutralizeStoryResult(BaseModel):
     """Result for a single story."""
     story_id: str
     status: str  # completed|skipped|failed
-    neutral_headline: Optional[str] = None
+    feed_title: Optional[str] = None
     has_manipulative_content: bool = False
     span_count: int = 0
     error: Optional[str] = None

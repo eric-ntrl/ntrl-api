@@ -226,14 +226,17 @@ def run_neutralize(
     Runs the neutralization pipeline on stories that haven't
     been processed yet (or all if force=true).
     """
-    service = NeutralizerService()
-    result = service.neutralize_pending(
-        db,
-        story_ids=request.story_ids,
-        force=request.force,
-        limit=request.limit,
-        max_workers=request.max_workers,
-    )
+    try:
+        service = NeutralizerService()
+        result = service.neutralize_pending(
+            db,
+            story_ids=request.story_ids,
+            force=request.force,
+            limit=request.limit,
+            max_workers=request.max_workers,
+        )
+    except NeutralizerConfigError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     return NeutralizeRunResponse(
         status=result['status'],
@@ -681,8 +684,8 @@ class ArticleTestResult(BaseModel):
     source: str
     original_title: str
     original_description: Optional[str]
-    neutral_headline: str
-    neutral_summary: str
+    feed_title: str
+    feed_summary: str
     has_manipulative_content: bool
 
 
@@ -752,8 +755,8 @@ def test_prompts(
                     source=story.source.name if story.source else "Unknown",
                     original_title=story.original_title,
                     original_description=story.original_description,
-                    neutral_headline=result.neutral_headline,
-                    neutral_summary=result.neutral_summary,
+                    feed_title=result.feed_title,
+                    feed_summary=result.feed_summary,
                     has_manipulative_content=result.has_manipulative_content,
                 ))
             except Exception as e:
