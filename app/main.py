@@ -11,6 +11,7 @@ No urgency language or "breaking" alerts.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from app.routers import brief_router, stories_router, admin_router, sources_router
 
@@ -22,6 +23,38 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+
+def custom_openapi():
+    """Custom OpenAPI schema with API key security."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    # Add API key security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "Admin API key for pipeline operations",
+        }
+    }
+    # Apply security to all admin endpoints
+    for path in openapi_schema["paths"]:
+        if any(x in path for x in ["/ingest/", "/neutralize/", "/brief/", "/pipeline/", "/prompts"]):
+            for method in openapi_schema["paths"][path]:
+                if method != "parameters":
+                    openapi_schema["paths"][path][method]["security"] = [{"ApiKeyAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # CORS middleware
 app.add_middleware(
