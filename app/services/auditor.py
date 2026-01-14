@@ -240,10 +240,14 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         checks = AuditChecks()
         reasons = []
 
-        neutral_headline = model_output.get("neutral_headline", "")
-        neutral_summary = model_output.get("neutral_summary", "")
+        # Support both old field names (neutral_*) and new field names (feed_*)
+        neutral_headline = model_output.get("feed_title") or model_output.get("neutral_headline", "")
+        neutral_summary = model_output.get("feed_summary") or model_output.get("neutral_summary", "")
         has_manipulative = model_output.get("has_manipulative_content", False)
+        # Support both old (removed_phrases) and new (spans) field names
         removed_phrases = model_output.get("removed_phrases", [])
+        spans = model_output.get("spans", [])
+        has_transparency_data = len(removed_phrases) > 0 or len(spans) > 0
 
         # Check for question marks
         if "?" in neutral_headline:
@@ -288,11 +292,11 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
                 detail="Flagged as manipulative but no changes made"
             ))
 
-        if has_manipulative and len(removed_phrases) == 0:
+        if has_manipulative and not has_transparency_data:
             checks.spans_missing_when_manipulative = True
             reasons.append(AuditReason(
                 code="SPANS_MISSING",
-                detail="Flagged as manipulative but no removed phrases identified"
+                detail="Flagged as manipulative but no transparency spans identified"
             ))
 
         # Check for thin content
