@@ -205,3 +205,39 @@ All 3 LLM provider implementations follow the same structure:
 - PRESERVE EXACTLY section for factual accuracy, scope markers, epistemic markers
 - Good/bad examples for each output type
 - CRITICAL reminder to count words before outputting feed_title
+
+### Story 4.2 - Implement Call 3: Compress (COMPLETE)
+- Added abstract _neutralize_feed_outputs(body: str, detail_brief: str) -> dict to NeutralizerProvider base class
+- Returns dict with: feed_title, feed_summary, detail_title
+- Implemented in MockNeutralizerProvider:
+  - Uses sentence extraction and neutralization
+  - feed_title: First 6 words from first sentence
+  - feed_summary: First 1-2 sentences (max 120 chars)
+  - detail_title: First 15 words from first sentence
+- Implemented in OpenAINeutralizerProvider:
+  - Uses get_article_system_prompt() + build_compression_feed_outputs_prompt()
+  - JSON response format enabled
+  - Temperature 0.3 for consistency
+- Implemented in GeminiNeutralizerProvider:
+  - Same prompt combination
+  - response_mime_type="application/json"
+- Implemented in AnthropicNeutralizerProvider:
+  - Same prompt combination
+  - max_tokens=1024 (sufficient for feed outputs)
+  - JSON extraction from potential markdown code blocks
+
+**Pattern:**
+All 3 LLM provider implementations follow consistent structure:
+1. Early return empty dict for no body/detail_brief
+2. Check API key, fall back to mock if missing
+3. Get system prompt + build compression prompt with body and detail_brief
+4. Call LLM API with JSON response mode
+5. Parse JSON and return dict with 3 fields
+6. Fall back to mock on exception
+
+**Verification:**
+- All 4 providers implement _neutralize_feed_outputs method
+- All use get_article_system_prompt() and build_compression_feed_outputs_prompt()
+- Mock provider generates feed_title ≤12 words (6 words preferred)
+- Returns dict with required keys: feed_title, feed_summary, detail_title
+- All 18 neutralizer tests pass

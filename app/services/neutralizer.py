@@ -156,6 +156,26 @@ class NeutralizerProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
+        """
+        Generate compressed feed outputs (Call 3: Compress).
+
+        Uses shared system prompt (article_system_prompt) + compression user prompt
+        to generate three outputs optimized for different display contexts.
+
+        Args:
+            body: The original article body text
+            detail_brief: The already-generated detail brief (for context)
+
+        Returns:
+            dict with:
+            - feed_title: Ultra-short headline (≤6 words preferred, 12 max)
+            - feed_summary: 1-2 sentence preview (≤3 lines)
+            - detail_title: Precise headline for article page
+        """
+        pass
+
 
 # -----------------------------------------------------------------------------
 # Mock provider for testing
@@ -398,6 +418,72 @@ class MockNeutralizerProvider(NeutralizerProvider):
             paragraphs.append(remaining)
 
         return '\n\n'.join(paragraphs)
+
+    def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
+        """
+        Generate compressed feed outputs (mock implementation).
+
+        Creates simple feed outputs by extracting from the original content.
+        This is a deterministic mock for testing purposes.
+        """
+        if not body and not detail_brief:
+            return {
+                "feed_title": "",
+                "feed_summary": "",
+                "detail_title": "",
+            }
+
+        # Use detail_brief if available, otherwise use body
+        source = detail_brief or body or ""
+
+        # Split into sentences for processing
+        sentences = re.split(r'(?<=[.!?])\s+', source.strip())
+        sentences = [s.strip() for s in sentences if s.strip()]
+
+        # Apply neutralization to the source
+        body_spans = self._find_spans(source, "body")
+        filtered_source = self._neutralize_text(source, body_spans)
+        filtered_sentences = re.split(r'(?<=[.!?])\s+', filtered_source.strip())
+        filtered_sentences = [s.strip() for s in filtered_sentences if s.strip()]
+
+        # Generate feed_title: Extract key phrase from first sentence, max 12 words
+        feed_title = ""
+        if filtered_sentences:
+            first_sentence = filtered_sentences[0]
+            words = first_sentence.split()
+            # Take first 6-12 words, stopping at natural break
+            feed_title_words = words[:min(6, len(words))]
+            feed_title = ' '.join(feed_title_words)
+            # Remove trailing punctuation except periods
+            feed_title = feed_title.rstrip(',:;')
+            if not feed_title.endswith('.'):
+                feed_title = feed_title.rstrip('.')
+
+        # Generate feed_summary: First 1-2 sentences, max ~120 chars
+        feed_summary = ""
+        if filtered_sentences:
+            feed_summary = filtered_sentences[0]
+            if len(filtered_sentences) > 1 and len(feed_summary) < 60:
+                combined = f"{filtered_sentences[0]} {filtered_sentences[1]}"
+                if len(combined) <= 120:
+                    feed_summary = combined
+
+        # Generate detail_title: Slightly longer version of feed_title
+        detail_title = ""
+        if filtered_sentences:
+            first_sentence = filtered_sentences[0]
+            words = first_sentence.split()
+            # Take up to 15 words for detail_title
+            detail_title_words = words[:min(15, len(words))]
+            detail_title = ' '.join(detail_title_words)
+            # Clean up punctuation
+            detail_title = detail_title.rstrip(',:;')
+
+        return {
+            "feed_title": feed_title,
+            "feed_summary": feed_summary,
+            "detail_title": detail_title,
+        }
 
 
 # -----------------------------------------------------------------------------
@@ -1643,6 +1729,53 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             logger.error(f"OpenAI detail_brief synthesis failed: {e}")
             return MockNeutralizerProvider()._neutralize_detail_brief(body)
 
+    def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
+        """
+        Generate compressed feed outputs using OpenAI (Call 3: Compress).
+
+        Uses shared article_system_prompt + compression_feed_outputs_prompt.
+        Returns dict with feed_title, feed_summary, detail_title.
+        """
+        if not body and not detail_brief:
+            return {
+                "feed_title": "",
+                "feed_summary": "",
+                "detail_title": "",
+            }
+
+        if not self._api_key:
+            logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+
+        try:
+            import json
+            from openai import OpenAI
+            client = OpenAI(api_key=self._api_key)
+
+            system_prompt = get_article_system_prompt()
+            user_prompt = build_compression_feed_outputs_prompt(body, detail_brief)
+
+            response = client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                response_format={"type": "json_object"},
+            )
+
+            data = json.loads(response.choices[0].message.content)
+            return {
+                "feed_title": data.get("feed_title", ""),
+                "feed_summary": data.get("feed_summary", ""),
+                "detail_title": data.get("detail_title", ""),
+            }
+
+        except Exception as e:
+            logger.error(f"OpenAI feed outputs compression failed: {e}")
+            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+
 
 # -----------------------------------------------------------------------------
 # Gemini provider
@@ -1789,6 +1922,53 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
         except Exception as e:
             logger.error(f"Gemini detail_brief synthesis failed: {e}")
             return MockNeutralizerProvider()._neutralize_detail_brief(body)
+
+    def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
+        """
+        Generate compressed feed outputs using Gemini (Call 3: Compress).
+
+        Uses shared article_system_prompt + compression_feed_outputs_prompt.
+        Returns dict with feed_title, feed_summary, detail_title.
+        """
+        if not body and not detail_brief:
+            return {
+                "feed_title": "",
+                "feed_summary": "",
+                "detail_title": "",
+            }
+
+        if not self._api_key:
+            logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+
+        try:
+            import json
+            import google.generativeai as genai
+            genai.configure(api_key=self._api_key)
+
+            system_prompt = get_article_system_prompt()
+            user_prompt = build_compression_feed_outputs_prompt(body, detail_brief)
+
+            model = genai.GenerativeModel(
+                self._model,
+                system_instruction=system_prompt,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.3,
+                ),
+            )
+
+            response = model.generate_content(user_prompt)
+            data = json.loads(response.text)
+            return {
+                "feed_title": data.get("feed_title", ""),
+                "feed_summary": data.get("feed_summary", ""),
+                "detail_title": data.get("detail_title", ""),
+            }
+
+        except Exception as e:
+            logger.error(f"Gemini feed outputs compression failed: {e}")
+            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
 
 
 # -----------------------------------------------------------------------------
@@ -1945,6 +2125,60 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         except Exception as e:
             logger.error(f"Anthropic detail_brief synthesis failed: {e}")
             return MockNeutralizerProvider()._neutralize_detail_brief(body)
+
+    def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
+        """
+        Generate compressed feed outputs using Anthropic Claude (Call 3: Compress).
+
+        Uses shared article_system_prompt + compression_feed_outputs_prompt.
+        Returns dict with feed_title, feed_summary, detail_title.
+        """
+        if not body and not detail_brief:
+            return {
+                "feed_title": "",
+                "feed_summary": "",
+                "detail_title": "",
+            }
+
+        if not self._api_key:
+            logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+
+        try:
+            import json
+            import anthropic
+            client = anthropic.Anthropic(api_key=self._api_key)
+
+            system_prompt = get_article_system_prompt()
+            user_prompt = build_compression_feed_outputs_prompt(body, detail_brief)
+
+            response = client.messages.create(
+                model=self._model,
+                max_tokens=1024,  # Sufficient for feed outputs
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+
+            # Claude returns text, need to extract JSON
+            text = response.content[0].text
+            # Handle potential markdown code blocks
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0]
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0]
+
+            data = json.loads(text.strip())
+            return {
+                "feed_title": data.get("feed_title", ""),
+                "feed_summary": data.get("feed_summary", ""),
+                "detail_title": data.get("detail_title", ""),
+            }
+
+        except Exception as e:
+            logger.error(f"Anthropic feed outputs compression failed: {e}")
+            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
 
 
 # -----------------------------------------------------------------------------
