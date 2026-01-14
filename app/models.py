@@ -185,7 +185,7 @@ class StoryRaw(Base):
 # -----------------------------------------------------------------------------
 
 class StoryNeutralized(Base):
-    """Neutralized summaries, versioned separately from raw."""
+    """Neutralized article outputs, versioned separately from raw."""
     __tablename__ = "stories_neutralized"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -195,15 +195,14 @@ class StoryNeutralized(Base):
     version = Column(Integer, default=1, nullable=False)
     is_current = Column(Boolean, default=True, nullable=False)
 
-    # Neutralized content
-    neutral_headline = Column(Text, nullable=False)  # 1 line, no hype
-    neutral_summary = Column(Text, nullable=False)   # 2-3 lines max
+    # Feed outputs (for list views)
+    feed_title = Column(Text, nullable=False)       # ≤6 words preferred, 12 max
+    feed_summary = Column(Text, nullable=False)     # 1-2 sentences, ≤3 lines
 
-    # What the summary answers (structured)
-    what_happened = Column(Text, nullable=True)
-    why_it_matters = Column(Text, nullable=True)
-    what_is_known = Column(Text, nullable=True)
-    what_is_uncertain = Column(Text, nullable=True)
+    # Detail outputs (for article view)
+    detail_title = Column(Text, nullable=True)      # Precise article headline
+    detail_brief = Column(Text, nullable=True)      # 3-5 paragraphs, prose, no headers
+    detail_full = Column(Text, nullable=True)       # Filtered full article
 
     # Disclosure
     disclosure = Column(String(255), default="Manipulative language removed.", nullable=False)
@@ -314,8 +313,8 @@ class DailyBriefItem(Base):
     position = Column(Integer, nullable=False)  # Position within section
 
     # Denormalized for fast reads
-    neutral_headline = Column(Text, nullable=False)
-    neutral_summary = Column(Text, nullable=False)
+    feed_title = Column(Text, nullable=False)
+    feed_summary = Column(Text, nullable=False)
     source_name = Column(String(255), nullable=False)
     original_url = Column(Text, nullable=False)
     published_at = Column(DateTime, nullable=False)

@@ -8,6 +8,7 @@ from app.services.neutralizer import (
     MockNeutralizerProvider,
     NeutralizationResult,
     TransparencySpan,
+    DetailFullResult,
 )
 from app.models import SpanAction, SpanReason
 
@@ -35,7 +36,7 @@ class TestMockNeutralizerProvider:
         assert isinstance(result, NeutralizationResult)
         assert result.has_manipulative_content == False
         assert len(result.spans) == 0
-        assert result.neutral_headline == "City council approves new budget"
+        assert result.feed_title == "City council approves new budget"
 
     def test_neutralize_clickbait(self):
         """Test neutralizing clickbait language."""
@@ -53,7 +54,7 @@ class TestMockNeutralizerProvider:
         assert len(clickbait_spans) > 0
 
         # Check headline was neutralized (no "shocking")
-        assert "shocking" not in result.neutral_headline.lower()
+        assert "shocking" not in result.feed_title.lower()
 
     def test_neutralize_emotional_triggers(self):
         """Test neutralizing emotional trigger words."""
@@ -70,7 +71,7 @@ class TestMockNeutralizerProvider:
         assert len(emotional_spans) > 0
 
         # "slams" should be replaced with "criticizes"
-        assert "slams" not in result.neutral_headline.lower()
+        assert "slams" not in result.feed_title.lower()
 
     def test_neutralize_urgency_inflation(self):
         """Test neutralizing urgency language."""
@@ -87,7 +88,7 @@ class TestMockNeutralizerProvider:
         assert len(urgency_spans) > 0
 
         # "breaking" should be removed
-        assert "breaking" not in result.neutral_headline.lower()
+        assert "breaking" not in result.feed_title.lower()
 
     def test_span_positions_are_valid(self):
         """Test that span positions are valid."""
@@ -125,22 +126,21 @@ class TestMockNeutralizerProvider:
             body=None,
         )
 
-        assert result.neutral_summary is not None
-        assert len(result.neutral_summary) > 0
+        assert result.feed_summary is not None
+        assert len(result.feed_summary) > 0
 
-    def test_structured_parts(self):
-        """Test that structured parts are generated."""
+    def test_detail_fields_are_none_in_mock(self):
+        """Test that detail fields are None in mock provider (generated in future phases)."""
         result = self.provider.neutralize(
             title="Important event happens",
             description="Details about the important event.",
             body=None,
         )
 
-        # What happened should be set
-        assert result.what_happened is not None
-
-        # What is uncertain should always be set (default message)
-        assert result.what_is_uncertain is not None
+        # Mock provider doesn't generate detail fields
+        assert result.detail_title is None
+        assert result.detail_brief is None
+        assert result.detail_full is None
 
 
 class TestNeutralizationDeterminism:
@@ -155,7 +155,7 @@ class TestNeutralizationDeterminism:
         result1 = provider.neutralize(title=title, description=None, body=None)
         result2 = provider.neutralize(title=title, description=None, body=None)
 
-        assert result1.neutral_headline == result2.neutral_headline
+        assert result1.feed_title == result2.feed_title
         assert result1.has_manipulative_content == result2.has_manipulative_content
         assert len(result1.spans) == len(result2.spans)
 
@@ -164,3 +164,89 @@ class TestNeutralizationDeterminism:
             assert s1.end_char == s2.end_char
             assert s1.original_text == s2.original_text
             assert s1.reason == s2.reason
+
+
+class TestDetailFullNeutralization:
+    """Tests for _neutralize_detail_full() method (Call 1: Filter & Track)."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.provider = MockNeutralizerProvider()
+
+    def test_neutralize_detail_full_returns_correct_type(self):
+        """Test that _neutralize_detail_full returns DetailFullResult."""
+        body = "This is a test article with neutral content."
+        result = self.provider._neutralize_detail_full(body)
+
+        assert isinstance(result, DetailFullResult)
+        assert isinstance(result.detail_full, str)
+        assert isinstance(result.spans, list)
+
+    def test_neutralize_detail_full_empty_body(self):
+        """Test handling of empty body."""
+        result = self.provider._neutralize_detail_full("")
+
+        assert result.detail_full == ""
+        assert result.spans == []
+
+    def test_neutralize_detail_full_clean_content(self):
+        """Test filtering content without manipulative language."""
+        body = "The city council approved a new budget yesterday. The mayor said it would improve services."
+        result = self.provider._neutralize_detail_full(body)
+
+        assert result.detail_full == body  # No changes needed
+        assert len(result.spans) == 0
+
+    def test_neutralize_detail_full_with_urgency(self):
+        """Test filtering urgency language from body."""
+        body = "BREAKING: The senator announced new legislation today."
+        result = self.provider._neutralize_detail_full(body)
+
+        assert "breaking" not in result.detail_full.lower()
+        assert len(result.spans) > 0
+        assert any(s.reason == SpanReason.URGENCY_INFLATION for s in result.spans)
+
+    def test_neutralize_detail_full_with_emotional_triggers(self):
+        """Test filtering emotional trigger words from body."""
+        body = "The president slams critics in a furious response to the report."
+        result = self.provider._neutralize_detail_full(body)
+
+        assert "slams" not in result.detail_full.lower()
+        assert len(result.spans) > 0
+        assert any(s.reason == SpanReason.EMOTIONAL_TRIGGER for s in result.spans)
+
+    def test_neutralize_detail_full_spans_valid(self):
+        """Test that returned spans are valid TransparencySpan objects."""
+        body = "SHOCKING: Senator slams critics in breaking news."
+        result = self.provider._neutralize_detail_full(body)
+
+        for span in result.spans:
+            assert isinstance(span, TransparencySpan)
+            assert span.field == "body"
+            assert span.start_char >= 0
+            assert span.end_char <= len(body)
+            assert span.start_char < span.end_char
+            assert isinstance(span.action, SpanAction)
+            assert isinstance(span.reason, SpanReason)
+
+    def test_neutralize_detail_full_preserves_quotes(self):
+        """Test that quotes are preserved in filtered article."""
+        body = 'The senator said, "This is an important decision for our future."'
+        result = self.provider._neutralize_detail_full(body)
+
+        assert '"This is an important decision for our future."' in result.detail_full
+
+    def test_neutralize_detail_full_determinism(self):
+        """Test that _neutralize_detail_full is deterministic."""
+        body = "BREAKING: Senator slams critics in shocking response to urgent crisis."
+
+        result1 = self.provider._neutralize_detail_full(body)
+        result2 = self.provider._neutralize_detail_full(body)
+
+        assert result1.detail_full == result2.detail_full
+        assert len(result1.spans) == len(result2.spans)
+
+        for s1, s2 in zip(result1.spans, result2.spans):
+            assert s1.start_char == s2.start_char
+            assert s1.end_char == s2.end_char
+            assert s1.original_text == s2.original_text

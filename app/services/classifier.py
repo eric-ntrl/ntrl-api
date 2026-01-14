@@ -56,7 +56,7 @@ SECTION_KEYWORDS = {
         # Business
         'company', 'corporate', 'ceo', 'merger', 'acquisition',
         'revenue', 'profit', 'startup', 'venture', 'economy',
-        'inflation', 'fed', 'federal reserve', 'interest rate',
+        'inflation', 'fed', 'federal reserve', 'interest rate', 'interest rates', 'rates',
         'gdp', 'unemployment', 'jobs report', 'retail', 'consumer',
         # Finance
         'bank', 'banking', 'finance', 'investment', 'hedge fund',
@@ -126,10 +126,12 @@ class SectionClassifier:
         for section, keywords in SECTION_KEYWORDS.items():
             score = 0
             for keyword in keywords:
+                # Use word boundary matching to avoid partial matches (e.g., "un" in "announces")
+                pattern = r'\b' + re.escape(keyword) + r'\b'
                 # Title matches worth more
-                if keyword in (title or '').lower():
+                if re.search(pattern, (title or '').lower()):
                     score += 3
-                elif keyword in combined_text:
+                elif re.search(pattern, combined_text):
                     score += 1
             scores[section] = score
 

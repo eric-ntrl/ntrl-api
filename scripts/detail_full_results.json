@@ -1,0 +1,161 @@
+{
+  "total_articles": 10,
+  "grader_pass_count": 10,
+  "average_llm_score": 9.0,
+  "quality_threshold_met": true,
+  "all_grader_pass": true,
+  "results": [
+    {
+      "id": "001",
+      "has_manipulative": true,
+      "original_length": 870,
+      "detail_full_length": 797,
+      "span_count": 6,
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text effectively removes emotional amplification and urgency while preserving the core meaning and quotes. However, there are minor style issues, such as the phrase 'the situation is developing' which could be interpreted as slightly ambiguous without the urgency context.",
+      "violations": [
+        {
+          "rule": "B1",
+          "description": "The phrase 'the situation is developing' could imply urgency, which was not fully neutralized."
+        },
+        {
+          "rule": "B2",
+          "description": "The removal of 'rapidly' from 'developing rapidly' could be seen as a slight loss of factual scope."
+        }
+      ]
+    },
+    {
+      "id": "002",
+      "has_manipulative": false,
+      "original_length": 1057,
+      "detail_full_length": 1057,
+      "span_count": 0,
+      "grader_pass": true,
+      "llm_score": 10.0,
+      "feedback": "The neutralized text perfectly preserves the meaning and factual content of the original text while maintaining a neutral tone. All quotes are preserved verbatim, and there are no rule violations present.",
+      "violations": []
+    },
+    {
+      "id": "003",
+      "has_manipulative": true,
+      "original_length": 1709,
+      "detail_full_length": 1210,
+      "span_count": 9,
+      "grader_pass": true,
+      "llm_score": 7.0,
+      "feedback": "The neutralized text generally preserves meaning and quotes, but it still contains some emotional language and urgency framing that should be removed. Phrases like 'the smartphone industry may change' and 'eager to be among the first to experience this technology' imply judgment and excitement, which detracts from neutrality.",
+      "violations": [
+        {
+          "rule": "B2",
+          "description": "Emotional amplification in 'eager to be among the first to experience this technology'."
+        },
+        {
+          "rule": "B5",
+          "description": "Implied judgment in 'the smartphone industry may change as Apple has raised the bar'."
+        }
+      ]
+    },
+    {
+      "id": "004",
+      "has_manipulative": false,
+      "original_length": 530,
+      "detail_full_length": 530,
+      "span_count": 0,
+      "grader_pass": true,
+      "llm_score": 10.0,
+      "feedback": "The neutralized text perfectly preserves the meaning and structure of the original text while maintaining neutrality. All direct quotes are preserved verbatim, and there are no rule violations present.",
+      "violations": []
+    },
+    {
+      "id": "005",
+      "has_manipulative": true,
+      "original_length": 1285,
+      "detail_full_length": 1124,
+      "span_count": 9,
+      "grader_pass": true,
+      "llm_score": 8.0,
+      "feedback": "The neutralized text effectively preserves the core meaning and factual content, but some emotional language was not adequately neutralized. Phrases like 'scale of the disaster' and 'magnitude of human suffering' still carry emotional weight and could be further neutralized.",
+      "violations": [
+        {
+          "rule": "B2",
+          "description": "Emotional amplification in 'scale of the disaster' and 'magnitude of human suffering'."
+        },
+        {
+          "rule": "B5",
+          "description": "Implied judgment in 'some say the response has been inadequate'."
+        }
+      ]
+    },
+    {
+      "id": "006",
+      "has_manipulative": false,
+      "original_length": 373,
+      "detail_full_length": 364,
+      "span_count": 0,
+      "grader_pass": true,
+      "llm_score": 10.0,
+      "feedback": "The neutralized text perfectly preserves the meaning and structure of the original text while maintaining a neutral tone. All direct quotes are preserved verbatim, and there are no rule violations present.",
+      "violations": []
+    },
+    {
+      "id": "007",
+      "has_manipulative": false,
+      "original_length": 924,
+      "detail_full_length": 916,
+      "span_count": 0,
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text maintains the core meaning and preserves quotes accurately. However, the phrase 'rapidly growing AI infrastructure market' could be slightly more neutral by removing 'rapidly growing,' which introduces a subtle emotional tone. Overall, it is an excellent neutralization with minor style issues.",
+      "violations": [
+        {
+          "rule": "B2",
+          "description": "The phrase 'rapidly growing AI infrastructure market' contains emotional amplification that should be neutralized."
+        }
+      ]
+    },
+    {
+      "id": "008",
+      "has_manipulative": false,
+      "original_length": 1847,
+      "detail_full_length": 1847,
+      "span_count": 0,
+      "grader_pass": true,
+      "llm_score": 10.0,
+      "feedback": "The neutralized text perfectly preserves the meaning of the original while maintaining a neutral tone. All direct quotes are preserved verbatim, and there are no rule violations present.",
+      "violations": []
+    },
+    {
+      "id": "009",
+      "has_manipulative": false,
+      "original_length": 1808,
+      "detail_full_length": 1808,
+      "span_count": 0,
+      "grader_pass": true,
+      "llm_score": 10.0,
+      "feedback": "The neutralized text effectively preserves the meaning of the original while maintaining a neutral tone. All quotes are preserved verbatim, and there are no rule violations present.",
+      "violations": []
+    },
+    {
+      "id": "010",
+      "has_manipulative": true,
+      "original_length": 1619,
+      "detail_full_length": 1545,
+      "span_count": 9,
+      "grader_pass": true,
+      "llm_score": 7.0,
+      "feedback": "The neutralized text maintains the core meaning but retains some emotional language and ideological signaling that should be neutralized. Phrases like 'open-border policies' and 'the left has completely abandoned' introduce bias and should be revised for neutrality.",
+      "violations": [
+        {
+          "rule": "B3",
+          "description": "The term 'open-border policies' implies an ideological stance and should be neutralized."
+        },
+        {
+          "rule": "B3",
+          "description": "The phrase 'the left has completely abandoned' signals an ideological perspective and should be neutralized."
+        }
+      ]
+    }
+  ],
+  "grader_failures": []
+}

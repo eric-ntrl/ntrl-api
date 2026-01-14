@@ -106,9 +106,9 @@ class StoryListItem(BaseModel):
     # Original (before)
     original_title: str
     original_description: Optional[str]
-    # Neutralized (after)
-    neutral_headline: Optional[str]
-    neutral_summary: Optional[str]
+    # Filtered (after)
+    feed_title: Optional[str]
+    feed_summary: Optional[str]
     # Metadata
     source_name: str
     source_slug: str
@@ -181,8 +181,8 @@ def list_stories(
             id=str(story.id),
             original_title=story.original_title,
             original_description=story.original_description,
-            neutral_headline=neutralized.neutral_headline if neutralized else None,
-            neutral_summary=neutralized.neutral_summary if neutralized else None,
+            feed_title=neutralized.feed_title if neutralized else None,
+            feed_summary=neutralized.feed_summary if neutralized else None,
             source_name=story.source.name,
             source_slug=story.source.slug,
             source_url=story.original_url,
@@ -211,12 +211,11 @@ def get_story(
 
     return StoryDetail(
         id=str(neutralized.id),
-        neutral_headline=neutralized.neutral_headline,
-        neutral_summary=neutralized.neutral_summary,
-        what_happened=neutralized.what_happened,
-        why_it_matters=neutralized.why_it_matters,
-        what_is_known=neutralized.what_is_known,
-        what_is_uncertain=neutralized.what_is_uncertain,
+        feed_title=neutralized.feed_title,
+        feed_summary=neutralized.feed_summary,
+        detail_title=neutralized.detail_title,
+        detail_brief=neutralized.detail_brief,
+        detail_full=neutralized.detail_full,
         disclosure=neutralized.disclosure if neutralized.has_manipulative_content else "",
         has_manipulative_content=neutralized.has_manipulative_content,
         source_name=source.name,
@@ -270,8 +269,9 @@ def get_story_transparency(
         original_body=original_body,
         original_body_available=story_raw.raw_content_available,
         original_body_expired=not story_raw.raw_content_available and story_raw.raw_content_expired_at is not None,
-        neutral_headline=neutralized.neutral_headline,
-        neutral_summary=neutralized.neutral_summary,
+        feed_title=neutralized.feed_title,
+        feed_summary=neutralized.feed_summary,
+        detail_full=neutralized.detail_full,
         spans=span_responses,
         disclosure=neutralized.disclosure if neutralized.has_manipulative_content else "",
         has_manipulative_content=neutralized.has_manipulative_content,

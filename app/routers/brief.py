@@ -73,8 +73,8 @@ def get_brief(
         stories = [
             BriefStory(
                 id=str(item.story_neutralized_id),
-                neutral_headline=item.neutral_headline,
-                neutral_summary=item.neutral_summary,
+                feed_title=item.feed_title,
+                feed_summary=item.feed_summary,
                 source_name=item.source_name,
                 source_url=item.original_url,
                 published_at=item.published_at,

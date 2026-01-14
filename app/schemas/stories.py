@@ -28,15 +28,14 @@ class StoryDetail(BaseModel):
     """
     id: str = Field(..., description="Story ID (UUID)")
 
-    # Neutralized content (shown first)
-    neutral_headline: str = Field(..., description="Neutral headline, no hype")
-    neutral_summary: str = Field(..., description="Neutral summary, 2-3 lines max")
+    # Feed outputs (for list views)
+    feed_title: str = Field(..., description="Feed title, ≤6 words preferred, 12 max")
+    feed_summary: str = Field(..., description="Feed summary, 1-2 sentences")
 
-    # Structured summary
-    what_happened: Optional[str] = Field(None, description="What happened")
-    why_it_matters: Optional[str] = Field(None, description="Why it matters")
-    what_is_known: Optional[str] = Field(None, description="What is known")
-    what_is_uncertain: Optional[str] = Field(None, description="What is uncertain")
+    # Detail outputs (for article view)
+    detail_title: Optional[str] = Field(None, description="Precise article headline")
+    detail_brief: Optional[str] = Field(None, description="3-5 paragraphs, prose, no headers")
+    detail_full: Optional[str] = Field(None, description="Filtered full article")
 
     # Disclosure
     disclosure: str = Field("Manipulative language removed.", description="Disclosure message")
@@ -68,9 +67,10 @@ class StoryTransparency(BaseModel):
     original_body_available: bool = Field(True, description="Whether body is available in storage")
     original_body_expired: bool = Field(False, description="Whether body has expired per retention policy")
 
-    # Neutralized for comparison
-    neutral_headline: str = Field(..., description="Neutralized headline")
-    neutral_summary: str = Field(..., description="Neutralized summary")
+    # Filtered outputs for comparison
+    feed_title: str = Field(..., description="Filtered feed title")
+    feed_summary: str = Field(..., description="Filtered feed summary")
+    detail_full: Optional[str] = Field(None, description="Filtered full article (ntrl view applies here)")
 
     # What was changed
     spans: List[TransparencySpanResponse] = Field(

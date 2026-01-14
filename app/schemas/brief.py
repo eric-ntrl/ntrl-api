@@ -11,8 +11,8 @@ from pydantic import BaseModel, Field
 class BriefStory(BaseModel):
     """A single story in the daily brief."""
     id: str = Field(..., description="Story ID (UUID)")
-    neutral_headline: str = Field(..., description="Neutral headline")
-    neutral_summary: str = Field(..., description="Neutral summary, 2-3 lines")
+    feed_title: str = Field(..., description="Feed title, ≤6 words preferred")
+    feed_summary: str = Field(..., description="Feed summary, 1-2 sentences")
     source_name: str = Field(..., description="Source name")
     source_url: str = Field(..., description="Original source URL")
     published_at: datetime = Field(..., description="Publish time")
