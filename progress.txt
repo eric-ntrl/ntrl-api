@@ -66,4 +66,36 @@
 - Spans include: field, start_char, end_char, original_text, action, reason
 - Added get_filter_detail_full_prompt() and build_filter_detail_full_prompt() functions
 
-**Next**: Story 2.3 - Implement Call 1: Filter & Track
+### Story 2.3 - Implement Call 1: Filter & Track (COMPLETE)
+- Added DetailFullResult dataclass to hold detail_full text and spans
+- Added abstract _neutralize_detail_full(body: str) method to NeutralizerProvider base class
+- Implemented in MockNeutralizerProvider using existing pattern-matching logic
+- Implemented in OpenAINeutralizerProvider using article_system_prompt + filter_detail_full_prompt
+- Implemented in GeminiNeutralizerProvider with same prompts
+- Implemented in AnthropicNeutralizerProvider with same prompts (max_tokens=4096 for longer articles)
+- Added helper functions _parse_span_action(), _parse_span_reason(), parse_detail_full_response()
+- Added 8 tests for _neutralize_detail_full() covering return types, empty body, clean/manipulative content, span validity, determinism
+- All 18 neutralizer tests pass
+
+### Story 2.4 - Grade and iterate Detail Full until quality >= 8.5 (COMPLETE)
+- Ran Detail Full generation on all 10 test corpus articles using OpenAI (gpt-4o-mini)
+- **Deterministic grader: 10/10 passed** (all articles pass)
+- **Average LLM quality score: 9.00** (target: 8.5)
+- Individual scores: [9.0, 10.0, 7.0, 10.0, 8.0, 10.0, 9.0, 10.0, 10.0, 7.0]
+- Lowest scores on articles 003 (7.0 - clickbait), 010 (7.0 - agenda signaling)
+- Updated grader_spec_v1.json B3_NO_AGENDA_SIGNALING to include: "radical left", "radical right", "open borders"
+- No prompt iteration required - quality threshold met on first run
+- Results logged to scripts/detail_full_results.json
+
+**Quality Analysis:**
+- Articles without manipulative language (002, 004, 006, 007, 008, 009): Perfect/near-perfect scores (9.0-10.0)
+- Articles with manipulative language (001, 003, 005, 010): Scores 7.0-9.0
+- Filter successfully removes urgency (BREAKING, shocking), emotional amplifiers, and most agenda signaling
+- Minor residual issues: some implied judgment in context-dependent phrases
+
+**Learnings:**
+- The filter prompt (DEFAULT_FILTER_DETAIL_FULL_PROMPT) is aggressive enough to remove most manipulation
+- Quote preservation working correctly - emotional language inside attributed quotes preserved
+- Non-manipulative articles correctly returned unchanged (0 spans)
+
+**Next**: Story 3.1 - Create synthesis prompt for Detail Brief

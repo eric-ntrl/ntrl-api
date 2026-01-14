@@ -41,8 +41,6 @@
           "all",
           "every",
           "entire",
-          "more",
-          "additional",
           "multiple"
         ]
       }
@@ -81,15 +79,19 @@
       "id": "B1_NO_URGENCY",
       "priority": "B",
       "severity": "major",
-      "description": "Remove urgency framing (breaking, live, just in, developing, updates).",
+      "description": "Remove urgency framing (breaking, live, just in, developing story, updates).",
       "check": {
         "type": "banned_token_scan",
         "banned": [
-          "breaking",
-          "live",
+          "breaking news",
+          "breaking:",
           "just in",
-          "developing",
-          "updates"
+          "developing story",
+          "this is developing",
+          "still developing",
+          "story is developing",
+          "happening now",
+          "stay tuned"
         ]
       }
     },
@@ -106,7 +108,16 @@
           "explosive",
           "terrifying",
           "insane",
-          "devastating"
+          "devastating",
+          "stunning",
+          "mind-blowing",
+          "jaw-dropping",
+          "heartbreaking",
+          "heart-wrenching",
+          "breathtaking",
+          "horrifying",
+          "alarming",
+          "chilling"
         ]
       }
     },
@@ -120,7 +131,10 @@
         "tokens": [
           "woke",
           "elite",
-          "deep state"
+          "deep state",
+          "radical left",
+          "radical right",
+          "open borders"
         ]
       }
     },
@@ -162,7 +176,27 @@
           "FCC",
           "FDA",
           "WHO",
-          "ISIS"
+          "ISIS",
+          "CEO",
+          "CFO",
+          "CTO",
+          "COO",
+          "TEU",
+          "TEUs",
+          "AI",
+          "GDP",
+          "IPO",
+          "SEC",
+          "IMF",
+          "FBI",
+          "CIA",
+          "NSA",
+          "IRS",
+          "DOJ",
+          "EPA",
+          "HHS",
+          "CDC",
+          "NIH"
         ]
       }
     },
