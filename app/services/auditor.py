@@ -331,12 +331,22 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         except ValueError:
             verdict = AuditVerdict.FAIL
 
+        raw_reasons = data.get("reasons", [])
+        # Handle case where LLM returns reasons as a string instead of list
+        if isinstance(raw_reasons, str):
+            raw_reasons = [{"code": "LLM_RESPONSE", "detail": raw_reasons}] if raw_reasons else []
         reasons = [
-            AuditReason(code=r.get("code", "UNKNOWN"), detail=r.get("detail", ""))
-            for r in data.get("reasons", [])
+            AuditReason(
+                code=r.get("code", "UNKNOWN") if isinstance(r, dict) else "UNKNOWN",
+                detail=r.get("detail", "") if isinstance(r, dict) else str(r)
+            )
+            for r in raw_reasons
         ]
 
         checks_data = data.get("checks", {})
+        # Handle case where LLM returns checks as non-dict
+        if not isinstance(checks_data, dict):
+            checks_data = {}
         checks = AuditChecks(
             has_question_mark_in_headline=checks_data.get("has_question_mark_in_headline", False),
             has_question_mark_in_summary=checks_data.get("has_question_mark_in_summary", False),
@@ -350,6 +360,9 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         )
 
         action_data = data.get("suggested_action", {})
+        # Handle case where LLM returns action as non-dict
+        if not isinstance(action_data, dict):
+            action_data = {}
         action_type_str = action_data.get("type", "none")
         try:
             action_type = ActionType(action_type_str)
