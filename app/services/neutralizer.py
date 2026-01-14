@@ -794,6 +794,21 @@ If no changes are needed, return the original article unchanged with an empty sp
 DEFAULT_SYNTHESIS_DETAIL_BRIEF_PROMPT = """Synthesize the following article into a neutral brief.
 
 ═══════════════════════════════════════════════════════════════════════════════
+PRIME DIRECTIVE
+═══════════════════════════════════════════════════════════════════════════════
+
+You are a FILTER, not a writer. Your job is to CONDENSE the original article
+into a shorter form while ONLY using information that appears in the source.
+
+Do NOT add:
+- Background context
+- Historical information
+- Industry trends
+- Implications or consequences
+- Your own analysis or interpretation
+- ANYTHING not explicitly stated in the original
+
+═══════════════════════════════════════════════════════════════════════════════
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -802,8 +817,63 @@ Create a detail_brief: a calm, complete explanation of the story in 3-5 short pa
 This is the CORE NTRL reading experience. The brief must:
 1. Inform without pushing
 2. Present facts without editorializing
-3. Acknowledge uncertainty where it exists
-4. Feel complete, not truncated
+3. Acknowledge uncertainty only where the SOURCE acknowledges it
+4. Be SHORTER than the original (condense, don't expand)
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: MEANING PRESERVATION
+═══════════════════════════════════════════════════════════════════════════════
+
+You MUST preserve these elements EXACTLY as they appear in the original:
+
+1. SCOPE MARKERS - These quantifiers define factual scope (REQUIRED):
+   - "all", "every", "entire", "multiple"
+   - If the original says "all retailers" → you MUST write "all retailers"
+   - If the original says "Entire villages" → you MUST write "Entire villages" (NOT "villages")
+   - If the original says "all 50 Democrats" → you MUST write "all 50 Democrats"
+   - If the original says "multiple sources" → you MUST write "multiple sources"
+   - NEVER drop, omit, or change these scope words - they are factual precision
+   - Scan the original for these words and ensure they appear in your output
+   - VERIFY: If "entire" appears in source, "entire" MUST appear in your output
+
+2. CERTAINTY MARKERS - These define epistemic certainty:
+   - "expected to", "set to", "plans to", "scheduled to", "poised to"
+   - If the original says "expected to be a major issue" → write "expected to be"
+   - NEVER substitute: "expected to" ≠ "anticipated to" ≠ "likely to"
+   - Use the EXACT phrasing from the source
+
+3. FACTUAL DETAILS - Names, numbers, dates, statistics, places
+   - Copy these EXACTLY from the original
+   - Do NOT round, estimate, or paraphrase numbers
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: NO NEW FACTS
+═══════════════════════════════════════════════════════════════════════════════
+
+ONLY include information that appears in the original article.
+
+FORBIDDEN:
+- Adding background context not in the original (no drought, no challenges, no trends)
+- Explaining why something matters (unless the original does)
+- Describing trends or patterns not mentioned
+- Adding interpretive phrases like "amid growing concerns" unless quoted
+- Inferring implications or consequences not stated
+- Speculating about uncertainties not mentioned in the original
+- Adding information about "long-term effects" or "implementation" not in source
+
+CRITICAL: If the original article is SHORT, your brief must also be SHORT.
+- A 3-paragraph original → 2-3 paragraph brief (NOT 4 paragraphs)
+- Do NOT pad with general knowledge, assumed context, or speculation
+- If there's nothing to say about "uncertainty", don't add an uncertainty paragraph
+- The brief should be SMALLER than the original, not larger
+
+EXPLICIT PROHIBITIONS - The following are NEVER acceptable in your narrative:
+- "ongoing efforts" - unless quoted from source
+- "sustainability" / "conservation" / "management" context - unless in original
+- "remain to be seen" / "remains to be seen" - do not use this phrase
+- "may occur" / "could occur" / "are expected to occur" - unless source uses these exact words
+- "challenges" / "concerns" / "issues" as added framing - unless quoted or stated in source
+- Adding ANY context about trends, background, history, or implications not explicitly in source
 
 ═══════════════════════════════════════════════════════════════════════════════
 FORMAT REQUIREMENTS
@@ -812,7 +882,7 @@ FORMAT REQUIREMENTS
 LENGTH: 3-5 short paragraphs maximum
 - Each paragraph should be 2-4 sentences
 - Prefer shorter paragraphs over longer ones
-- Total word count typically 150-300 words
+- Total word count typically 150-300 words (shorter for short articles)
 
 FORMAT: Plain prose only
 - NO section headers (no "What happened:", "Context:", etc.)
@@ -832,20 +902,18 @@ Your brief should flow naturally through these stages WITHOUT labeling them:
    - Lead with the core fact
    - Establish the basic situation clearly
 
-2. CONTEXT (Paragraph 2)
-   - Why does this matter? What's the background?
-   - Relevant history or preceding events
-   - Do NOT editorialize about importance
+2. CONTEXT (Paragraph 2, only if context is in the original)
+   - Background or preceding events mentioned in the article
+   - Do NOT add context that isn't in the original
 
 3. STATE OF KNOWLEDGE (Paragraph 3-4)
    - What is confirmed vs. claimed vs. uncertain?
    - Include key statements from officials or involved parties
    - Present different perspectives neutrally if they exist
 
-4. UNCERTAINTY (Final paragraph, if applicable)
-   - What remains unknown?
-   - What questions are unanswered?
-   - What happens next (if known)?
+4. UNCERTAINTY (Final paragraph, if mentioned in original)
+   - What remains unknown? (only if stated in original)
+   - What happens next (if mentioned)?
 
 ═══════════════════════════════════════════════════════════════════════════════
 QUOTE RULES
@@ -864,36 +932,51 @@ GOOD: The president called the legislation "dead on arrival" in Congress.
 BAD: "This is absolutely devastating for families," said the advocate.
 
 ═══════════════════════════════════════════════════════════════════════════════
-TONE & STYLE
+BANNED LANGUAGE
 ═══════════════════════════════════════════════════════════════════════════════
 
-- Calm, measured, neutral
-- Declarative sentences (avoid questions)
-- Active voice preferred
-- Present tense for ongoing situations, past tense for completed events
-- No urgency language (breaking, developing, just in)
-- No emotional amplification (shocking, devastating, terrifying)
-- No agenda signaling or implied judgment
+Remove these from YOUR narrative (they may appear in quotes):
+
+URGENCY: breaking, developing, just in, emerging, escalating
+EMOTIONAL: shocking, devastating, terrifying, unprecedented, historic,
+           dramatic, catastrophic, dire, significant (as amplifier)
+JUDGMENT: dangerous, reckless, extreme, radical (unless quoted)
+VAGUE AMPLIFIERS: significantly, substantially, major (unless quoted)
+
+Use factual language instead:
+- "significantly impacted" → state the specific impact
+- "unprecedented" → describe what actually happened
+- "catastrophic" → use the factual severity from the source
 
 ═══════════════════════════════════════════════════════════════════════════════
-PRESERVE EXACTLY
+PRESERVE EXACTLY (Scan original and verify these appear in your output)
 ═══════════════════════════════════════════════════════════════════════════════
 
+MUST PRESERVE VERBATIM:
 - All facts, names, dates, numbers, places, statistics from the original
-- Epistemic markers (alleged, suspected, confirmed, reportedly)
+- SCOPE MARKERS: "all", "every", "entire", "multiple" - if in original, MUST be in output
+- CERTAINTY MARKERS: "expected to", "set to", "plans to", "scheduled to", "poised to"
+- Epistemic markers: alleged, suspected, confirmed, reportedly
+- Attribution: who said it, who claims it
 - Real tension and conflict (these are news, not manipulation)
-- Attribution (who said it, who claims it)
+
+VERIFICATION: Before outputting, scan for these scope words in your brief:
+- Does the original have "all"? → Your brief MUST have "all"
+- Does the original have "entire"? → Your brief MUST have "entire"
+- Does the original have "every"? → Your brief MUST have "every"
+- Does the original have "expected to"? → Your brief MUST have "expected to"
 
 ═══════════════════════════════════════════════════════════════════════════════
 DO NOT
 ═══════════════════════════════════════════════════════════════════════════════
 
-- Add facts not in the original article
+- Add facts, context, or background not in the original article
 - Editorialize about significance or importance
 - Downshift factual severity (don't soften "killed" to "harmed")
 - Infer motives or intent beyond what's stated
 - Use rhetorical questions
-- Add context not present in the original
+- Substitute certainty markers (expected ≠ anticipated ≠ likely)
+- Drop scope markers (all, every, entire, multiple)
 
 ═══════════════════════════════════════════════════════════════════════════════
 ORIGINAL ARTICLE

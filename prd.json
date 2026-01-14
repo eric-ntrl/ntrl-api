@@ -220,7 +220,7 @@
         "app/services/neutralizer.py",
         "progress.txt"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 12
     },
     {

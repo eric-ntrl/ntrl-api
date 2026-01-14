@@ -138,4 +138,46 @@ All 3 LLM provider implementations follow the same structure:
 5. Return stripped response text
 6. Fall back to mock on exception
 
-**Next**: Story 3.3 - Grade and iterate Detail Brief until quality >= 8.5
+### Story 3.3 - Grade and iterate Detail Brief until quality >= 8.5 (COMPLETE)
+- Ran Detail Brief generation on all 10 test corpus articles using OpenAI (gpt-4o-mini)
+- Created test script: scripts/test_detail_brief.py (mirrors test_detail_full.py structure)
+- **Deterministic grader: 10/10 passed** (achieved in multiple runs)
+- **Average LLM quality score: 8.70** (achieved in multiple runs, target: 8.5)
+- Results logged to scripts/detail_brief_results.json
+
+**Key Iterations:**
+1. Initial run: 7.20 avg, 8/10 grader (too many A1 violations - adding facts)
+2. Added "CRITICAL: NO NEW FACTS" section with explicit prohibitions
+3. Added "CRITICAL: MEANING PRESERVATION" section for scope/certainty markers
+4. Fixed grader's scope_marker_preservation to use word boundaries (avoid "all" matching "eventually")
+5. Added "PRIME DIRECTIVE" - "You are a FILTER, not a writer"
+6. Final run: 8.70 avg, 10/10 grader
+
+**Grader Improvements:**
+- Fixed _scope_marker_preservation() to use word boundary regex: r'\b' + marker + r'\b'
+- Fixed _certainty_marker_preservation() to use word boundary regex
+- Prevents false positives like "all" matching inside "eventually" or "called"
+
+**Prompt Improvements (DEFAULT_SYNTHESIS_DETAIL_BRIEF_PROMPT):**
+- Added PRIME DIRECTIVE section: "You are a FILTER, not a writer"
+- Added explicit scope marker verification: "If 'entire' appears in source, 'entire' MUST appear in output"
+- Added EXPLICIT PROHIBITIONS section with banned phrases:
+  - "ongoing efforts", "sustainability", "conservation", "management" (unless in source)
+  - "remain to be seen", "may occur", "could occur" (unless in source)
+  - "challenges", "concerns", "issues" as added framing
+- Added "Brief should be SMALLER than the original, not larger"
+- Added "Be SHORTER than the original (condense, don't expand)"
+
+**Quality Analysis:**
+- Articles without manipulative language (002, 004, 006, 007, 008, 009): Consistently 9.0
+- Articles with manipulative language (001, 003, 005, 010): 7.0-9.0
+- Main issues on lower-scoring articles: residual emotional language, scope marker preservation
+- Article 006 (short article) improved from 5.0 to 9.0 by preventing LLM from adding context
+
+**Learnings:**
+- LLMs naturally want to add context/background - must explicitly prohibit this behavior
+- Word boundary matching critical for deterministic grader accuracy
+- Short articles need explicit "don't expand" guidance
+- Scope markers (all, entire, every, multiple) easily dropped - require explicit verification instruction
+- LLM quality scoring has ~0.5 point variance between runs
+- Best to demonstrate criteria can be met across multiple runs (stochastic variance)

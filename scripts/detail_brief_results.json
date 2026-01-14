@@ -1,0 +1,286 @@
+{
+  "total_articles": 10,
+  "grader_pass_count": 9,
+  "average_llm_score": 8.4,
+  "quality_threshold_met": false,
+  "all_grader_pass": false,
+  "structure_issues_count": 1,
+  "results": [
+    {
+      "id": "001",
+      "has_manipulative": true,
+      "original_length": 870,
+      "detail_brief_length": 585,
+      "detail_brief": "Ukraine announced it would be seeking additional military support from NATO allies. This announcement followed reports of increased tensions along the eastern border.\n\nA Ukrainian official stated, \"We are at a critical juncture,\" emphasizing the need for the international community to act. NATO spokesperson James Mitchell confirmed that emergency consultations are underway and that the situation is being monitored closely.\n\nExperts have indicated that failure to act could embolden aggressive actors in the region. The coming days will be important in determining the path forward.",
+      "structure": {
+        "paragraph_count": 3,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 85,
+        "valid_word_count": false,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 8.0,
+      "feedback": "The neutralized text effectively removes urgency and emotional language while preserving the core meaning. However, the phrase 'the coming days will be important' could be interpreted as slightly subjective, which may not fully align with the neutrality requirement.",
+      "violations": [
+        {
+          "rule": "B2",
+          "description": "Emotional amplification in 'the coming days will be important' could imply urgency."
+        }
+      ]
+    },
+    {
+      "id": "002",
+      "has_manipulative": false,
+      "original_length": 1057,
+      "detail_brief_length": 1028,
+      "detail_brief": "The U.S. Senate passed a $1.2 trillion infrastructure bill on Thursday with a vote of 69-30, sending the legislation to the House of Representatives for consideration. The bill includes $550 billion in new federal spending over five years, focusing on roads, bridges, public transit, broadband internet, and water systems. Nineteen Republican senators joined all 50 Democrats in supporting the measure.\n\nThe bill allocates $110 billion for roads and bridges, $66 billion for passenger and freight rail, $65 billion for broadband expansion, and $55 billion for clean water infrastructure. Senator Rob Portman of Ohio, a lead Republican negotiator, described the bill as \"a historic investment in American infrastructure,\" while Democratic Senator Kyrsten Sinema of Arizona stated it \"will create jobs and strengthen our economy.\"\n\nHouse Speaker Nancy Pelosi has indicated she will not bring the bill to a vote until the Senate passes a larger budget reconciliation package. The timeline for House consideration remains uncertain.",
+      "structure": {
+        "paragraph_count": 3,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 154,
+        "valid_word_count": true,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text effectively preserves the meaning and structure of the original while maintaining neutrality. However, the phrase 'focusing on' could be interpreted as slightly less neutral than 'targeting', which is more factual. Overall, the text is well done with only minor style issues.",
+      "violations": []
+    },
+    {
+      "id": "003",
+      "has_manipulative": true,
+      "original_length": 1709,
+      "detail_brief_length": 801,
+      "detail_brief": "Apple announced a new feature for the upcoming iPhone that reportedly utilizes advanced artificial intelligence to predict user behavior. Sources indicate that this technology has been in development for over five years, involving a team of over 200 engineers. The AI system is said to learn from user patterns to anticipate needs.\n\nThe feature is expected to debut in the iPhone 17, which is scheduled for release next fall. Analysts suggest that competitors may be at least two years behind Apple in this area. Tech analyst Sarah Chen described the innovation as a significant advancement in how users interact with their devices.\n\nWhile details remain limited as Apple has not fully disclosed the feature, the announcement has generated considerable interest among consumers and industry observers.",
+      "structure": {
+        "paragraph_count": 3,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 125,
+        "valid_word_count": true,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 8.0,
+      "feedback": "The neutralized text does a good job of preserving the core meaning and maintaining a neutral tone. However, it could improve by removing phrases like 'considerable interest' which could imply emotional amplification (B2) and by ensuring that no urgency framing is present in the narrative.",
+      "violations": [
+        {
+          "rule": "B2",
+          "description": "The phrase 'generated considerable interest' implies emotional amplification."
+        }
+      ]
+    },
+    {
+      "id": "004",
+      "has_manipulative": false,
+      "original_length": 530,
+      "detail_brief_length": 486,
+      "detail_brief": "The Federal Reserve kept its benchmark interest rate unchanged at 5.25-5.50% following its two-day policy meeting on Wednesday. The decision was unanimous among voting members.\n\nFed Chair Jerome Powell stated that the central bank remains focused on bringing inflation back to its 2% target while monitoring labor market conditions. He noted, \"We are prepared to adjust policy as appropriate.\"\n\nMarkets had widely expected the decision. The Fed's next meeting is scheduled for December.",
+      "structure": {
+        "paragraph_count": 3,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 73,
+        "valid_word_count": false,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text effectively preserves the meaning and structure of the original while maintaining a neutral tone. However, the phrase 'stated that' could be considered slightly less neutral than 'indicated,' which is a minor stylistic issue.",
+      "violations": []
+    },
+    {
+      "id": "005",
+      "has_manipulative": true,
+      "original_length": 1285,
+      "detail_brief_length": 960,
+      "detail_brief": "Thousands of families have fled their homes due to severe flooding in Southeast Asia, with the death toll rising to 45. Officials have indicated that this number could increase as rescue teams reach isolated communities. Over 100,000 people have been displaced across Vietnam, Thailand, and Cambodia.\n\nLocal resident Nguyen Van Minh described the devastation, stating, \"I have never seen anything like this in my 60 years.\" Relief organizations, including the Red Cross, have launched an emergency appeal for $50 million in humanitarian aid to address the situation.\n\nMeteorologists have warned that more rain is expected in the coming days, which raises concerns about potential further loss of life. Climate experts have noted that such extreme weather events are becoming increasingly common due to global warming. The international community has pledged support, but some critics argue that the response has been inadequate given the scale of the disaster.",
+      "structure": {
+        "paragraph_count": 3,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 147,
+        "valid_word_count": true,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": false,
+      "llm_score": 7.0,
+      "feedback": "The neutralized text mostly preserves meaning and quotes, but it fails to eliminate emotional language in the narrative, such as 'devastation' and 'overwhelming scale of the disaster,' which violate neutrality rules. Additionally, the phrase 'potential further loss of life' could imply urgency, which should be neutralized.",
+      "violations": [
+        {
+          "rule": "B2",
+          "description": "Emotional amplification in narrative text ('devastation', 'overwhelming scale of the disaster')"
+        },
+        {
+          "rule": "B1",
+          "description": "Implied urgency in narrative text ('potential further loss of life')"
+        }
+      ]
+    },
+    {
+      "id": "006",
+      "has_manipulative": false,
+      "original_length": 373,
+      "detail_brief_length": 389,
+      "detail_brief": "California Governor Gavin Newsom signed legislation on Thursday requiring urban water agencies to reduce consumption by 20% by 2030. The law establishes water budgets for indoor and outdoor residential use.\n\nWater agencies that do not meet the targets may face potential fines. During the signing ceremony in Sacramento, Newsom described the measure as \"essential for California's future.\"",
+      "structure": {
+        "paragraph_count": 2,
+        "valid_paragraph_count": false,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 57,
+        "valid_word_count": false,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text maintains the core meaning and preserves the quoted material accurately. There are minor style issues, such as the phrase 'may face potential fines,' which could be simplified to 'may face fines' for clarity, but overall, the text adheres closely to the NTRL Neutralization Canon.",
+      "violations": []
+    },
+    {
+      "id": "007",
+      "has_manipulative": false,
+      "original_length": 924,
+      "detail_brief_length": 946,
+      "detail_brief": "Microsoft announced plans to invest $10 billion in expanding its Azure cloud infrastructure over the next three years, focusing on artificial intelligence capabilities. The company will build new data centers in Texas, Georgia, and Wisconsin, which are expected to create approximately 5,000 jobs. This expansion is projected to increase Microsoft's computing capacity for AI workloads by about 40%.\n\nMicrosoft CEO Satya Nadella stated during the company's quarterly earnings call that \"enterprise demand for AI services continues to grow rapidly,\" and that this investment positions Azure to meet that demand. The announcement occurs amid competition with Amazon Web Services and Google Cloud for market share in the AI infrastructure market.\n\nConstruction on the new facilities is expected to begin in early 2025, with the first data center set to be operational by late 2026. Azure currently holds approximately 23% of the global cloud market.",
+      "structure": {
+        "paragraph_count": 3,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 143,
+        "valid_word_count": true,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text effectively preserves the meaning and factual content of the original while maintaining a neutral tone. There are minor style issues, such as the use of 'which are expected to create' instead of a more straightforward construction, but these do not significantly detract from the overall quality.",
+      "violations": []
+    },
+    {
+      "id": "008",
+      "has_manipulative": false,
+      "original_length": 1847,
+      "detail_brief_length": 1437,
+      "detail_brief": "Global supply chain pressures have eased over the past quarter, with shipping container rates falling to their lowest levels since early 2021. The Drewry World Container Index reported a 75% decline in freight rates from their peak in September 2021. Rates from Shanghai to Los Angeles now average $2,100 per 40-foot container, down from over $12,000 during pandemic-era disruptions.\n\nLars Jensen, CEO of container shipping consultancy Vespucci Maritime, stated, \"We're seeing a normalization of global trade flows,\" noting that port congestion has largely cleared and capacity is adequate to meet demand. Major retailers, including Walmart and Target, have reported improved inventory positions and reduced logistics costs.\n\nThe Baltic Dry Index, which measures bulk commodity shipping costs, has also declined 40% from its 2022 highs, indicating broader improvement in maritime logistics. Factory output in key manufacturing hubs, such as China's Guangdong province, has stabilized, with lead times for electronic components returning to pre-pandemic norms.\n\nAnalysts expect shipping rates to remain relatively stable through 2024, barring major geopolitical disruptions or unexpected demand surges. The industry is adding new vessel capacity, with 2.4 million TEUs of new container ships scheduled for delivery this year. Retailers are using these improved conditions to rebuild safety stock levels and diversify their supplier bases.",
+      "structure": {
+        "paragraph_count": 4,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 207,
+        "valid_word_count": true,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text effectively preserves the meaning and factual content of the original while maintaining a neutral tone. There are minor style issues, such as the phrasing 'noting that' which could be simplified, but overall, the text is well-executed.",
+      "violations": []
+    },
+    {
+      "id": "009",
+      "has_manipulative": false,
+      "original_length": 1808,
+      "detail_brief_length": 1673,
+      "detail_brief": "The United Nations Climate Change Conference concluded with 197 nations agreeing to new emissions reduction targets and a framework for climate finance. The agreement commits developed nations to mobilize $100 billion annually for climate adaptation in developing countries through 2030. Participating countries also pledged to submit updated nationally determined contributions by 2025.\n\nKey provisions of the agreement include a global methane reduction target of 30% by 2030, a commitment to phase down coal power generation, and new transparency requirements for emissions reporting. China agreed to accelerate its timeline for peak emissions but did not commit to a specific date earlier than the previously announced 2030 target. The United States reaffirmed its goal of 50-52% emissions reduction by 2030 compared to 2005 levels.\n\nUN Secretary-General Antonio Guterres stated that the outcome is \"a step forward, though much work remains,\" noting that current commitments still fall short of limiting global warming to 1.5 degrees Celsius above pre-industrial levels. Environmental groups had mixed reactions, with Greenpeace International calling the agreement \"insufficient\" while the World Resources Institute described it as \"meaningful progress.\"\n\nThe next major climate summit is scheduled for November 2025 in Brazil, where nations will review progress on implementation. Brazilian President Luiz Inacio Lula da Silva has pledged to make Amazon deforestation a central topic. Scientists from the Intergovernmental Panel on Climate Change will release an updated assessment of global emissions trajectories in early 2025, which will inform future negotiations.",
+      "structure": {
+        "paragraph_count": 4,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 238,
+        "valid_word_count": true,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 9.0,
+      "feedback": "The neutralized text effectively preserves the meaning and structure of the original while maintaining neutrality. However, the phrase 'insufficient to address the scale of the climate crisis' was slightly altered to 'insufficient,' which could be seen as a removal of the original's emphasis on the 'scale of the climate crisis.' This is a minor issue, but it affects the precision of the meaning.",
+      "violations": [
+        {
+          "rule": "A2",
+          "description": "The phrase 'insufficient to address the scale of the climate crisis' was changed to 'insufficient,' which removes important context."
+        }
+      ]
+    },
+    {
+      "id": "010",
+      "has_manipulative": true,
+      "original_length": 1619,
+      "detail_brief_length": 1464,
+      "detail_brief": "The Biden administration is facing criticism regarding its border policies, which some claim have led to a significant increase in migrant encounters. Border Patrol reported over 200,000 encounters at the southern border last month. Critics, including Texas Governor Greg Abbott, describe the situation as an \"invasion\" and argue that the administration's enforcement measures have encouraged drug cartels and human traffickers.\n\nThe influx of migrants has reportedly overwhelmed border communities and strained resources in various cities. New York City Mayor Eric Adams declared a state of emergency, indicating that the migrant situation could cost the city $12 billion over three years. Some conservative analysts suggest that the administration's policies are aimed at reshaping the American electorate by facilitating future voting for migrants.\n\nThe White House has responded to these criticisms by highlighting increased funding for border security and initiatives to address the root causes of migration in Central America. Press Secretary Karine Jean-Pierre characterized the Republican criticism as \"political theater.\" \n\nHumanitarian organizations have reported worsening conditions at processing facilities, where families, including young children, are being held in overcrowded temporary shelters. The border situation is expected to be a significant issue in upcoming elections, with polls indicating that immigration is among voters' top concerns.",
+      "structure": {
+        "paragraph_count": 4,
+        "valid_paragraph_count": true,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 203,
+        "valid_word_count": true,
+        "has_forbidden_headers": false
+      },
+      "grader_pass": true,
+      "llm_score": 7.0,
+      "feedback": "The neutralized text generally preserves meaning and quotes, but it introduces some inferred ownership and intent that could mislead readers. The phrase 'some claim have led to a significant increase' suggests a subjective interpretation rather than a factual statement, which could violate A1. Additionally, the phrase 'the administration's policies are aimed at reshaping the American electorate' implies intent, which should be avoided.",
+      "violations": [
+        {
+          "rule": "A1",
+          "description": "Introduced subjective interpretation with 'some claim have led to a significant increase'."
+        },
+        {
+          "rule": "C3",
+          "description": "Inferred intent with 'the administration's policies are aimed at reshaping the American electorate'."
+        }
+      ]
+    }
+  ],
+  "grader_failures": [
+    {
+      "id": "005",
+      "failed_rules": [
+        {
+          "rule_id": "A3_SCOPE_PRESERVED",
+          "passed": false,
+          "severity": "critical",
+          "message": "Missing scope markers present in source: ['entire']",
+          "evidence": {
+            "missing": [
+              "entire"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "structure_issues": [
+    {
+      "id": "006",
+      "issues": {
+        "paragraph_count": 2,
+        "valid_paragraph_count": false,
+        "has_headers": false,
+        "has_bullets": false,
+        "has_numbers": false,
+        "word_count": 57,
+        "valid_word_count": false,
+        "has_forbidden_headers": false
+      }
+    }
+  ]
+}

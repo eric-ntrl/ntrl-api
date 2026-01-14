@@ -51,10 +51,16 @@ def _lower(s: str) -> str:
     return (s or "").lower()
 
 def _scan_tokens(text: str, tokens: List[str]) -> List[str]:
+    """
+    Scan for banned tokens using word boundaries to avoid false positives.
+    E.g., "live" should not match "delivery".
+    """
     t = _lower(text)
     hits = []
     for tok in tokens:
-        if tok.lower() in t:
+        # Use word boundary regex to avoid substring matches
+        pattern = r'\b' + re.escape(tok.lower()) + r'\b'
+        if re.search(pattern, t):
             hits.append(tok)
     return hits
 
@@ -121,7 +127,8 @@ def _all_caps_scan(text: str, allowlist: List[str]) -> List[str]:
 
 def _scope_marker_preservation(original: str, neutral: str, markers: List[str]) -> List[str]:
     """
-    If a scope marker appears in original, it should appear in neutral.
+    If a scope marker appears in original as a standalone word, it should appear in neutral.
+    Uses word boundary matching to avoid false positives (e.g., "all" in "eventually").
     Returns missing markers.
     """
     o = original.lower()
@@ -129,7 +136,9 @@ def _scope_marker_preservation(original: str, neutral: str, markers: List[str]) 
     missing = []
     for m in markers:
         ml = m.lower()
-        if ml in o and ml not in n:
+        # Use word boundary regex to find standalone occurrences
+        pattern = r'\b' + re.escape(ml) + r'\b'
+        if re.search(pattern, o) and not re.search(pattern, n):
             missing.append(m)
     return missing
 
@@ -148,12 +157,19 @@ def _compound_term_atomicity(original: str, neutral: str, terms: List[str]) -> L
     return missing
 
 def _certainty_marker_preservation(original: str, neutral: str, markers: List[str]) -> List[str]:
+    """
+    If a certainty marker appears in original, it should appear in neutral.
+    Uses word boundary matching to find phrase occurrences.
+    Returns missing markers.
+    """
     o = original.lower()
     n = neutral.lower()
     missing = []
     for m in markers:
         ml = m.lower()
-        if ml in o and ml not in n:
+        # Use word boundary regex to find phrase occurrences
+        pattern = r'\b' + re.escape(ml) + r'\b'
+        if re.search(pattern, o) and not re.search(pattern, n):
             missing.append(m)
     return missing
 
