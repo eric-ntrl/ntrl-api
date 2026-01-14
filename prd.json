@@ -310,7 +310,7 @@
         "app/schemas/stories.py",
         "app/routers/stories.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 17
     },
     {
