@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 CANON_RUBRIC = """
 # NTRL Neutralization Canon v1.0 - Grading Rubric
 
+## CRITICAL: Quote Preservation Rule
+DIRECT QUOTES MUST BE PRESERVED VERBATIM. If text appears inside quotation marks with attribution
+(e.g., Senator X said "..."), the quote content should NOT be neutralized. This is NOT a violation.
+Emotional language inside attributed quotes is acceptable because we're reporting what someone said.
+Only UNATTRIBUTED narrative text (the journalist's words) should be neutralized.
+
 ## A. Meaning Preservation (Highest Priority)
 - A1: No new facts may be introduced
 - A2: Facts may not be removed if doing so changes meaning
@@ -29,32 +35,43 @@ CANON_RUBRIC = """
 - A5: Epistemic certainty must be preserved exactly ("set to", "plans to", "expected to")
 - A6: Causal facts are not motives (don't infer why something happened)
 
-## B. Neutrality Enforcement
-- B1: Remove urgency framing ("breaking", "just in", "developing")
-- B2: Remove emotional amplification ("shocking", "devastating", "terrifying")
+## B. Neutrality Enforcement (ONLY applies to unattributed narrative text)
+- B1: Remove urgency framing ("breaking", "just in", "developing story")
+- B2: Remove emotional amplification ("shocking", "devastating", "terrifying") - BUT PRESERVE IN QUOTES
 - B3: Remove agenda/ideological signaling unless quoted and attributed ("woke", "elite")
-- B4: Remove conflict theater language ("slams", "destroys", "eviscerates")
-- B5: Remove implied judgment
+- B4: Remove conflict theater language ("slams", "destroys", "eviscerates") - BUT PRESERVE IN QUOTES
+- B5: Remove implied judgment from narrative, not from quoted opinions
 
 ## C. Attribution & Agency Safety
 - C1: No inferred ownership or affiliation
 - C2: No possessive constructions involving named individuals unless explicit
-- C3: No inferred intent or purpose
+- C3: No inferred intent or purpose (but people CAN state their own intent in quotes)
 - C4: Attribution must be preserved
 
 ## D. Structural & Mechanical Constraints
 - D1: Grammar must be intact
 - D2: No ALL-CAPS emphasis except acronyms
 - D3: Headlines must be ≤12 words
-- D4: Neutral tone throughout
+- D4: Neutral tone in narrative (quotes exempt)
+
+## What IS a violation:
+- Urgency words in journalist's narrative (not quotes): "BREAKING: X happened"
+- Emotional amplifiers in journalist's narrative: "In a shocking move, X did Y"
+- Conflict theater in journalist's narrative: "X slams Y" (outside of quotes)
+
+## What is NOT a violation:
+- Senator saying "This is a historic investment" (it's their opinion, quoted)
+- CEO saying "demand is growing rapidly" (it's their statement, quoted)
+- Environmental group calling something "a crisis" (it's their characterization, quoted)
+- Factual use of intense words: "45 people died" (factual, not emotional)
 
 ## Scoring Guidelines
-- 10: Perfect neutralization - all rules followed, meaning preserved exactly
+- 10: Perfect neutralization - narrative neutral, quotes preserved, meaning intact
 - 9: Excellent - minor style issues only, no rule violations
 - 8: Good - very minor issues, acceptable for production
 - 7: Acceptable - some issues but core meaning preserved
 - 6: Borderline - noticeable issues that should be fixed
-- 5: Below standard - multiple rule violations
+- 5: Below standard - multiple rule violations in narrative text
 - 4: Poor - significant meaning distortion or missed manipulation
 - 3: Bad - major rule violations
 - 2: Very bad - fundamental failures
@@ -92,6 +109,88 @@ Respond with JSON only:
 }}
 
 Be strict but fair. A score of 8.5+ means production-ready quality."""
+
+
+# Feed outputs rubric - for compressed headlines and summaries
+FEED_OUTPUTS_RUBRIC = """
+# NTRL Feed Outputs Grading Rubric
+
+## Context
+Feed outputs are COMPRESSED versions of an article - they are NOT meant to preserve all details.
+A feed_title is ≤12 words. A feed_summary is ≤100 characters. A detail_title is ≤12 words.
+These are meant to give readers enough to decide if they want to read more - NOT full coverage.
+
+## What to Grade
+
+### Neutrality (Most Important)
+- No urgency framing: "BREAKING", "just in", "developing"
+- No emotional amplifiers: "shocking", "devastating", "terrifying", "historic"
+- No conflict theater: "slams", "destroys", "eviscerates"
+- No clickbait: questions, teasers, "you won't believe", "here's why"
+- No selling language: "exclusive", "secret", "revealed"
+- No agenda signaling: "woke", "radical left", partisan framing
+
+### Accuracy
+- No new facts invented
+- Key fact from article is represented correctly
+- No misleading framing or implications
+
+### Completeness (for compression)
+- Captures the core news event
+- Appropriate level of detail for format (headline vs summary)
+- NOT expected to include all details from source
+
+## What is NOT a violation for feed outputs:
+- Omitting details that don't fit in ≤12 words or ≤100 chars
+- Not preserving every scope marker from a 1000-word article in a 6-word headline
+- Simplifying complex facts for brevity
+- Not including quotes (they often don't fit)
+
+## Scoring Guidelines
+- 10: Perfect - neutral, accurate, well-compressed
+- 9: Excellent - minor style issues only
+- 8: Good - accurate and neutral, acceptable for production
+- 7: Acceptable - minor issues, captures core fact
+- 6: Borderline - some neutrality or accuracy issues
+- 5: Below standard - noticeable problems
+- 4: Poor - significant issues with neutrality or accuracy
+- 3: Bad - misleading or manipulative
+- 2: Very bad - major problems
+- 1: Unacceptable - fails basic criteria
+- 0: Harmful - introduces bias or misinformation
+"""
+
+FEED_OUTPUTS_SCORING_PROMPT = """You are a quality scorer for NTRL feed outputs (compressed headlines and summaries).
+
+Your task is to evaluate how well compressed feed outputs follow the NTRL Canon for neutral news presentation.
+
+{rubric}
+
+## Your Task
+
+The original article is provided for reference. Evaluate the feed outputs for:
+1. Neutrality - no urgency, emotional language, conflict theater, or clickbait
+2. Accuracy - core fact is represented correctly
+3. Appropriate compression - captures essential news in limited space
+
+## Original Article
+{original_text}
+
+## Feed Outputs to Grade
+{neutral_text}
+
+Respond with JSON only:
+{{
+  "score": <float 0-10>,
+  "feedback": "<2-3 sentences of specific feedback>",
+  "rule_violations": [
+    {{"rule": "<rule_id>", "description": "<what was violated>"}},
+    ...
+  ]
+}}
+
+Remember: These are compressed outputs. Omitting details for brevity is NOT a violation.
+Grade based on neutrality, accuracy, and appropriate compression for the format."""
 
 
 @dataclass
@@ -211,6 +310,49 @@ def _score_with_anthropic(prompt: str) -> QualityScore:
     except Exception as e:
         logger.error(f"Anthropic scoring failed: {e}")
         raise
+
+
+def score_feed_outputs(
+    original_text: str,
+    feed_title: str,
+    feed_summary: str,
+    detail_title: str,
+    provider: Literal["openai", "anthropic"] = "openai",
+) -> QualityScore:
+    """
+    Score feed outputs (compressed headlines and summaries) using an LLM.
+
+    Uses a specialized rubric that understands compression constraints.
+
+    Args:
+        original_text: The original source article text
+        feed_title: The compressed feed title (≤12 words)
+        feed_summary: The compressed feed summary (≤100 chars)
+        detail_title: The detail page title (≤12 words)
+        provider: Which LLM provider to use ("openai" or "anthropic")
+
+    Returns:
+        QualityScore with score (0-10), feedback, and rule_violations list
+    """
+    # Format the feed outputs for scoring
+    feed_outputs = f"""FEED TITLE: {feed_title}
+
+FEED SUMMARY: {feed_summary}
+
+DETAIL TITLE: {detail_title}"""
+
+    prompt = FEED_OUTPUTS_SCORING_PROMPT.format(
+        rubric=FEED_OUTPUTS_RUBRIC,
+        original_text=original_text,
+        neutral_text=feed_outputs,
+    )
+
+    if provider == "openai":
+        return _score_with_openai(prompt)
+    elif provider == "anthropic":
+        return _score_with_anthropic(prompt)
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
 
 
 def score_quality_batch(
