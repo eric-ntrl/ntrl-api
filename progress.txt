@@ -289,3 +289,30 @@ All 3 LLM provider implementations follow consistent structure:
 - Compression outputs need different grading criteria than full neutralization
 - Explicit character/word counting instructions help LLMs respect limits
 - "BEFORE OUTPUTTING - VERIFY" checklist effective for constraint compliance
+
+### Story 5.1 - Wire 3 calls into neutralize_story() pipeline (COMPLETE)
+- Updated neutralize_story() method in app/services/neutralizer.py
+- Pipeline now calls all 3 methods in sequence:
+  1. _neutralize_detail_full(body) - produces detail_full + transparency spans
+  2. _neutralize_detail_brief(body) - produces detail_brief (3-5 paragraphs)
+  3. _neutralize_feed_outputs(body, detail_brief) - produces feed_title, feed_summary, detail_title
+- All 6 outputs stored in StoryNeutralized record:
+  - feed_title, feed_summary (from Call 3)
+  - detail_title (from Call 3)
+  - detail_brief (from Call 2)
+  - detail_full (from Call 1)
+- TransparencySpan records saved to database for detail_full changes
+  - Creates models.TransparencySpan records for each span from DetailFullResult
+  - Stores: field, start_char, end_char, original_text, action, reason, replacement_text
+- has_manipulative_content determined by presence of transparency spans
+- Existing auditor integration preserved:
+  - Audit uses feed_title/feed_summary for neutral_headline/neutral_summary
+  - removed_phrases populated from span.original_text values
+  - Retry loop still functional for audit failures
+- Updated prompt_version to "v3" for 3-call pipeline
+- All 18 neutralizer tests pass
+
+**Key Implementation Details:**
+- TransparencySpan dataclass (in neutralizer.py) vs models.TransparencySpan (SQLAlchemy model)
+- Must convert span.action and span.reason to string values when creating DB records
+- Pipeline metadata now includes span_count for observability

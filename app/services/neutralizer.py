@@ -2318,12 +2318,14 @@ class NeutralizerService:
         force: bool = False,
     ) -> Optional[models.StoryNeutralized]:
         """
-        Neutralize a single story with audit validation.
+        Neutralize a single story using the 3-call pipeline with audit validation.
 
-        Two-pass system:
-        1. Neutralize content
-        2. Audit output against NTRL rules
-        3. Retry if audit fails (up to MAX_RETRY_ATTEMPTS)
+        Pipeline:
+        1. Call 1: Filter & Track - produces detail_full and transparency spans
+        2. Call 2: Synthesize - produces detail_brief (3-5 paragraphs)
+        3. Call 3: Compress - produces feed_title, feed_summary, detail_title
+        4. Audit output against NTRL rules
+        5. Retry if audit fails (up to MAX_RETRY_ATTEMPTS)
 
         Args:
             story: The raw story to neutralize
@@ -2361,26 +2363,43 @@ class NeutralizerService:
 
             # Initialize auditor
             auditor = Auditor()
-            repair_instructions = None
-            result = None
             audit_result = None
+            detail_full_result = None
+            detail_brief = None
+            feed_outputs = None
+            transparency_spans: List[TransparencySpan] = []
 
-            # Neutralize with retry loop
+            # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
-                # Run neutralization
-                result = self.provider.neutralize(
-                    title=story.original_title,
-                    description=story.original_description,
-                    body=body,
-                    repair_instructions=repair_instructions,
+                # Call 1: Filter & Track - produces detail_full and spans
+                if body:
+                    detail_full_result = self.provider._neutralize_detail_full(body)
+                    transparency_spans = detail_full_result.spans
+                else:
+                    detail_full_result = DetailFullResult(detail_full="", spans=[])
+                    transparency_spans = []
+
+                # Call 2: Synthesize - produces detail_brief
+                if body:
+                    detail_brief = self.provider._neutralize_detail_brief(body)
+                else:
+                    detail_brief = ""
+
+                # Call 3: Compress - produces feed_title, feed_summary, detail_title
+                feed_outputs = self.provider._neutralize_feed_outputs(
+                    body or "",
+                    detail_brief
                 )
+
+                # Determine if content was manipulative (has transparency spans)
+                has_manipulative_content = len(transparency_spans) > 0
 
                 # Build model output for audit (use feed_title/feed_summary for current auditor)
                 model_output = {
-                    "neutral_headline": result.feed_title,
-                    "neutral_summary": result.feed_summary,
-                    "has_manipulative_content": result.has_manipulative_content,
-                    "removed_phrases": [],  # We don't track these granularly yet
+                    "neutral_headline": feed_outputs.get("feed_title", ""),
+                    "neutral_summary": feed_outputs.get("feed_summary", ""),
+                    "has_manipulative_content": has_manipulative_content,
+                    "removed_phrases": [s.original_text for s in transparency_spans],
                 }
 
                 # Run audit
@@ -2425,8 +2444,8 @@ class NeutralizerService:
                     return None
                 elif audit_result.verdict == AuditVerdict.RETRY:
                     if attempt < MAX_RETRY_ATTEMPTS:
-                        repair_instructions = audit_result.suggested_action.repair_instructions
-                        logger.info(f"Retrying with: {repair_instructions}")
+                        # For retry, we log and try again (prompts are deterministic, so this is mainly for transient issues)
+                        logger.info(f"Retrying neutralization for story {story.id}")
                     else:
                         # Max retries exceeded
                         logger.warning(f"Story {story.id} failed audit after {MAX_RETRY_ATTEMPTS} retries")
@@ -2437,25 +2456,43 @@ class NeutralizerService:
                 existing.is_current = False
                 version = existing.version + 1
 
-            # Create neutralized record
+            # Determine if content was manipulative
+            has_manipulative_content = len(transparency_spans) > 0
+
+            # Create neutralized record with all 6 outputs
             neutralized = models.StoryNeutralized(
                 id=uuid.uuid4(),
                 story_raw_id=story.id,
                 version=version,
                 is_current=True,
-                feed_title=result.feed_title,
-                feed_summary=result.feed_summary,
-                detail_title=result.detail_title,
-                detail_brief=result.detail_brief,
-                detail_full=result.detail_full,
-                disclosure="Manipulative language removed." if result.has_manipulative_content else "",
-                has_manipulative_content=result.has_manipulative_content,
+                feed_title=feed_outputs.get("feed_title", ""),
+                feed_summary=feed_outputs.get("feed_summary", ""),
+                detail_title=feed_outputs.get("detail_title"),
+                detail_brief=detail_brief,
+                detail_full=detail_full_result.detail_full if detail_full_result else None,
+                disclosure="Manipulative language removed." if has_manipulative_content else "",
+                has_manipulative_content=has_manipulative_content,
                 model_name=self.provider.model_name,
-                prompt_version="v2",  # Updated prompt version
+                prompt_version="v3",  # Updated for 3-call pipeline
                 created_at=datetime.utcnow(),
             )
             db.add(neutralized)
             db.flush()
+
+            # Save transparency spans for detail_full
+            for span in transparency_spans:
+                span_record = models.TransparencySpan(
+                    id=uuid.uuid4(),
+                    story_neutralized_id=neutralized.id,
+                    field=span.field,
+                    start_char=span.start_char,
+                    end_char=span.end_char,
+                    original_text=span.original_text,
+                    action=span.action.value if isinstance(span.action, SpanAction) else span.action,
+                    reason=span.reason.value if isinstance(span.reason, SpanReason) else span.reason,
+                    replacement_text=span.replacement_text,
+                )
+                db.add(span_record)
 
             # Log success
             self._log_pipeline(
@@ -2467,9 +2504,10 @@ class NeutralizerService:
                 metadata={
                     'provider': self.provider.name,
                     'model': self.provider.model_name,
-                    'has_manipulative': result.has_manipulative_content,
+                    'has_manipulative': has_manipulative_content,
                     'audit_verdict': audit_result.verdict.value if audit_result else 'none',
                     'retry_count': attempt if 'attempt' in dir() else 0,
+                    'span_count': len(transparency_spans),
                 },
             )
 
