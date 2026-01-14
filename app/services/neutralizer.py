@@ -139,6 +139,23 @@ class NeutralizerProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def _neutralize_detail_brief(self, body: str) -> str:
+        """
+        Synthesize an article body into a neutral brief (Call 2: Synthesize).
+
+        Uses shared system prompt (article_system_prompt) + synthesis user prompt
+        to create a 3-5 paragraph prose brief following the implicit structure:
+        grounding -> context -> state of knowledge -> uncertainty.
+
+        Args:
+            body: The original article body text to synthesize
+
+        Returns:
+            detail_brief as plain text string (3-5 paragraphs, no headers/bullets)
+        """
+        pass
+
 
 # -----------------------------------------------------------------------------
 # Mock provider for testing
@@ -338,6 +355,49 @@ class MockNeutralizerProvider(NeutralizerProvider):
             detail_full=filtered_body,
             spans=body_spans,
         )
+
+    def _neutralize_detail_brief(self, body: str) -> str:
+        """
+        Synthesize an article body into a brief (mock implementation).
+
+        Creates a simple 3-paragraph summary by extracting key sentences.
+        This is a deterministic mock for testing purposes.
+        """
+        if not body:
+            return ""
+
+        # Split into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', body.strip())
+        if not sentences:
+            return ""
+
+        # Filter out very short sentences and apply neutralization
+        body_spans = self._find_spans(body, "body")
+        filtered_body = self._neutralize_text(body, body_spans)
+        filtered_sentences = re.split(r'(?<=[.!?])\s+', filtered_body.strip())
+        filtered_sentences = [s for s in filtered_sentences if len(s) > 20]
+
+        if not filtered_sentences:
+            return filtered_body[:500] if filtered_body else ""
+
+        # Build 3-paragraph brief
+        paragraphs = []
+
+        # Paragraph 1: Grounding (first 2-3 sentences)
+        grounding = ' '.join(filtered_sentences[:min(3, len(filtered_sentences))])
+        paragraphs.append(grounding)
+
+        # Paragraph 2: Context (next 2-3 sentences if available)
+        if len(filtered_sentences) > 3:
+            context = ' '.join(filtered_sentences[3:min(6, len(filtered_sentences))])
+            paragraphs.append(context)
+
+        # Paragraph 3: Remaining (if available)
+        if len(filtered_sentences) > 6:
+            remaining = ' '.join(filtered_sentences[6:min(9, len(filtered_sentences))])
+            paragraphs.append(remaining)
+
+        return '\n\n'.join(paragraphs)
 
 
 # -----------------------------------------------------------------------------
@@ -1279,6 +1339,44 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             logger.error(f"OpenAI detail_full neutralization failed: {e}")
             return MockNeutralizerProvider()._neutralize_detail_full(body)
 
+    def _neutralize_detail_brief(self, body: str) -> str:
+        """
+        Synthesize an article body into a brief using OpenAI (Call 2: Synthesize).
+
+        Uses shared article_system_prompt + synthesis_detail_brief_prompt.
+        Returns plain text (3-5 paragraphs, no headers or bullets).
+        """
+        if not body:
+            return ""
+
+        if not self._api_key:
+            logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=self._api_key)
+
+            system_prompt = get_article_system_prompt()
+            user_prompt = build_synthesis_detail_brief_prompt(body)
+
+            response = client.chat.completions.create(
+                model=self._model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                # Note: No JSON response format - we want plain text
+            )
+
+            # Return plain text response
+            return response.choices[0].message.content.strip()
+
+        except Exception as e:
+            logger.error(f"OpenAI detail_brief synthesis failed: {e}")
+            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+
 
 # -----------------------------------------------------------------------------
 # Gemini provider
@@ -1388,6 +1486,43 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
         except Exception as e:
             logger.error(f"Gemini detail_full neutralization failed: {e}")
             return MockNeutralizerProvider()._neutralize_detail_full(body)
+
+    def _neutralize_detail_brief(self, body: str) -> str:
+        """
+        Synthesize an article body into a brief using Gemini (Call 2: Synthesize).
+
+        Uses shared article_system_prompt + synthesis_detail_brief_prompt.
+        Returns plain text (3-5 paragraphs, no headers or bullets).
+        """
+        if not body:
+            return ""
+
+        if not self._api_key:
+            logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=self._api_key)
+
+            system_prompt = get_article_system_prompt()
+            user_prompt = build_synthesis_detail_brief_prompt(body)
+
+            model = genai.GenerativeModel(
+                self._model,
+                system_instruction=system_prompt,
+                generation_config=genai.GenerationConfig(
+                    # Note: No JSON mime type - we want plain text
+                    temperature=0.3,
+                ),
+            )
+
+            response = model.generate_content(user_prompt)
+            return response.text.strip()
+
+        except Exception as e:
+            logger.error(f"Gemini detail_brief synthesis failed: {e}")
+            return MockNeutralizerProvider()._neutralize_detail_brief(body)
 
 
 # -----------------------------------------------------------------------------
@@ -1507,6 +1642,43 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         except Exception as e:
             logger.error(f"Anthropic detail_full neutralization failed: {e}")
             return MockNeutralizerProvider()._neutralize_detail_full(body)
+
+    def _neutralize_detail_brief(self, body: str) -> str:
+        """
+        Synthesize an article body into a brief using Anthropic Claude (Call 2: Synthesize).
+
+        Uses shared article_system_prompt + synthesis_detail_brief_prompt.
+        Returns plain text (3-5 paragraphs, no headers or bullets).
+        """
+        if not body:
+            return ""
+
+        if not self._api_key:
+            logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
+            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=self._api_key)
+
+            system_prompt = get_article_system_prompt()
+            user_prompt = build_synthesis_detail_brief_prompt(body)
+
+            response = client.messages.create(
+                model=self._model,
+                max_tokens=2048,  # Sufficient for 3-5 paragraph brief
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+
+            # Return plain text response (no JSON parsing needed)
+            return response.content[0].text.strip()
+
+        except Exception as e:
+            logger.error(f"Anthropic detail_brief synthesis failed: {e}")
+            return MockNeutralizerProvider()._neutralize_detail_brief(body)
 
 
 # -----------------------------------------------------------------------------

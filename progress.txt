@@ -98,4 +98,44 @@
 - Quote preservation working correctly - emotional language inside attributed quotes preserved
 - Non-manipulative articles correctly returned unchanged (0 spans)
 
-**Next**: Story 3.1 - Create synthesis prompt for Detail Brief
+### Story 3.1 - Create synthesis prompt for Detail Brief (COMPLETE)
+- Created DEFAULT_SYNTHESIS_DETAIL_BRIEF_PROMPT user prompt template
+- Specifies 3-5 short paragraphs, plain prose only (no headers, no bullets)
+- Specifies implicit structure flow: grounding → context → state of knowledge → uncertainty
+- Specifies quote rules: short, embedded, immediately attributed, non-emotional
+- Requests plain text output (not JSON)
+- Added get_synthesis_detail_brief_prompt() and build_synthesis_detail_brief_prompt() functions
+
+**Key Prompt Features:**
+- Word count guidance: 150-300 words typical
+- Explicit list of what NOT to include: headers, bullets, dividers, calls to action, meta-commentary
+- Examples of good vs bad quote usage
+- Preserves facts, epistemic markers, attribution, and real conflict
+
+### Story 3.2 - Implement Call 2: Synthesize (COMPLETE)
+- Added abstract _neutralize_detail_brief(body: str) -> str method to NeutralizerProvider base class
+- Implemented in MockNeutralizerProvider using sentence extraction + neutralization
+  - Extracts sentences, filters short ones, groups into 3 paragraphs
+  - Returns paragraphs joined by double newlines
+- Implemented in OpenAINeutralizerProvider:
+  - Uses get_article_system_prompt() + build_synthesis_detail_brief_prompt()
+  - No JSON response format (returns plain text)
+  - Temperature 0.3 for consistency
+- Implemented in GeminiNeutralizerProvider:
+  - Same prompt combination
+  - No response_mime_type set (plain text output)
+- Implemented in AnthropicNeutralizerProvider:
+  - Same prompt combination
+  - max_tokens=2048 (sufficient for 3-5 paragraph brief)
+- All providers fall back to MockNeutralizerProvider when API key missing
+
+**Pattern:**
+All 3 LLM provider implementations follow the same structure:
+1. Early return for empty body
+2. Check API key, fall back to mock if missing
+3. Get system prompt + build user prompt
+4. Call LLM API with plain text response (no JSON mode)
+5. Return stripped response text
+6. Fall back to mock on exception
+
+**Next**: Story 3.3 - Grade and iterate Detail Brief until quality >= 8.5

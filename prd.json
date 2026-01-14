@@ -202,7 +202,7 @@
       "filesToModify": [
         "app/services/neutralizer.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 11
     },
     {
