@@ -592,50 +592,80 @@ DEFAULT_FILTER_DETAIL_FULL_PROMPT = """Filter the following article to produce a
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
-You are a FILTER, not a rewriter. Your job is to:
-1. PRESERVE the full article content, structure, quotes, and factual detail
-2. REMOVE only manipulative language, urgency inflation, and editorial framing
+You are an aggressive FILTER. Your job is to:
+1. AGGRESSIVELY REMOVE all manipulative language (see detailed lists below)
+2. PRESERVE facts, quotes, structure, and real conflict
 3. TRACK every change you make with transparency spans
+
+This is a neutralization filter, not a light editing pass. If in doubt, REMOVE IT.
+
+═══════════════════════════════════════════════════════════════════════════════
+WORDS/PHRASES THAT MUST BE REMOVED (delete entirely or replace)
+═══════════════════════════════════════════════════════════════════════════════
+
+URGENCY WORDS (remove entirely, no replacement needed):
+- "BREAKING", "BREAKING NEWS", "JUST IN", "DEVELOPING", "LIVE", "UPDATE", "UPDATES"
+- "HAPPENING NOW", "ALERT", "URGENT", "EMERGENCY" (unless factual emergency)
+- "shocking", "stunning", "dramatic", "explosive"
+- Entire phrases like "In a shocking turn of events", "In a stunning announcement"
+
+EMOTIONAL AMPLIFICATION (remove entirely):
+- "heartbreaking", "heart-wrenching", "devastating", "catastrophic"
+- "terrifying", "horrifying", "alarming", "chilling", "dire"
+- "utter devastation", "complete chaos", "total disaster"
+- "breathless", "breathtaking", "mind-blowing", "jaw-dropping"
+- "outrage", "fury", "livid", "enraged" (unless direct quote)
+- "insane", "crazy", "unbelievable", "incredible"
+- "game-changer", "revolutionary", "unprecedented" (unless truly unprecedented)
+
+CONFLICT THEATER (replace with neutral verbs):
+- "slams" → "criticizes" or "responds to"
+- "blasts" → "criticizes"
+- "destroys" → "disputes" or "challenges"
+- "eviscerates" → "criticizes"
+- "rips" → "criticizes"
+- "torches" → "criticizes"
+
+CLICKBAIT PHRASES (remove entirely):
+- "You won't believe"
+- "What happened next"
+- "This is huge"
+- "Must see", "Must read", "Essential"
+- "Here's why"
+- "Everything you need to know"
+- "Stay tuned"
+- "One thing is certain"
+- "will never be the same"
+
+AGENDA SIGNALING (remove unless in attributed quote):
+- "radical", "radical left", "radical right"
+- "dangerous", "extremist" (unless factual designation)
+- "disastrous", "failed policies"
+- "threatens the fabric of"
+- "invasion" (unless military context)
+
+SELLING LANGUAGE (remove entirely):
+- "exclusive", "insider", "secret", "revealed", "exposed"
+- "viral", "trending", "everyone is talking"
+- "undisputed leader", "once again proven"
+- "leaves competitors in the dust"
+
+ALL CAPS (convert to lowercase, except acronyms like NATO, FBI, CEO):
+- "BREAKING NEWS" → just remove entirely
+- "NEWS" → "news" or remove if part of urgency phrase
+- Random ALL CAPS words for emphasis → lowercase
 
 ═══════════════════════════════════════════════════════════════════════════════
 PRESERVE EXACTLY
 ═══════════════════════════════════════════════════════════════════════════════
 
 - Original paragraph structure and flow
-- All direct quotes with their attribution
+- All direct quotes with their attribution (even if quote contains emotional language)
 - All facts, names, dates, numbers, places, statistics
 - Real tension, conflict, and uncertainty (these are news, not manipulation)
-- Epistemic markers (alleged, suspected, confirmed, reportedly)
+- Epistemic markers (alleged, suspected, confirmed, reportedly, expected to)
 - Causal relationships as stated (don't infer motives)
-
-═══════════════════════════════════════════════════════════════════════════════
-REMOVE OR SOFTEN
-═══════════════════════════════════════════════════════════════════════════════
-
-1. URGENCY FRAMING
-   - "BREAKING", "JUST IN", "DEVELOPING", "HAPPENING NOW"
-   - False time pressure language
-
-2. EMOTIONAL AMPLIFICATION
-   - Conflict theater: "slams", "blasts", "destroys", "eviscerates", "torches"
-   - Fear amplifiers: "terrifying", "alarming", "chilling", "horrifying"
-   - Outrage bait: "shocking", "disgusting", "unbelievable", "insane"
-
-3. EDITORIAL FRAMING
-   - Loaded adjectives: "controversial", "embattled", "troubled", "disgraced"
-   - Leading questions that imply answers
-   - Weasel words: "some say", "critics say" (without attribution)
-
-4. CLICKBAIT & SELLING
-   - "You won't believe...", "Must see", "Essential"
-   - ALL CAPS for emphasis (except acronyms)
-   - Excessive punctuation (!!, ?!)
-
-5. PUBLISHER CRUFT
-   - Newsletter sign-up prompts
-   - "Read more" or "Continue reading" calls to action
-   - Social sharing prompts
-   - Author bios and promotional content mid-article
+- Emergency/crisis terminology when it's factual (actual declared emergency)
 
 ═══════════════════════════════════════════════════════════════════════════════
 DO NOT
@@ -645,8 +675,8 @@ DO NOT
 - Remove facts even if uncomfortable
 - Downshift factual severity ("killed" → "shot" is wrong if death occurred)
 - Infer motives or intent beyond what's stated
-- Soften real conflict into blandness
-- Change quoted material (preserve exactly as written)
+- Change quoted material (preserve exactly as written, even if manipulative)
+- Remove attributed emotional language inside quotes (that's the speaker's words)
 
 ═══════════════════════════════════════════════════════════════════════════════
 ORIGINAL ARTICLE
@@ -695,6 +725,128 @@ SPAN FIELD DEFINITIONS:
 - replacement_text: (Optional) The text that replaced the original, if action is "replaced"
 
 If no changes are needed, return the original article unchanged with an empty spans array."""
+
+
+# -----------------------------------------------------------------------------
+# Detail Brief Synthesis Prompt (Call 2: Synthesize)
+# -----------------------------------------------------------------------------
+
+DEFAULT_SYNTHESIS_DETAIL_BRIEF_PROMPT = """Synthesize the following article into a neutral brief.
+
+═══════════════════════════════════════════════════════════════════════════════
+YOUR TASK
+═══════════════════════════════════════════════════════════════════════════════
+
+Create a detail_brief: a calm, complete explanation of the story in 3-5 short paragraphs.
+
+This is the CORE NTRL reading experience. The brief must:
+1. Inform without pushing
+2. Present facts without editorializing
+3. Acknowledge uncertainty where it exists
+4. Feel complete, not truncated
+
+═══════════════════════════════════════════════════════════════════════════════
+FORMAT REQUIREMENTS
+═══════════════════════════════════════════════════════════════════════════════
+
+LENGTH: 3-5 short paragraphs maximum
+- Each paragraph should be 2-4 sentences
+- Prefer shorter paragraphs over longer ones
+- Total word count typically 150-300 words
+
+FORMAT: Plain prose only
+- NO section headers (no "What happened:", "Context:", etc.)
+- NO bullet points or numbered lists
+- NO dividers or horizontal rules
+- NO calls to action ("Read more", "Stay tuned")
+- NO meta-commentary ("This article discusses...")
+
+═══════════════════════════════════════════════════════════════════════════════
+IMPLICIT STRUCTURE (Do NOT label these sections)
+═══════════════════════════════════════════════════════════════════════════════
+
+Your brief should flow naturally through these stages WITHOUT labeling them:
+
+1. GROUNDING (Paragraph 1)
+   - What happened? Who is involved? Where and when?
+   - Lead with the core fact
+   - Establish the basic situation clearly
+
+2. CONTEXT (Paragraph 2)
+   - Why does this matter? What's the background?
+   - Relevant history or preceding events
+   - Do NOT editorialize about importance
+
+3. STATE OF KNOWLEDGE (Paragraph 3-4)
+   - What is confirmed vs. claimed vs. uncertain?
+   - Include key statements from officials or involved parties
+   - Present different perspectives neutrally if they exist
+
+4. UNCERTAINTY (Final paragraph, if applicable)
+   - What remains unknown?
+   - What questions are unanswered?
+   - What happens next (if known)?
+
+═══════════════════════════════════════════════════════════════════════════════
+QUOTE RULES
+═══════════════════════════════════════════════════════════════════════════════
+
+Direct quotes are allowed ONLY when the wording itself is newsworthy.
+
+When using quotes:
+- Keep them SHORT (1 sentence or less, ideally a phrase)
+- EMBED them in prose (don't lead with the quote)
+- IMMEDIATELY attribute them (who said it)
+- AVOID emotional or inflammatory quotes unless the emotion IS the news
+- NEVER use quotes just to add color or drama
+
+GOOD: The president called the legislation "dead on arrival" in Congress.
+BAD: "This is absolutely devastating for families," said the advocate.
+
+═══════════════════════════════════════════════════════════════════════════════
+TONE & STYLE
+═══════════════════════════════════════════════════════════════════════════════
+
+- Calm, measured, neutral
+- Declarative sentences (avoid questions)
+- Active voice preferred
+- Present tense for ongoing situations, past tense for completed events
+- No urgency language (breaking, developing, just in)
+- No emotional amplification (shocking, devastating, terrifying)
+- No agenda signaling or implied judgment
+
+═══════════════════════════════════════════════════════════════════════════════
+PRESERVE EXACTLY
+═══════════════════════════════════════════════════════════════════════════════
+
+- All facts, names, dates, numbers, places, statistics from the original
+- Epistemic markers (alleged, suspected, confirmed, reportedly)
+- Real tension and conflict (these are news, not manipulation)
+- Attribution (who said it, who claims it)
+
+═══════════════════════════════════════════════════════════════════════════════
+DO NOT
+═══════════════════════════════════════════════════════════════════════════════
+
+- Add facts not in the original article
+- Editorialize about significance or importance
+- Downshift factual severity (don't soften "killed" to "harmed")
+- Infer motives or intent beyond what's stated
+- Use rhetorical questions
+- Add context not present in the original
+
+═══════════════════════════════════════════════════════════════════════════════
+ORIGINAL ARTICLE
+═══════════════════════════════════════════════════════════════════════════════
+
+{body}
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT
+═══════════════════════════════════════════════════════════════════════════════
+
+Return ONLY the brief as plain text. No JSON. No markup. No labels.
+Just 3-5 paragraphs of neutral prose."""
 
 
 # -----------------------------------------------------------------------------
@@ -869,6 +1021,33 @@ def build_filter_detail_full_prompt(body: str) -> str:
         Formatted prompt with article body inserted
     """
     template = get_filter_detail_full_prompt()
+    return template.format(body=body or "")
+
+
+def get_synthesis_detail_brief_prompt() -> str:
+    """
+    Get the user prompt template for detail_brief generation (Call 2: Synthesize).
+
+    This prompt instructs the LLM to:
+    - Generate 3-5 paragraphs of neutral prose
+    - Follow implicit structure: grounding → context → knowledge → uncertainty
+    - Use quotes only when wording is newsworthy (short, attributed, non-emotional)
+    - Output plain text (not JSON)
+    """
+    return get_prompt("synthesis_detail_brief_prompt", DEFAULT_SYNTHESIS_DETAIL_BRIEF_PROMPT)
+
+
+def build_synthesis_detail_brief_prompt(body: str) -> str:
+    """
+    Build the user prompt for detail_brief synthesis.
+
+    Args:
+        body: The original article body text to synthesize
+
+    Returns:
+        Formatted prompt with article body inserted
+    """
+    template = get_synthesis_detail_brief_prompt()
     return template.format(body=body or "")
 
 
