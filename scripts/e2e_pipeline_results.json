@@ -1,0 +1,406 @@
+{
+  "total_articles": 10,
+  "all_outputs_generated": 10,
+  "grader_pass_count": 10,
+  "avg_scores": {
+    "detail_full": 9.1,
+    "detail_brief": 8.7,
+    "feed_outputs": 9.9
+  },
+  "overall_avg_score": 9.233333333333333,
+  "quality_threshold_met": true,
+  "success": true,
+  "results": [
+    {
+      "id": "001",
+      "has_manipulative": true,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 41,
+          "feed_summary": 71,
+          "detail_title": 58,
+          "detail_brief": 668,
+          "detail_full": 797
+        },
+        "feed_title_words": 5,
+        "feed_title_valid": true,
+        "detail_title_words": 9
+      },
+      "outputs": {
+        "detail_full": "In a turn of events that has left world leaders responding, Ukraine announced today that it would be seeking additional military support from NATO allies.\n\nThe announcement came just hours after reports of increased tensions along the eastern border. Sources say the situation is developing and could have consequences for regional stability.\n\n\"We are at a critical juncture,\" said a Ukrainian official, speaking on condition of anonymity. \"The international community must act or face consequences.\"\n\nNATO spokesperson James Mitchell confirmed that consultations are underway. \"We are monitoring the situation closely,\" he said in a brief statement.\n\nExperts warn that failure to act could embolden aggressive actors in the region. The coming days will be crucial in determining the path forward.",
+        "spans": "9 spans",
+        "detail_brief": "Ukraine announced it would be seeking additional military support from NATO allies amid increased tensions along the eastern border. This announcement follows reports of a rapidly developing situation that could impact regional stability.\n\nA Ukrainian official stated, \"We are at a critical juncture,\" emphasizing the need for the international community to act. NATO spokesperson James Mitchell confirmed that emergency consultations are underway and that the situation is being monitored closely.\n\nExperts have indicated that failure to act could embolden aggressive actors in the region. The coming days are expected to be significant in determining the next steps.",
+        "feed_title": "Ukraine Seeks Additional Military Support",
+        "feed_summary": "Ukraine announced it would seek more military support from NATO allies.",
+        "detail_title": "Ukraine Expected to Seek Military Support from NATO Allies"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 9.0,
+        "detail_brief": 9.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "002",
+      "has_manipulative": false,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 47,
+          "feed_summary": 72,
+          "detail_title": 72,
+          "detail_brief": 1068,
+          "detail_full": 1057
+        },
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "detail_title_words": 11
+      },
+      "outputs": {
+        "detail_full": "The U.S. Senate passed a $1.2 trillion infrastructure bill on Thursday with a vote of 69-30, sending the legislation to the House of Representatives for consideration.\n\nThe bill includes $550 billion in new federal spending over five years, targeting roads, bridges, public transit, broadband internet, and water systems. Nineteen Republican senators joined all 50 Democrats in supporting the measure.\n\nSenator Rob Portman of Ohio, a lead Republican negotiator, called the bill \"a historic investment in American infrastructure.\" Democratic Senator Kyrsten Sinema of Arizona, another key negotiator, said the legislation \"will create jobs and strengthen our economy.\"\n\nThe bill allocates $110 billion for roads and bridges, $66 billion for passenger and freight rail, $65 billion for broadband expansion, and $55 billion for clean water infrastructure.\n\nHouse Speaker Nancy Pelosi has indicated she will not bring the bill to a vote until the Senate also passes a larger budget reconciliation package. The timeline for House consideration remains uncertain.",
+        "spans": "0 spans",
+        "detail_brief": "The U.S. Senate passed a $1.2 trillion infrastructure bill on Thursday with a vote of 69-30, sending the legislation to the House of Representatives for consideration. The bill includes $550 billion in new federal spending over five years, targeting roads, bridges, public transit, broadband internet, and water systems. Nineteen Republican senators joined all 50 Democrats in supporting the measure.\n\nSenator Rob Portman of Ohio, a lead Republican negotiator, described the bill as \"a historic investment in American infrastructure.\" Democratic Senator Kyrsten Sinema of Arizona, another key negotiator, stated that the legislation \"will create jobs and strengthen our economy.\" The bill allocates $110 billion for roads and bridges, $66 billion for passenger and freight rail, $65 billion for broadband expansion, and $55 billion for clean water infrastructure.\n\nHouse Speaker Nancy Pelosi has indicated she will not bring the bill to a vote until the Senate also passes a larger budget reconciliation package. The timeline for House consideration remains uncertain.",
+        "feed_title": "Senate Passes $1.2 Trillion Infrastructure Bill",
+        "feed_summary": "The Senate passed a $1.2 trillion infrastructure bill with a 69-30 vote.",
+        "detail_title": "U.S. Senate Passes Infrastructure Bill with $550 Billion in New Spending"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 10.0,
+        "detail_brief": 9.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "003",
+      "has_manipulative": true,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 45,
+          "feed_summary": 65,
+          "detail_title": 44,
+          "detail_brief": 777,
+          "detail_full": 1298
+        },
+        "feed_title_words": 7,
+        "feed_title_valid": true,
+        "detail_title_words": 8
+      },
+      "outputs": {
+        "detail_full": "Apple has announced a new feature coming to the next iPhone that experts say will change how we interact with our devices.\n\nThe feature, which Apple is keeping under wraps, reportedly uses advanced artificial intelligence to predict user behavior with accuracy. Sources close to the company say it's unlike anything the industry has seen.\n\n\"This is a significant development,\" said tech analyst Sarah Chen. \"Apple has once again demonstrated why they're a leader in innovation.\"\n\nAccording to reports, the technology has been in development for over five years, with a team of over 200 engineers working in secrecy.\n\nThe AI system allegedly learns from user patterns to anticipate needs before they arise. For example, the phone could know a user wants to order coffee before they think about it.\n\nCompetitors are reportedly working to catch up, but analysts say they're at least two years behind Apple's development.\n\nThe feature is expected to debut in the iPhone 17, scheduled for release next fall. Early adopters are already waiting outside Apple stores to be among the first to experience this technology.\n\nThe smartphone industry is expected to change as Apple has raised the bar, and consumers are anticipating the new feature.\n\nFurther information will be provided as this story continues.",
+        "spans": "10 spans",
+        "detail_brief": "Apple announced a new feature for the upcoming iPhone 17 that reportedly utilizes advanced artificial intelligence to predict user behavior. Sources indicate that this technology has been in development for over five years, involving a team of over 200 engineers. The AI system is said to learn from user patterns to anticipate needs before they arise.\n\nTech analyst Sarah Chen described the feature as a \"game-changer\" and noted that it demonstrates Apple's leadership in innovation. Competitors are reportedly trying to catch up, with analysts suggesting they are at least two years behind Apple's development.\n\nThe feature is expected to debut in the iPhone 17, which is scheduled for release next fall. Early adopters are reportedly eager to experience this new technology.",
+        "feed_title": "Apple Expected to Announce New iPhone Feature",
+        "feed_summary": "Apple plans to debut a new AI feature in the iPhone 17 next fall.",
+        "detail_title": "Apple's New AI Feature Expected in iPhone 17"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 7.0,
+        "detail_brief": 9.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "004",
+      "has_manipulative": false,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 45,
+          "feed_summary": 73,
+          "detail_title": 61,
+          "detail_brief": 525,
+          "detail_full": 530
+        },
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "detail_title_words": 8
+      },
+      "outputs": {
+        "detail_full": "The Federal Reserve kept its benchmark interest rate unchanged at 5.25-5.50% following its two-day policy meeting on Wednesday.\n\nFed Chair Jerome Powell indicated that the central bank remains focused on bringing inflation back to its 2% target while monitoring labor market conditions. The decision was unanimous among voting members.\n\n\"We are prepared to adjust policy as appropriate,\" Powell said in his post-meeting press conference.\n\nMarkets had widely expected the decision. The Fed's next meeting is scheduled for December.",
+        "spans": "0 spans",
+        "detail_brief": "The Federal Reserve kept its benchmark interest rate unchanged at 5.25-5.50% after its two-day policy meeting on Wednesday. This decision was unanimous among voting members.\n\nFed Chair Jerome Powell stated that the central bank remains focused on bringing inflation back to its 2% target while monitoring labor market conditions. He noted, \"We are prepared to adjust policy as appropriate\" during his post-meeting press conference.\n\nMarkets had widely expected this decision. The Fed's next meeting is scheduled for December.",
+        "feed_title": "Federal Reserve Keeps Interest Rate Unchanged",
+        "feed_summary": "The Federal Reserve held its interest rate at 5.25-5.50% after a meeting.",
+        "detail_title": "Federal Reserve Unanimously Keeps Interest Rate at 5.25-5.50%"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 10.0,
+        "detail_brief": 9.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "005",
+      "has_manipulative": true,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 46,
+          "feed_summary": 82,
+          "detail_title": 56,
+          "detail_brief": 1100,
+          "detail_full": 1122
+        },
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "detail_title_words": 8
+      },
+      "outputs": {
+        "detail_full": "In scenes of flooding, thousands of families have been forced to flee their homes as flooding continues to affect Southeast Asia.\n\nThe death toll has risen to 45, with officials warning that the number could climb significantly higher as rescue teams reach isolated communities. Over 100,000 people have been displaced across Vietnam, Thailand, and Cambodia.\n\nImages show mothers clutching their children as they wade through chest-deep water, seeking higher ground. Entire villages have been affected.\n\n\"I have never seen anything like this in my 60 years,\" said local resident Nguyen Van Minh. \"We have lost everything.\"\n\nRelief organizations are struggling to respond to the scale of the situation. The Red Cross has launched an appeal for $50 million in humanitarian aid.\n\nMeteorologists warn that more rain is expected in the coming days, raising concerns of more loss of life. Climate experts say such extreme weather events are becoming increasingly common due to global warming.\n\nThe international community has pledged support, but some say the response has been inadequate given the magnitude of human suffering.",
+        "spans": "8 spans",
+        "detail_brief": "Thousands of families have been forced to flee their homes due to flooding in Southeast Asia, with the death toll rising to 45. Officials have indicated that this number could increase as rescue teams reach isolated communities. Over 100,000 people have been displaced across Vietnam, Thailand, and Cambodia.\n\nImages depict individuals wading through chest-deep water in search of higher ground. Entire villages have been destroyed. Local resident Nguyen Van Minh stated, \"I have never seen anything like this in my 60 years. We have lost everything.\"\n\nRelief organizations are facing challenges in responding to the scale of the disaster. The Red Cross has launched an emergency appeal for $50 million in humanitarian aid. Meteorologists have warned that more rain is expected in the coming days, which could lead to additional loss of life. Climate experts have noted that extreme weather events are becoming increasingly common due to global warming.\n\nThe international community has pledged support, but there are concerns regarding the adequacy of the response given the extent of the situation.",
+        "feed_title": "Flooding Displaces Thousands in Southeast Asia",
+        "feed_summary": "Flooding in Southeast Asia has displaced over 100,000 people and caused 45 deaths.",
+        "detail_title": "Flooding in Southeast Asia Displaces Over 100,000 People"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 8.0,
+        "detail_brief": 8.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "006",
+      "has_manipulative": false,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 56,
+          "feed_summary": 69,
+          "detail_title": 53,
+          "detail_brief": 413,
+          "detail_full": 364
+        },
+        "feed_title_words": 7,
+        "feed_title_valid": true,
+        "detail_title_words": 6
+      },
+      "outputs": {
+        "detail_full": "California Governor Gavin Newsom signed legislation requiring urban water agencies to reduce consumption by 20% by 2030.\n\nThe law establishes water budgets for indoor and outdoor residential use. Water agencies that fail to meet targets face potential fines.\n\nNewsom called the measure \"essential for California's future\" during the signing ceremony in Sacramento.",
+        "spans": "0 spans",
+        "detail_brief": "California Governor Gavin Newsom signed legislation on Thursday that requires urban water agencies to reduce consumption by 20% by 2030. The law establishes water budgets for both indoor and outdoor residential use. \n\nWater agencies that do not meet the established targets may face potential fines. \n\nDuring the signing ceremony in Sacramento, Newsom described the measure as \"essential for California's future.\"",
+        "feed_title": "California Water Agencies Required to Reduce Consumption",
+        "feed_summary": "California mandates urban water agencies to cut usage by 20% by 2030.",
+        "detail_title": "California Governor Signs Water Reduction Legislation"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 10.0,
+        "detail_brief": 10.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "007",
+      "has_manipulative": false,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 44,
+          "feed_summary": 64,
+          "detail_title": 68,
+          "detail_brief": 945,
+          "detail_full": 908
+        },
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "detail_title_words": 9
+      },
+      "outputs": {
+        "detail_full": "Microsoft announced plans to invest $10 billion in expanding its Azure cloud infrastructure over the next three years, with a focus on artificial intelligence capabilities.\n\nThe company will build new data centers in Texas, Georgia, and Wisconsin, creating an estimated 5,000 jobs. The expansion will increase Microsoft's computing capacity for AI workloads by approximately 40%.\n\n\"Enterprise demand for AI services continues to grow rapidly,\" said Microsoft CEO Satya Nadella during the company's quarterly earnings call. \"This investment positions Azure to meet that demand.\"\n\nThe announcement comes as Microsoft competes with Amazon Web Services and Google Cloud for market share in the AI infrastructure market. Azure currently holds approximately 23% of the global cloud market.\n\nConstruction on the new facilities is expected to begin in early 2025, with the first data center operational by late 2026.",
+        "spans": "0 spans",
+        "detail_brief": "Microsoft announced plans to invest $10 billion in expanding its Azure cloud infrastructure over the next three years, focusing on artificial intelligence capabilities. The company will build new data centers in Texas, Georgia, and Wisconsin, which is expected to create approximately 5,000 jobs. This expansion aims to increase Microsoft's computing capacity for AI workloads by about 40%.\n\nMicrosoft CEO Satya Nadella stated during the company's quarterly earnings call that \"enterprise demand for AI services continues to grow rapidly,\" and this investment is intended to position Azure to meet that demand. \n\nThe announcement occurs amid competition with Amazon Web Services and Google Cloud for market share in the AI infrastructure market, where Azure currently holds about 23% of the global cloud market. Construction on the new facilities is expected to begin in early 2025, with the first data center set to be operational by late 2026.",
+        "feed_title": "Microsoft Plans $10 Billion Azure Investment",
+        "feed_summary": "Microsoft plans to invest $10 billion in Azure over three years.",
+        "detail_title": "Microsoft Plans $10 Billion Investment in Azure Cloud Infrastructure"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 10.0,
+        "detail_brief": 8.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "008",
+      "has_manipulative": false,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 46,
+          "feed_summary": 78,
+          "detail_title": 53,
+          "detail_brief": 1567,
+          "detail_full": 1847
+        },
+        "feed_title_words": 5,
+        "feed_title_valid": true,
+        "detail_title_words": 8
+      },
+      "outputs": {
+        "detail_full": "Global supply chain pressures have eased significantly over the past quarter, with shipping container rates falling to their lowest levels since early 2021, according to new industry data.\n\nThe Drewry World Container Index, which tracks freight rates on major shipping routes, declined 75% from its peak in September 2021. Rates from Shanghai to Los Angeles now average $2,100 per 40-foot container, down from over $12,000 at the height of pandemic-era disruptions.\n\n\"We're seeing a normalization of global trade flows,\" said Lars Jensen, CEO of container shipping consultancy Vespucci Maritime. \"Port congestion has largely cleared, and capacity is now adequate to meet demand.\"\n\nMajor retailers including Walmart and Target have reported improved inventory positions and reduced logistics costs. However, some economists caution that the improvement partly reflects weakening consumer demand rather than purely supply-side gains.\n\nThe Baltic Dry Index, which measures bulk commodity shipping costs, has also declined 40% from its 2022 highs, suggesting broader improvement in maritime logistics.\n\nFactory output in key manufacturing hubs including China's Guangdong province has stabilized, with lead times for electronic components returning to pre-pandemic norms. Semiconductor availability has improved substantially, though some specialty chips remain in short supply.\n\nAnalysts expect shipping rates to remain relatively stable through 2024, barring major geopolitical disruptions or unexpected demand surges. The industry continues to add new vessel capacity, with 2.4 million TEUs of new container ships scheduled for delivery this year.\n\nRetailers are using the improved conditions to rebuild safety stock levels depleted during the supply crunch. Many companies are also diversifying their supplier bases to reduce future vulnerability.",
+        "spans": "0 spans",
+        "detail_brief": "Global supply chain pressures have eased significantly over the past quarter, with shipping container rates falling to their lowest levels since early 2021. The Drewry World Container Index reported a decline of 75% from its peak in September 2021, with rates from Shanghai to Los Angeles now averaging $2,100 per 40-foot container, down from over $12,000 during pandemic disruptions. Lars Jensen, CEO of Vespucci Maritime, noted a normalization of global trade flows and indicated that port congestion has largely cleared.\n\nMajor retailers, including Walmart and Target, have reported improved inventory positions and reduced logistics costs. However, some economists caution that this improvement may reflect weakening consumer demand rather than solely supply-side gains. The Baltic Dry Index, which measures bulk commodity shipping costs, has also declined 40% from its 2022 highs, suggesting broader improvement in maritime logistics.\n\nFactory output in key manufacturing hubs, such as China's Guangdong province, has stabilized, with lead times for electronic components returning to pre-pandemic norms. While semiconductor availability has improved substantially, some specialty chips remain in short supply. Analysts expect shipping rates to remain relatively stable through 2024, barring major geopolitical disruptions or unexpected demand surges.\n\nRetailers are using the improved conditions to rebuild safety stock levels that were depleted during the supply crunch. Many companies are also diversifying their supplier bases to reduce future vulnerability.",
+        "feed_title": "Shipping Container Rates Decline Significantly",
+        "feed_summary": "Global supply chain pressures have eased, with shipping rates falling sharply.",
+        "detail_title": "Shipping Rates Expected to Remain Stable Through 2024"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 10.0,
+        "detail_brief": 9.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "009",
+      "has_manipulative": false,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 49,
+          "feed_summary": 84,
+          "detail_title": 68,
+          "detail_brief": 1760,
+          "detail_full": 1808
+        },
+        "feed_title_words": 7,
+        "feed_title_valid": true,
+        "detail_title_words": 10
+      },
+      "outputs": {
+        "detail_full": "The United Nations Climate Change Conference concluded Saturday with 197 nations agreeing to new emissions reduction targets and a framework for climate finance.\n\nThe agreement commits developed nations to mobilize $100 billion annually for climate adaptation in developing countries through 2030. Participating countries also pledged to submit updated nationally determined contributions by 2025.\n\nUN Secretary-General Antonio Guterres called the outcome \"a step forward, though much work remains.\" He noted that current commitments still fall short of limiting global warming to 1.5 degrees Celsius above pre-industrial levels.\n\nKey provisions of the agreement include a global methane reduction target of 30% by 2030, a commitment to phase down coal power generation, and new transparency requirements for emissions reporting.\n\nChina, the world's largest emitter, agreed to accelerate its timeline for peak emissions, though it did not commit to a specific date earlier than the previously announced 2030 target. The United States reaffirmed its goal of 50-52% emissions reduction by 2030 compared to 2005 levels.\n\nEnvironmental groups offered mixed reactions. Greenpeace International called the agreement \"insufficient to address the scale of the climate crisis,\" while the World Resources Institute described it as \"meaningful progress in a challenging geopolitical environment.\"\n\nThe next major climate summit is scheduled for November 2025 in Brazil, where nations will review progress on implementation. Brazilian President Luiz Inacio Lula da Silva has pledged to make Amazon deforestation a central topic.\n\nScientists from the Intergovernmental Panel on Climate Change will release an updated assessment of global emissions trajectories in early 2025, which will inform negotiations going forward.",
+        "spans": "0 spans",
+        "detail_brief": "The United Nations Climate Change Conference concluded with 197 nations agreeing to new emissions reduction targets and a framework for climate finance. The agreement commits developed nations to mobilize $100 billion annually for climate adaptation in developing countries through 2030. Participating countries also pledged to submit updated nationally determined contributions by 2025.\n\nKey provisions of the agreement include a global methane reduction target of 30% by 2030, a commitment to phase down coal power generation, and new transparency requirements for emissions reporting. China agreed to accelerate its timeline for peak emissions but did not commit to a specific date earlier than the previously announced 2030 target. The United States reaffirmed its goal of 50-52% emissions reduction by 2030 compared to 2005 levels.\n\nUN Secretary-General Antonio Guterres described the outcome as \"a step forward, though much work remains,\" noting that current commitments still fall short of limiting global warming to 1.5 degrees Celsius above pre-industrial levels. Environmental groups had mixed reactions, with Greenpeace International calling the agreement \"insufficient to address the scale of the climate crisis,\" while the World Resources Institute viewed it as \"meaningful progress in a challenging geopolitical environment.\"\n\nThe next major climate summit is scheduled for November 2025 in Brazil, where nations will review progress on implementation. Brazilian President Luiz Inacio Lula da Silva has pledged to make Amazon deforestation a central topic. Scientists from the Intergovernmental Panel on Climate Change are set to release an updated assessment of global emissions trajectories in early 2025, which will inform future negotiations.",
+        "feed_title": "UN Climate Conference Agrees on Emissions Targets",
+        "feed_summary": "197 nations agreed to new emissions reduction targets and climate finance framework.",
+        "detail_title": "UN Climate Conference Commits to $100 Billion for Climate Adaptation"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 10.0,
+        "detail_brief": 9.0,
+        "feed_outputs": 10.0
+      }
+    },
+    {
+      "id": "010",
+      "has_manipulative": true,
+      "validation": {
+        "all_present": true,
+        "missing_fields": [],
+        "field_lengths": {
+          "feed_title": 50,
+          "feed_summary": 69,
+          "detail_title": 54,
+          "detail_brief": 1472,
+          "detail_full": 1545
+        },
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "detail_title_words": 7
+      },
+      "outputs": {
+        "detail_full": "The Biden administration's open-border policies have created a crisis that critics charge threatens American society. \n\nRecord numbers of migrants continue to cross the southern border, with Border Patrol reporting over 200,000 encounters last month alone. Republican lawmakers say the administration's enforcement has emboldened drug cartels and human traffickers.\n\n\"This is an invasion, plain and simple,\" said Texas Governor Greg Abbott. \"The left has completely abandoned any pretense of border security.\"\n\nThe surge has overwhelmed border communities and strained resources in cities across the country. New York City Mayor Eric Adams declared a state of emergency, warning that the migrant influx could cost the city $12 billion over three years.\n\nConservative analysts argue that the administration's policies represent an attempt to reshape the American electorate. \"They want these illegal immigrants to eventually become voters,\" claimed one commentator on Fox News.\n\nThe White House disputes these characterizations, pointing to increased funding for border security and efforts to address root causes of migration in Central America. Press Secretary Karine Jean-Pierre called the Republican criticism \"political theater.\"\n\nMeanwhile, humanitarian organizations report deteriorating conditions at processing facilities, with families including young children held in overcrowded temporary shelters.\n\nThe border situation is expected to be a major issue in upcoming elections, with polls showing immigration among voters' top concerns.",
+        "spans": "4 spans",
+        "detail_brief": "The Biden administration is facing criticism regarding its border policies, which some claim have led to a significant increase in migrant encounters at the southern border. Border Patrol reported over 200,000 encounters last month. Critics, including Texas Governor Greg Abbott, describe the situation as an \"invasion\" and assert that the administration's enforcement measures have encouraged drug cartels and human traffickers.\n\nThe influx of migrants has reportedly overwhelmed border communities and strained resources in various cities. New York City Mayor Eric Adams declared a state of emergency, indicating that the migrant situation could cost the city $12 billion over three years. Some conservative analysts suggest that the administration's policies aim to reshape the American electorate by facilitating pathways for undocumented immigrants to become voters.\n\nThe White House has countered these claims by highlighting increased funding for border security and initiatives to address the root causes of migration from Central America. Press Secretary Karine Jean-Pierre referred to the Republican criticism as \"political theater.\" \n\nHumanitarian organizations have reported worsening conditions at processing facilities, with families, including young children, being held in overcrowded temporary shelters. The border situation is expected to be a significant issue in upcoming elections, with polls indicating that immigration is among voters' top concerns.",
+        "feed_title": "Biden Administration Faces Border Policy Criticism",
+        "feed_summary": "Record migrant encounters reported at the southern border last month.",
+        "detail_title": "Border Situation Expected to Impact Upcoming Elections"
+      },
+      "grader_results": {
+        "detail_full": true,
+        "detail_brief": true,
+        "feed_title": true,
+        "feed_summary": true,
+        "detail_title": true
+      },
+      "grader_all_pass": true,
+      "llm_scores": {
+        "detail_full": 7.0,
+        "detail_brief": 7.0,
+        "feed_outputs": 9.0
+      }
+    }
+  ],
+  "failures": []
+}

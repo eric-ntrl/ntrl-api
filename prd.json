@@ -329,7 +329,7 @@
         "tests/test_neutralizer.py",
         "tests/test_article_neutralization.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 18
     }
   ]

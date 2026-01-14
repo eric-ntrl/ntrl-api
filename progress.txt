@@ -330,3 +330,44 @@ All 3 LLM provider implementations follow consistent structure:
 
 **Note:** Schemas and routers were already implemented in previous story (5.1).
 The acceptance criteria were already met - this story validated existing implementation.
+
+### Story 5.3 - End-to-end testing with test corpus (COMPLETE)
+- Created end-to-end test script: scripts/test_e2e_pipeline.py
+- Runs full neutralization pipeline (3 LLM calls, 6 outputs) on all 10 test corpus articles
+- Created pytest test file: tests/test_article_neutralization.py with 21 new tests
+- **All results meet acceptance criteria:**
+
+**Pipeline Execution Results:**
+- Full pipeline runs on all 10 test articles: **10/10 SUCCESS**
+- All 6 outputs generated for each article: **10/10 SUCCESS**
+- All outputs pass deterministic grader: **10/10 SUCCESS**
+- Average LLM quality scores:
+  - detail_full: **9.10** (target: 8.5)
+  - detail_brief: **8.70** (target: 8.5)
+  - feed_outputs: **9.90** (target: 8.5)
+  - Overall average: **9.23**
+
+**Pytest Results:**
+- New test file: tests/test_article_neutralization.py
+- Test classes:
+  - TestArticleNeutralizationPipeline (6 tests)
+  - TestTestCorpusIntegrity (4 tests)
+  - TestGraderIntegration (3 tests)
+  - TestDetailFullMethod (3 tests)
+  - TestDetailBriefMethod (2 tests)
+  - TestFeedOutputsMethod (3 tests)
+- All 21 new tests pass
+- Combined with existing tests: 39/39 neutralizer tests pass
+- Pre-existing failure in test_api.py::TestAdminEndpoints::test_neutralize_no_auth (unrelated to article neutralization)
+
+**Files Created/Modified:**
+- Created: scripts/test_e2e_pipeline.py (end-to-end test script)
+- Created: tests/test_article_neutralization.py (pytest test file)
+- Created: scripts/e2e_pipeline_results.json (test results)
+
+**Key Learnings:**
+- Full pipeline executes successfully across all article types (clean and manipulative)
+- Articles with manipulative language score slightly lower (7.0-9.0) but all meet threshold
+- Mock provider tests allow CI without API calls
+- LLM provider tests run via scripts/ for manual validation
+- Quality scoring shows consistent results across multiple output types
