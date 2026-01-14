@@ -44,4 +44,26 @@
 - 4 articles with manipulative language: 001 (urgency/clickbait), 003 (clickbait/selling), 005 (emotional), 010 (agenda signaling)
 - Note: 4 pre-existing test failures unrelated to corpus (classifier, deduper, neutralizer auth)
 
-**Next**: Story 1.5 - Schema migration for new output fields
+### Story 1.5 - Schema migration for new output fields (COMPLETE)
+- Migration file created: migrations/versions/005_article_neutralization_v1_schema.py
+- StoryNeutralized model updated with: feed_title, feed_summary, detail_title, detail_brief, detail_full
+- Old fields (neutral_headline, neutral_summary) migrated via column rename
+- Structured fields removed: what_happened, why_it_matters, what_is_known, what_is_uncertain
+- Migration runs successfully and is reversible
+
+### Story 2.1 - Create shared system prompt with canon rules (COMPLETE)
+- Created DEFAULT_ARTICLE_SYSTEM_PROMPT containing all A1-D4 canon rules
+- Contains manipulation patterns from existing neutralizer
+- References content spec constraints (feed_title, feed_summary, detail_* specs)
+- Retrievable via get_article_system_prompt() -> get_prompt('article_system_prompt')
+- Stored in database via existing prompt infrastructure
+
+### Story 2.2 - Create filter prompt for Detail Full (COMPLETE)
+- Created DEFAULT_FILTER_DETAIL_FULL_PROMPT user prompt template
+- Instructs preservation of structure, quotes, factual detail
+- Instructs removal of manipulation, urgency, editorial framing, publisher cruft
+- Requests JSON output with filtered_article and spans array
+- Spans include: field, start_char, end_char, original_text, action, reason
+- Added get_filter_detail_full_prompt() and build_filter_detail_full_prompt() functions
+
+**Next**: Story 2.3 - Implement Call 1: Filter & Track

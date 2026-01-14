@@ -98,7 +98,7 @@
         "app/models.py",
         "migrations/versions/005_article_neutralization_fields.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 5
     },
     {
@@ -115,7 +115,7 @@
       "filesToModify": [
         "app/services/neutralizer.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 6
     },
     {
@@ -132,7 +132,7 @@
       "filesToModify": [
         "app/services/neutralizer.py"
       ],
-      "passes": false,
+      "passes": true,
       "priority": 7
     },
     {
