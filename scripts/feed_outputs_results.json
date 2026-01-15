@@ -1,0 +1,2294 @@
+{
+  "total_articles": 10,
+  "grader_pass_count": 10,
+  "average_llm_score": 9.9,
+  "quality_threshold_met": true,
+  "all_grader_pass": true,
+  "all_constraints_met": true,
+  "title_valid_count": 10,
+  "summary_valid_count": 10,
+  "results": [
+    {
+      "id": "001",
+      "has_manipulative": true,
+      "original_length": 870,
+      "feed_title": "Ukraine Seeks Additional Military Support",
+      "feed_summary": "Ukraine announced it would seek more military support from NATO allies.",
+      "detail_title": "Ukraine Expected to Seek Additional Military Support from NATO",
+      "detail_brief": "Ukraine announced that it would be seeking additional military support from NATO allies. This announcement followed reports of increased tensions along the eastern border.\n\nA Ukrainian official stated, \"We are at a critical juncture. The international community must act now or face dire consequences.\" NATO spokesperson James Mitchell confirmed that emergency consultations are underway, stating, \"We are monitoring the situation closely.\"\n\nExperts have indicated that failure to act could embolden aggressive actors in the region. The coming days are expected to be crucial in determining the path forward.",
+      "constraints": {
+        "feed_title_words": 5,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 71,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 9
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed outputs are neutral, accurate, and effectively compressed. They capture the essential information without any emotional language or urgency framing.",
+      "violations": []
+    },
+    {
+      "id": "002",
+      "has_manipulative": false,
+      "original_length": 1057,
+      "feed_title": "Senate Passes $1.2 Trillion Infrastructure Bill",
+      "feed_summary": "The Senate passed a $1.2 trillion infrastructure bill with a 69-30 vote.",
+      "detail_title": "U.S. Senate Passes Infrastructure Bill with $550 Billion New Spending",
+      "detail_brief": "The U.S. Senate passed a $1.2 trillion infrastructure bill on Thursday with a vote of 69-30, sending the legislation to the House of Representatives for consideration. The bill includes $550 billion in new federal spending over five years, targeting roads, bridges, public transit, broadband internet, and water systems. Nineteen Republican senators joined all 50 Democrats in supporting the measure.\n\nThe bill allocates $110 billion for roads and bridges, $66 billion for passenger and freight rail, $65 billion for broadband expansion, and $55 billion for clean water infrastructure. Senator Rob Portman of Ohio, a lead Republican negotiator, described the bill as \"a historic investment in American infrastructure,\" while Democratic Senator Kyrsten Sinema of Arizona stated that it \"will create jobs and strengthen our economy.\"\n\nHouse Speaker Nancy Pelosi has indicated that she will not bring the bill to a vote until the Senate also passes a larger budget reconciliation package. The timeline for House consideration remains uncertain.",
+      "constraints": {
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 72,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 10
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed outputs are neutral, accurate, and effectively compressed. They provide essential information about the Senate's passage of the infrastructure bill without any emotional or sensational language.",
+      "violations": []
+    },
+    {
+      "id": "003",
+      "has_manipulative": true,
+      "original_length": 1709,
+      "feed_title": "Apple Expected to Announce New Feature",
+      "feed_summary": "Apple plans to debut a new AI feature in the iPhone 17 next fall.",
+      "detail_title": "Apple Expected to Release AI Feature in iPhone 17",
+      "detail_brief": "Apple announced a new feature for the upcoming iPhone 17, which is scheduled for release next fall. This feature reportedly utilizes advanced artificial intelligence to predict user behavior with high accuracy. Sources indicate that the technology has been in development for over five years, involving a team of over 200 engineers.\n\nThe AI system is said to learn from user patterns to anticipate needs before they arise. Analysts have described this development as significant for the smartphone industry, suggesting that competitors may be at least two years behind Apple's innovation.\n\nTech analyst Sarah Chen stated, \"This is a game-changer,\" highlighting Apple's position in the market. The feature is expected to change how users interact with their devices.",
+      "constraints": {
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 65,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 9
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed outputs are neutral, accurately representing the core fact about Apple's new AI feature without any emotional or urgency language. The compression is appropriate for the formats provided, capturing essential information succinctly.",
+      "violations": []
+    },
+    {
+      "id": "004",
+      "has_manipulative": false,
+      "original_length": 530,
+      "feed_title": "Federal Reserve Keeps Interest Rate Unchanged",
+      "feed_summary": "The Federal Reserve maintained its interest rate at 5.25-5.50%.",
+      "detail_title": "Federal Reserve Unanimously Keeps Rate at 5.25-5.50%",
+      "detail_brief": "The Federal Reserve maintained its benchmark interest rate at 5.25-5.50% after a two-day policy meeting on Wednesday. The decision was unanimous among voting members. Fed Chair Jerome Powell stated that the central bank is focused on bringing inflation back to its 2% target while also monitoring labor market conditions.\n\nPowell mentioned, \"We are prepared to adjust policy as appropriate\" during his post-meeting press conference. Markets had widely expected this decision.\n\nThe Federal Reserve's next meeting is scheduled for December.",
+      "constraints": {
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 63,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 7
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed outputs are neutral, accurate, and effectively compressed. They clearly convey the core information about the Federal Reserve's decision without any emotional or misleading language.",
+      "violations": []
+    },
+    {
+      "id": "005",
+      "has_manipulative": true,
+      "original_length": 1285,
+      "feed_title": "Flooding Displaces Thousands in Southeast Asia",
+      "feed_summary": "Severe flooding has displaced over 100,000 people across Southeast Asia.",
+      "detail_title": "Death Toll Rises to 45 Amid Southeast Asia Flooding",
+      "detail_brief": "Thousands of families have fled their homes due to severe flooding in Southeast Asia, with the death toll rising to 45. Officials have indicated that the number of fatalities could increase as rescue teams reach isolated communities. Over 100,000 people have been displaced across Vietnam, Thailand, and Cambodia.\n\nRelief organizations are facing challenges in responding to the scale of the disaster. The Red Cross has launched an emergency appeal for $50 million in humanitarian aid. Meteorologists have warned that more rain is expected in the coming days, which raises concerns about further loss of life.\n\nClimate experts have noted that such extreme weather events are becoming more common due to global warming. The international community has pledged support, but there are criticisms regarding the adequacy of the response given the extent of the situation.",
+      "constraints": {
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 72,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 9
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed title and summary are neutral, accurate, and effectively compressed. They capture the core event of the flooding and its impact without any emotional language or urgency framing.",
+      "violations": []
+    },
+    {
+      "id": "006",
+      "has_manipulative": false,
+      "original_length": 373,
+      "feed_title": "California Requires 20% Water Use Reduction",
+      "feed_summary": "California mandates urban water agencies to reduce consumption by 20% by 2030.",
+      "detail_title": "California Governor Signs Water Reduction Legislation",
+      "detail_brief": "California Governor Gavin Newsom signed legislation on Thursday that requires urban water agencies to reduce consumption by 20% by 2030. The law establishes water budgets for both indoor and outdoor residential use.\n\nWater agencies that do not meet the established targets may face potential fines. During the signing ceremony in Sacramento, Newsom described the measure as \"essential for California's future.\"",
+      "constraints": {
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 78,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 6
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed title and summary are neutral, accurately reflecting the core fact of the legislation without any emotional or urgent language. The compression is appropriate, capturing the essential information within the specified limits.",
+      "violations": []
+    },
+    {
+      "id": "007",
+      "has_manipulative": false,
+      "original_length": 924,
+      "feed_title": "Microsoft Plans $10 Billion Azure Investment",
+      "feed_summary": "Microsoft plans to invest $10 billion in Azure over three years.",
+      "detail_title": "Microsoft Plans $10 Billion Investment in Azure Cloud Infrastructure",
+      "detail_brief": "Microsoft announced plans to invest $10 billion in expanding its Azure cloud infrastructure over the next three years, focusing on artificial intelligence capabilities. The company will build new data centers in Texas, Georgia, and Wisconsin, which are expected to create approximately 5,000 jobs. This expansion is expected to increase Microsoft's computing capacity for AI workloads by about 40%.\n\nMicrosoft CEO Satya Nadella stated during the company's quarterly earnings call that \"enterprise demand for AI services continues to grow rapidly,\" and that this investment positions Azure to meet that demand. The announcement occurs amid competition with Amazon Web Services and Google Cloud for market share in the AI infrastructure market.\n\nConstruction on the new facilities is expected to begin in early 2025, with the first data center set to be operational by late 2026. Azure currently holds approximately 23% of the global cloud market.",
+      "constraints": {
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 64,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 9
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed outputs are neutral, accurate, and effectively compressed. They capture the essential information about Microsoft's investment in Azure without any emotional language or misleading implications.",
+      "violations": []
+    },
+    {
+      "id": "008",
+      "has_manipulative": false,
+      "original_length": 1847,
+      "feed_title": "Shipping Container Rates Decline Significantly",
+      "feed_summary": "Shipping container rates have fallen to their lowest levels since early 2021.",
+      "detail_title": "Shipping Rates Expected to Remain Stable Through 2024",
+      "detail_brief": "Global supply chain pressures have eased over the past quarter, with shipping container rates falling to their lowest levels since early 2021. The Drewry World Container Index reported a 75% decline from its peak in September 2021, with rates from Shanghai to Los Angeles now averaging $2,100 per 40-foot container, down from over $12,000 during pandemic disruptions.\n\nLars Jensen, CEO of container shipping consultancy Vespucci Maritime, stated, \"We're seeing a normalization of global trade flows,\" noting that port congestion has largely cleared and capacity is adequate to meet demand. Major retailers, including Walmart and Target, have reported improved inventory positions and reduced logistics costs. However, some economists caution that this improvement may reflect weakening consumer demand rather than solely supply-side gains.\n\nThe Baltic Dry Index, which measures bulk commodity shipping costs, has declined 40% from its 2022 highs, indicating broader improvements in maritime logistics. Factory output in key manufacturing hubs, such as China's Guangdong province, has stabilized, with lead times for electronic components returning to pre-pandemic norms. While semiconductor availability has improved, some specialty chips remain in short supply.\n\nAnalysts expect shipping rates to remain relatively stable through 2024, barring major geopolitical disruptions or unexpected demand surges. The industry is adding new vessel capacity, with 2.4 million TEUs of new container ships scheduled for delivery this year. Retailers are using the improved conditions to rebuild safety stock levels that were depleted during the supply crunch and are diversifying their supplier bases to reduce future vulnerability.",
+      "constraints": {
+        "feed_title_words": 5,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 77,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 8
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed outputs are neutral, accurately reflecting the core information from the original article without any emotional or urgent language. They effectively compress the key facts while maintaining clarity and relevance.",
+      "violations": []
+    },
+    {
+      "id": "009",
+      "has_manipulative": false,
+      "original_length": 1808,
+      "feed_title": "UN Climate Conference Agrees on Emissions Targets",
+      "feed_summary": "197 nations agreed to new emissions reduction targets and climate finance framework.",
+      "detail_title": "UN Climate Conference Concludes with New Emissions Agreement",
+      "detail_brief": "The United Nations Climate Change Conference concluded with 197 nations agreeing to new emissions reduction targets and a framework for climate finance. The agreement commits developed nations to mobilize $100 billion annually for climate adaptation in developing countries through 2030. Participating countries also pledged to submit updated nationally determined contributions by 2025.\n\nKey provisions of the agreement include a global methane reduction target of 30% by 2030, a commitment to phase down coal power generation, and new transparency requirements for emissions reporting. China agreed to accelerate its timeline for peak emissions but did not commit to a specific date earlier than the previously announced 2030 target. The United States reaffirmed its goal of 50-52% emissions reduction by 2030 compared to 2005 levels.\n\nUN Secretary-General Antonio Guterres stated that the outcome is \"a step forward, though much work remains,\" noting that current commitments still fall short of limiting global warming to 1.5 degrees Celsius above pre-industrial levels. Environmental groups had mixed reactions, with Greenpeace International calling the agreement \"insufficient to address the scale of the climate crisis,\" while the World Resources Institute described it as \"meaningful progress in a challenging geopolitical environment.\"\n\nThe next major climate summit is scheduled for November 2025 in Brazil, where nations will review progress on implementation. Brazilian President Luiz Inacio Lula da Silva has pledged to make Amazon deforestation a central topic. Scientists from the Intergovernmental Panel on Climate Change will release an updated assessment of global emissions trajectories in early 2025, which will inform future negotiations.",
+      "constraints": {
+        "feed_title_words": 7,
+        "feed_title_valid": true,
+        "feed_title_preferred": false,
+        "feed_summary_chars": 84,
+        "feed_summary_lines": 3,
+        "feed_summary_valid": true,
+        "detail_title_words": 8
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 10.0,
+      "feedback": "The feed outputs are neutral, accurate, and effectively compressed. They capture the essential information about the UN Climate Conference without any emotional or urgent language, and they adhere to the character limits.",
+      "violations": []
+    },
+    {
+      "id": "010",
+      "has_manipulative": true,
+      "original_length": 1619,
+      "feed_title": "Biden Administration Faces Border Policy Criticism",
+      "feed_summary": "Record migrant encounters reported, straining resources in border communities.",
+      "detail_title": "Border Situation Expected to Impact Upcoming Elections",
+      "detail_brief": "The Biden administration is facing criticism regarding its border policies, with critics claiming that these policies have led to a crisis at the southern border. Border Patrol reported over 200,000 encounters with migrants last month, which Republican lawmakers argue has emboldened drug cartels and human traffickers. Texas Governor Greg Abbott described the situation as an \"invasion\" and accused the administration of abandoning border security.\n\nThe influx of migrants has strained resources in border communities and cities across the country. New York City Mayor Eric Adams declared a state of emergency, indicating that the migrant situation could cost the city $12 billion over three years. Some conservative analysts suggest that the administration's policies aim to reshape the American electorate by facilitating future voting by migrants.\n\nThe White House has countered these claims by highlighting increased funding for border security and efforts to address the root causes of migration in Central America. Press Secretary Karine Jean-Pierre referred to the Republican criticism as \"political theater.\" \n\nHumanitarian organizations have reported worsening conditions at processing facilities, where families, including young children, are held in overcrowded temporary shelters. The border situation is expected to be a significant issue in upcoming elections, with polls indicating that immigration is among voters' top concerns.",
+      "constraints": {
+        "feed_title_words": 6,
+        "feed_title_valid": true,
+        "feed_title_preferred": true,
+        "feed_summary_chars": 78,
+        "feed_summary_lines": 2,
+        "feed_summary_valid": true,
+        "detail_title_words": 7
+      },
+      "grader_pass": true,
+      "grader_results": {
+        "feed_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "feed_summary": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        },
+        "detail_title": {
+          "overall_pass": true,
+          "results": [
+            {
+              "rule_id": "A1_NO_NEW_FACTS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "A4_COMPOUND_TERMS_ATOMIC",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B1_NO_URGENCY",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B2_NO_EMOTIONAL_AMPLIFICATION",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "B3_NO_AGENDA_SIGNALING",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "C2_NO_NAMED_POSSESSIVES",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D1_GRAMMAR_INTACT_MIN",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D2_NO_ALL_CAPS_EMPHASIS",
+              "passed": true,
+              "severity": "major",
+              "message": "",
+              "evidence": null
+            },
+            {
+              "rule_id": "D3_HEADLINE_MAX_12_WORDS",
+              "passed": true,
+              "severity": "critical",
+              "message": "",
+              "evidence": null
+            }
+          ]
+        }
+      },
+      "llm_score": 9.0,
+      "feedback": "The feed title and summary are neutral and accurately reflect the core facts of the article. There are minor style issues, such as the phrase 'straining resources,' which could be seen as slightly emotive, but overall, it maintains a good level of neutrality.",
+      "violations": []
+    }
+  ],
+  "grader_failures": [],
+  "constraint_violations": []
+}

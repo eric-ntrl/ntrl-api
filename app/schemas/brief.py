@@ -19,6 +19,12 @@ class BriefStory(BaseModel):
     has_manipulative_content: bool = Field(..., description="Whether content was modified")
     position: int = Field(..., description="Position within section")
 
+    # Detail fields (for article view - eliminates N+1 calls)
+    detail_title: Optional[str] = Field(None, description="Precise article headline")
+    detail_brief: Optional[str] = Field(None, description="3-5 paragraphs prose summary")
+    detail_full: Optional[str] = Field(None, description="Filtered full article text")
+    disclosure: Optional[str] = Field(None, description="Disclosure message about modifications")
+
     class Config:
         from_attributes = True
 

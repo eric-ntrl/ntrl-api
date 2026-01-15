@@ -5,9 +5,10 @@ Daily brief endpoints.
 GET /v1/brief - Get the current daily brief
 """
 
-from typing import List
+from datetime import datetime, timedelta
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -21,6 +22,12 @@ router = APIRouter(prefix="/v1", tags=["brief"])
 @router.get("/brief", response_model=BriefResponse)
 def get_brief(
     db: Session = Depends(get_db),
+    hours: Optional[int] = Query(
+        default=None,
+        ge=1,
+        le=168,
+        description="Filter to stories from last N hours (1-168). Default: all stories in brief."
+    ),
 ) -> BriefResponse:
     """
     Get the current daily brief.
@@ -28,6 +35,8 @@ def get_brief(
     Returns a deterministic feed of neutralized stories organized by section.
     Sections appear in fixed order: World, U.S., Local, Business & Markets, Technology.
     Stories within each section are ordered by time (most recent first).
+
+    Use ?hours=24 to get only stories from the last 24 hours (recommended for mobile).
 
     No personalization, trending, or engagement signals.
     """
@@ -58,8 +67,14 @@ def get_brief(
             empty_message=brief.empty_reason or "Insufficient qualifying stories in the last 24 hours.",
         )
 
+    # Calculate time cutoff if hours parameter provided
+    time_cutoff = None
+    if hours:
+        time_cutoff = datetime.utcnow() - timedelta(hours=hours)
+
     # Build sections
     sections: List[BriefSection] = []
+    total_filtered_stories = 0
 
     for section in Section:
         section_items = [
@@ -67,11 +82,29 @@ def get_brief(
             if item.section == section.value
         ]
 
+        # Apply time filter if specified
+        if time_cutoff:
+            section_items = [
+                item for item in section_items
+                if item.published_at >= time_cutoff
+            ]
+
         if not section_items:
             continue
 
-        stories = [
-            BriefStory(
+        # Fetch detail fields from story_neutralized for each item
+        story_ids = [item.story_neutralized_id for item in section_items]
+        neutralized_map = {}
+        if story_ids:
+            neutralized_stories = db.query(models.StoryNeutralized).filter(
+                models.StoryNeutralized.id.in_(story_ids)
+            ).all()
+            neutralized_map = {str(s.id): s for s in neutralized_stories}
+
+        stories = []
+        for item in sorted(section_items, key=lambda x: x.position):
+            neutralized = neutralized_map.get(str(item.story_neutralized_id))
+            stories.append(BriefStory(
                 id=str(item.story_neutralized_id),
                 feed_title=item.feed_title,
                 feed_summary=item.feed_summary,
@@ -80,9 +113,14 @@ def get_brief(
                 published_at=item.published_at,
                 has_manipulative_content=item.has_manipulative_content,
                 position=item.position,
-            )
-            for item in sorted(section_items, key=lambda x: x.position)
-        ]
+                # Detail fields from story_neutralized (for article view)
+                detail_title=neutralized.detail_title if neutralized else None,
+                detail_brief=neutralized.detail_brief if neutralized else None,
+                detail_full=neutralized.detail_full if neutralized else None,
+                disclosure=neutralized.disclosure if neutralized else None,
+            ))
+
+        total_filtered_stories += len(stories)
 
         sections.append(BriefSection(
             name=section.value,
@@ -101,7 +139,7 @@ def get_brief(
         cutoff_time=brief.cutoff_time,
         assembled_at=brief.assembled_at,
         sections=sections,
-        total_stories=brief.total_stories,
-        is_empty=False,
-        empty_message=None,
+        total_stories=total_filtered_stories if hours else brief.total_stories,
+        is_empty=len(sections) == 0,
+        empty_message="No stories in the requested time window." if len(sections) == 0 and hours else None,
     )
