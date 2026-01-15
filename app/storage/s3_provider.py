@@ -63,6 +63,10 @@ class S3StorageProvider(StorageProvider):
         self._endpoint_url = endpoint_url or os.getenv("S3_ENDPOINT_URL")
         self._region = region or os.getenv("S3_REGION", "us-east-1")
 
+        # Get AWS credentials explicitly from environment
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
         # Configure boto3 client
         config = Config(
             retries={"max_attempts": 3, "mode": "adaptive"},
@@ -70,12 +74,17 @@ class S3StorageProvider(StorageProvider):
             read_timeout=30,
         )
 
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=self._endpoint_url,
-            region_name=self._region,
-            config=config,
-        )
+        # Pass credentials explicitly if available
+        client_kwargs = {
+            "endpoint_url": self._endpoint_url,
+            "region_name": self._region,
+            "config": config,
+        }
+        if aws_access_key and aws_secret_key:
+            client_kwargs["aws_access_key_id"] = aws_access_key
+            client_kwargs["aws_secret_access_key"] = aws_secret_key
+
+        self._client = boto3.client("s3", **client_kwargs)
 
         logger.info(f"S3 storage initialized: bucket={self._bucket}")
 
