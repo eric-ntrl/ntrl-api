@@ -59,6 +59,8 @@ class StatusResponse(BaseModel):
     has_google_api_key: bool
     has_openai_api_key: bool
     has_anthropic_api_key: bool
+    has_aws_credentials: bool = False
+    s3_bucket: Optional[str] = None
     total_articles_ingested: int = 0
     total_articles_neutralized: int = 0
     total_sources: int = 0
@@ -125,6 +127,8 @@ def get_status(
         has_google_api_key=bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")),
         has_openai_api_key=bool(os.getenv("OPENAI_API_KEY")),
         has_anthropic_api_key=bool(os.getenv("ANTHROPIC_API_KEY")),
+        has_aws_credentials=bool(os.getenv("AWS_ACCESS_KEY_ID") and os.getenv("AWS_SECRET_ACCESS_KEY")),
+        s3_bucket=os.getenv("S3_BUCKET"),
         total_articles_ingested=total_ingested,
         total_articles_neutralized=total_neutralized,
         total_sources=total_sources,
