@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.request import Request, urlopen
 
 import feedparser
+import trafilatura
 from sqlalchemy.orm import Session
 
 from app import models
@@ -138,6 +139,41 @@ class IngestionService:
             content = response.read()
         return feedparser.parse(content)
 
+    def _extract_article_body(self, url: str, timeout: int = 15) -> Optional[str]:
+        """
+        Extract article body text from a URL using trafilatura.
+
+        Returns the main article text or None if extraction fails.
+        """
+        if not url:
+            return None
+
+        try:
+            # Fetch and extract with trafilatura (handles HTML fetching and text extraction)
+            downloaded = trafilatura.fetch_url(url)
+            if not downloaded:
+                logger.warning(f"Failed to download article from {url}")
+                return None
+
+            # Extract main text content
+            text = trafilatura.extract(
+                downloaded,
+                include_comments=False,
+                include_tables=False,
+                no_fallback=False,
+            )
+
+            if text and len(text) > 100:  # Minimum viable article length
+                logger.debug(f"Extracted {len(text)} chars from {url}")
+                return text
+            else:
+                logger.warning(f"Extracted text too short from {url}: {len(text) if text else 0} chars")
+                return None
+
+        except Exception as e:
+            logger.warning(f"Article extraction failed for {url}: {e}")
+            return None
+
     def _normalize_entry(
         self,
         entry: dict,
@@ -157,13 +193,17 @@ class IngestionService:
             import re
             description = re.sub(r'<[^>]+>', '', description)
 
-        # Get body (if available)
+        # Get body - first try RSS content field, then extract from URL
         body = None
         if 'content' in entry and entry['content']:
             body = entry['content'][0].get('value', '')
             if '<' in body:
                 import re
                 body = re.sub(r'<[^>]+>', '', body)
+
+        # If no body from RSS, extract from article URL
+        if not body and url:
+            body = self._extract_article_body(url)
 
         # Get author
         author = entry.get('author') or entry.get('dc_creator')
