@@ -193,17 +193,22 @@ class IngestionService:
             import re
             description = re.sub(r'<[^>]+>', '', description)
 
-        # Get body - first try RSS content field, then extract from URL
-        body = None
+        # Get body - try RSS content field first
+        rss_body = None
         if 'content' in entry and entry['content']:
-            body = entry['content'][0].get('value', '')
-            if '<' in body:
+            rss_body = entry['content'][0].get('value', '')
+            if '<' in rss_body:
                 import re
-                body = re.sub(r'<[^>]+>', '', body)
+                rss_body = re.sub(r'<[^>]+>', '', rss_body)
 
-        # If no body from RSS, extract from article URL
-        if not body and url:
-            body = self._extract_article_body(url)
+        # Extract from article URL (RSS feeds usually only have short excerpts)
+        extracted_body = self._extract_article_body(url) if url else None
+
+        # Use extracted body if available and longer, otherwise fall back to RSS
+        if extracted_body and len(extracted_body) > len(rss_body or ''):
+            body = extracted_body
+        else:
+            body = rss_body
 
         # Get author
         author = entry.get('author') or entry.get('dc_creator')

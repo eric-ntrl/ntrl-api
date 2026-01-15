@@ -4,6 +4,22 @@
 
 NTRL API is a neutral news backend service that removes manipulative language from news articles and creates calm, deterministic news briefs.
 
+## Core Architecture Principle
+
+**The original article body is the single source of truth.**
+
+```
+INGESTION:     RSS → Database (metadata) + S3 (body.txt)
+NEUTRALIZATION: body.txt → ALL outputs (title, summary, brief, full, spans)
+DISPLAY:        Neutralized content by default, originals only in "ntrl view"
+```
+
+- RSS title/description are stored for audit but NOT used for neutralization
+- All user-facing content is derived from the scraped article body
+- Transparency spans reference the original body for highlighting
+
+See `docs/ARCHITECTURE.md` for full details.
+
 ## Tech Stack
 
 - **Framework**: FastAPI (Python 3.11) with Uvicorn

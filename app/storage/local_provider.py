@@ -232,6 +232,33 @@ class LocalStorageProvider(StorageProvider):
 
         return expired_keys
 
+    def list_all(self, prefix: str = "raw/") -> list:
+        """List all objects with the given prefix."""
+        all_keys = []
+
+        prefix_path = self._base_path / prefix
+        if not prefix_path.exists():
+            return []
+
+        for meta_file in prefix_path.rglob(f"*{self._metadata_suffix}"):
+            key = str(meta_file.relative_to(self._base_path)).replace(
+                self._metadata_suffix, ""
+            )
+            all_keys.append(key)
+
+        return all_keys
+
+    def delete_all(self, prefix: str = "raw/") -> int:
+        """Delete all objects with the given prefix."""
+        keys = self.list_all(prefix)
+        deleted = 0
+
+        for key in keys:
+            if self.delete(key):
+                deleted += 1
+
+        return deleted
+
     def cleanup(self) -> None:
         """Remove all stored content (for testing)."""
         if self._base_path.exists():

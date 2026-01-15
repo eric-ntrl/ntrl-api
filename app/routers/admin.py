@@ -6,6 +6,7 @@ POST /v1/ingest/run - Trigger RSS ingestion
 POST /v1/neutralize/run - Trigger neutralization
 POST /v1/brief/run - Trigger brief assembly
 POST /v1/pipeline/run - Run full pipeline (ingest + neutralize + brief)
+POST /v1/reset - Reset all article data (testing only, disabled in production)
 GET  /v1/status - Get system status and configuration
 """
 
@@ -783,3 +784,94 @@ def test_prompts(
         # Restore original cache
         _prompt_cache.clear()
         _prompt_cache.update(original_cache)
+
+
+# -----------------------------------------------------------------------------
+# Reset endpoint (for testing)
+# -----------------------------------------------------------------------------
+
+class ResetResponse(BaseModel):
+    """Response for reset operation."""
+    status: str
+    started_at: datetime
+    finished_at: datetime
+    duration_ms: int
+    db_deleted: dict
+    storage_deleted: int
+    warning: Optional[str] = None
+
+
+@router.post("/reset", response_model=ResetResponse)
+def reset_all_data(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> ResetResponse:
+    """
+    Reset all article data for testing.
+
+    WARNING: This permanently deletes all stories, neutralizations,
+    briefs, and stored content. Only use in staging/testing environments.
+
+    Protected by admin API key.
+    """
+    from app import models
+    from app.storage.factory import get_storage_provider
+    import os
+
+    started_at = datetime.utcnow()
+
+    # Safety check - refuse to run in production
+    env = os.getenv("ENVIRONMENT", "development").lower()
+    if env == "production":
+        raise HTTPException(
+            status_code=403,
+            detail="Reset is disabled in production environment",
+        )
+
+    db_deleted = {
+        "transparency_spans": 0,
+        "daily_brief_items": 0,
+        "story_neutralized": 0,
+        "pipeline_logs": 0,
+        "daily_briefs": 0,
+        "story_raw": 0,
+    }
+
+    try:
+        # Delete in order respecting foreign key constraints
+        db_deleted["transparency_spans"] = db.query(models.TransparencySpan).delete()
+        db_deleted["daily_brief_items"] = db.query(models.DailyBriefItem).delete()
+        db_deleted["story_neutralized"] = db.query(models.StoryNeutralized).delete()
+        db_deleted["pipeline_logs"] = db.query(models.PipelineLog).delete()
+        db_deleted["daily_briefs"] = db.query(models.DailyBrief).delete()
+        db_deleted["story_raw"] = db.query(models.StoryRaw).delete()
+
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database reset failed: {str(e)}",
+        )
+
+    # Delete all objects from storage
+    storage_deleted = 0
+    warning = None
+    try:
+        storage = get_storage_provider()
+        storage_deleted = storage.delete_all(prefix="raw/")
+    except Exception as e:
+        warning = f"Storage cleanup failed: {str(e)}"
+
+    finished_at = datetime.utcnow()
+    duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+
+    return ResetResponse(
+        status="completed",
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=duration_ms,
+        db_deleted=db_deleted,
+        storage_deleted=storage_deleted,
+        warning=warning,
+    )

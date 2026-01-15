@@ -148,6 +148,26 @@ class StorageProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def list_all(self, prefix: str = "raw/") -> list:
+        """
+        List all objects with the given prefix.
+
+        Returns:
+            List of object keys
+        """
+        pass
+
+    @abstractmethod
+    def delete_all(self, prefix: str = "raw/") -> int:
+        """
+        Delete all objects with the given prefix.
+
+        Returns:
+            Number of objects deleted
+        """
+        pass
+
     def generate_key(
         self,
         story_id: str,

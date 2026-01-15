@@ -47,7 +47,12 @@ def _get_body_from_storage(story_raw: models.StoryRaw) -> Optional[str]:
 
 
 def _get_story_or_404(db: Session, story_id: str) -> tuple:
-    """Get story with neutralization or raise 404."""
+    """Get story with neutralization or raise 404.
+
+    Always returns the current neutralization, even if an old
+    neutralized ID is passed. This ensures transparency data
+    reflects the latest neutralization.
+    """
     try:
         story_uuid = uuid.UUID(story_id)
     except ValueError:
@@ -62,6 +67,18 @@ def _get_story_or_404(db: Session, story_id: str) -> tuple:
 
     if neutralized:
         story_raw = neutralized.story_raw
+        # If this is an old version, get the current one instead
+        if not neutralized.is_current:
+            current = (
+                db.query(models.StoryNeutralized)
+                .filter(
+                    models.StoryNeutralized.story_raw_id == story_raw.id,
+                    models.StoryNeutralized.is_current == True,
+                )
+                .first()
+            )
+            if current:
+                neutralized = current
     else:
         # Try by raw story ID
         story_raw = (

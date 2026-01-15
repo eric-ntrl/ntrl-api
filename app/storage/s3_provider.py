@@ -265,3 +265,36 @@ class S3StorageProvider(StorageProvider):
             logger.error(f"Failed to list expired objects: {e}")
 
         return expired_keys
+
+    def list_all(self, prefix: str = "raw/") -> list:
+        """List all objects with the given prefix."""
+        all_keys = []
+
+        try:
+            paginator = self._client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+                for obj in page.get("Contents", []):
+                    all_keys.append(obj["Key"])
+        except ClientError as e:
+            logger.error(f"Failed to list objects: {e}")
+
+        return all_keys
+
+    def delete_all(self, prefix: str = "raw/") -> int:
+        """Delete all objects with the given prefix."""
+        keys = self.list_all(prefix)
+        deleted = 0
+
+        # S3 batch delete supports up to 1000 objects at a time
+        for i in range(0, len(keys), 1000):
+            batch = keys[i:i + 1000]
+            try:
+                self._client.delete_objects(
+                    Bucket=self._bucket,
+                    Delete={"Objects": [{"Key": k} for k in batch]},
+                )
+                deleted += len(batch)
+            except ClientError as e:
+                logger.error(f"Failed to delete batch: {e}")
+
+        return deleted
