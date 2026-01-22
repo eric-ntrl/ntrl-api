@@ -1099,7 +1099,7 @@ YOUR TASK
 
 Produce three distinct outputs:
 1. feed_title: Ultra-short headline (≤6 words preferred, 12 words MAXIMUM)
-2. feed_summary: 2-3 sentence preview (≤175 characters MAXIMUM)
+2. feed_summary: 2 sentence preview (≤140 characters MAXIMUM)
 3. detail_title: Precise headline (≤12 words MAXIMUM)
 
 These are NOT variations of the same text. Each serves a different cognitive purpose.
@@ -1129,27 +1129,29 @@ GOOD: "Senate Passes Infrastructure Bill" (4 words)
 BAD: "Apple Announces New Feature" (drops "expected to" - VIOLATION)
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 2: feed_summary (≤175 characters MAXIMUM)
+OUTPUT 2: feed_summary (≤140 characters MAXIMUM)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Purpose: Lightweight context without delivering full understanding.
 
 HARD CONSTRAINTS:
-- ≤175 characters MAXIMUM (COUNT BEFORE OUTPUTTING)
-- 2 sentences PREFERRED (use 3 if they fit under 175 chars)
-- NO truncation or ellipses
-- If it doesn't fit, make it shorter
+- ≤140 characters MAXIMUM (COUNT BEFORE OUTPUTTING)
+- 2 complete sentences that END CLEANLY (no truncation)
+- NO ellipses (...) ever
+- If it doesn't fit in 140 chars, make it shorter
 
 CONTENT RULES:
-- Two to three sentences providing context
-- Answer: What happened? Who was involved? Why does it matter?
-- Provide enough detail for readers to understand the story
+- Exactly 2 sentences providing context
+- Answer: What happened? Who was involved?
+- Sentences must be COMPLETE - end with a period, not mid-thought
 - Factual, neutral tone
 - NO emotional amplifiers, urgency words, or selling language
 
-GOOD: "The bill passed 65-35 with bipartisan support. It includes funding for roads, bridges, and broadband infrastructure." (117 chars)
-GOOD: "Ukraine requested additional military aid from European allies. The request comes amid ongoing tensions with Russia." (116 chars)
-BAD: "The bill passed." (too short - needs more context)
+GOOD: "The bill passed 65-35 with bipartisan support. It funds roads, bridges, and broadband." (87 chars)
+GOOD: "Ukraine requested military aid from European allies. Tensions with Russia continue to escalate." (96 chars)
+GOOD: "Buckley expressed support for co-star Paul Mescal after his Oscar snub. 'Hamnet' received eight nominations." (109 chars)
+BAD: "The bill passed." (too short - needs 2 sentences)
+BAD: "Buckley, nominated for Best Actress for 'Hamnet,' expressed support for co-star Paul Mescal, who was not nominated for Best Supporting Actor. 'Hamnet' received eight Oscar nominations." (too long - over 140 chars)
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT 3: detail_title (≤12 words MAXIMUM)
@@ -1219,13 +1221,13 @@ Respond with JSON containing exactly these three fields:
 
 {{
   "feed_title": "≤6 words preferred, 12 max",
-  "feed_summary": "≤175 characters, 2-3 sentences",
+  "feed_summary": "≤140 characters, 2 complete sentences",
   "detail_title": "≤12 words, more specific than feed_title"
 }}
 
 BEFORE OUTPUTTING - VERIFY:
 1. feed_title word count: ≤12 words? (count now)
-2. feed_summary character count: ≤175 chars? (count now)
+2. feed_summary character count: ≤140 chars? (count now)
 3. detail_title word count: ≤12 words? (count now)
 4. Epistemic markers preserved? (check source for "expected to", "plans to")
 5. Scope markers preserved? (check source for "all", "entire", "every")"""
