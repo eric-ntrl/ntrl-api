@@ -1099,7 +1099,7 @@ YOUR TASK
 
 Produce three distinct outputs:
 1. feed_title: Ultra-short headline (≤6 words preferred, 12 words MAXIMUM)
-2. feed_summary: 2 sentence preview (≤115 characters MAXIMUM)
+2. feed_summary: 2 SHORT sentences (90-100 characters STRICT)
 3. detail_title: Precise headline (≤12 words MAXIMUM)
 
 These are NOT variations of the same text. Each serves a different cognitive purpose.
@@ -1129,29 +1129,29 @@ GOOD: "Senate Passes Infrastructure Bill" (4 words)
 BAD: "Apple Announces New Feature" (drops "expected to" - VIOLATION)
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 2: feed_summary (≤115 characters MAXIMUM)
+OUTPUT 2: feed_summary (STRICT 100 CHARACTER LIMIT)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Purpose: Lightweight context without delivering full understanding.
 
-HARD CONSTRAINTS:
-- ≤115 characters MAXIMUM (COUNT BEFORE OUTPUTTING)
-- 2 complete sentences that END CLEANLY (no truncation)
+STRICT CONSTRAINTS - VIOLATION WILL BE REJECTED:
+- MAXIMUM 100 characters (count EVERY character including spaces and periods)
+- Target 85-95 characters (leave buffer room)
+- 2 short, complete sentences
+- Each sentence should be ~40-50 characters
 - NO ellipses (...) ever
-- If it doesn't fit in 115 chars, make it shorter
 
 CONTENT RULES:
-- Exactly 2 sentences providing context
-- Answer: What happened? Who was involved?
-- Sentences must be COMPLETE - end with a period, not mid-thought
+- Two SHORT sentences providing context
+- Keep sentences concise - avoid unnecessary words
 - Factual, neutral tone
-- NO emotional amplifiers, urgency words, or selling language
 
-GOOD: "The bill passed 65-35 with bipartisan support. It funds roads, bridges, and broadband." (87 chars)
-GOOD: "Ukraine requested military aid from European allies. Tensions with Russia continue to escalate." (96 chars)
-GOOD: "Buckley expressed support for co-star Paul Mescal after his Oscar snub. 'Hamnet' received eight nominations." (109 chars)
+GOOD: "The bill passed 65-35. It funds roads and broadband infrastructure." (68 chars) ✓
+GOOD: "Ukraine requested military aid. Tensions with Russia continue." (62 chars) ✓
+GOOD: "Buckley supported Paul Mescal after his snub. 'Hamnet' earned eight nods." (74 chars) ✓
+GOOD: "Oscar nominations were announced Thursday. Several surprises emerged." (70 chars) ✓
 BAD: "The bill passed." (too short - needs 2 sentences)
-BAD: "Buckley, nominated for Best Actress for 'Hamnet,' expressed support for co-star Paul Mescal, who was not nominated for Best Supporting Actor." (too long - over 115 chars)
+BAD: "The 2026 Oscar nominations were announced on Thursday. Several expected front-runners were confirmed." (102 chars - TOO LONG)
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT 3: detail_title (≤12 words MAXIMUM)
@@ -1221,16 +1221,17 @@ Respond with JSON containing exactly these three fields:
 
 {{
   "feed_title": "≤6 words preferred, 12 max",
-  "feed_summary": "≤115 characters, 2 complete sentences",
+  "feed_summary": "85-100 chars ONLY, 2 short sentences",
   "detail_title": "≤12 words, more specific than feed_title"
 }}
 
-BEFORE OUTPUTTING - VERIFY:
+BEFORE OUTPUTTING - VERIFY (CRITICAL):
 1. feed_title word count: ≤12 words? (count now)
-2. feed_summary character count: ≤115 chars? (count now)
+2. feed_summary: COUNT EVERY CHARACTER NOW - must be ≤100 (target 85-95)
 3. detail_title word count: ≤12 words? (count now)
 4. Epistemic markers preserved? (check source for "expected to", "plans to")
-5. Scope markers preserved? (check source for "all", "entire", "every")"""
+
+If feed_summary is over 100 characters, REWRITE IT SHORTER before outputting."""
 
 
 # -----------------------------------------------------------------------------
