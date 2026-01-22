@@ -1098,21 +1098,22 @@ YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
 Produce three distinct outputs:
-1. feed_title: Short headline (50-60 characters, MAXIMUM 65)
-2. feed_summary: 2 SHORT sentences (90-105 characters, soft max 115)
+1. feed_title: Short headline (55-70 characters, MAXIMUM 75)
+2. feed_summary: 2-3 sentences continuing from title (140-160 characters, soft max 175)
 3. detail_title: Precise headline (≤12 words MAXIMUM)
 
 These are NOT variations of the same text. Each serves a different cognitive purpose.
+The feed_title and feed_summary will display INLINE (summary continues on same line as title ends).
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 1: feed_title (STRICT 65 CHARACTER LIMIT)
+OUTPUT 1: feed_title (STRICT 75 CHARACTER LIMIT)
 ═══════════════════════════════════════════════════════════════════════════════
 
-Purpose: Fast scanning and orientation in the feed. Must fit on 2 lines at all text sizes.
+Purpose: Fast scanning and orientation in the feed.
 
 STRICT CONSTRAINTS - TITLE MUST NEVER BE TRUNCATED:
-- MAXIMUM 65 characters (count EVERY character including spaces)
-- Target 50-60 characters (leave buffer room)
+- MAXIMUM 75 characters (count EVERY character including spaces)
+- Target 55-70 characters (leave buffer room)
 - COUNT YOUR CHARACTERS BEFORE OUTPUTTING
 
 CONTENT RULES:
@@ -1124,36 +1125,53 @@ CONTENT RULES:
 - NO colons introducing clauses (e.g., "Breaking: X happens")
 - NO ALL-CAPS except acronyms (NATO, FBI, CEO)
 
-GOOD: "Apple Expected to Announce New iPhone Feature" (45 chars) ✓
-GOOD: "Senate Passes Infrastructure Bill After Debate" (46 chars) ✓
-GOOD: "Zelenskyy Warns of European Inaction on Ukraine" (47 chars) ✓
+GOOD: "Apple Expected to Announce New iPhone Feature at Spring Event" (61 chars) ✓
+GOOD: "Senate Passes $1.2 Trillion Infrastructure Bill After Week of Debate" (68 chars) ✓
+GOOD: "Zelenskyy Warns of European Inaction on Ukraine Aid at Davos" (60 chars) ✓
 BAD: "Apple Announces New Feature" (drops "expected to" - VIOLATION)
-BAD: "The United States Senate Passes Major Infrastructure Bill After Lengthy Debate" (79 chars - TOO LONG)
+BAD: "The United States Senate Passes Major Infrastructure Bill with Bipartisan Support After Lengthy Debate" (102 chars - TOO LONG)
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 2: feed_summary (TARGET 105 CHARACTERS)
+OUTPUT 2: feed_summary (TARGET 160 CHARACTERS)
 ═══════════════════════════════════════════════════════════════════════════════
 
-Purpose: Lightweight context without delivering full understanding.
+Purpose: Provide context and details that CONTINUE from the feed_title. Displays inline after title.
 
 CONSTRAINTS:
-- Target 90-105 characters (count EVERY character including spaces and periods)
-- Maximum 115 characters (soft limit - some overflow acceptable)
-- 2 complete sentences with meaningful content
-- Each sentence should be ~45-55 characters
+- Target 140-160 characters (count EVERY character including spaces and periods)
+- Maximum 175 characters (soft limit - some overflow acceptable)
+- 2-3 complete sentences with meaningful content
 - NO ellipses (...) ever
 
+CRITICAL: NON-REDUNDANCY RULE
+- feed_summary MUST NOT repeat the subject or core fact from feed_title
+- feed_summary CONTINUES from where the title leaves off
+- Think: title = "who/what happened", summary = "context / details / so what"
+- If title names a person, summary should NOT start with that person's name
+- If title states the main event, summary should NOT restate that event
+
 CONTENT RULES:
-- Two sentences providing context and substance
-- Include specific details when possible (names, numbers, outcomes)
+- 2-3 sentences providing context, details, and substance
+- Include specific details: names, numbers, dates, outcomes, locations
 - Factual, neutral tone
 
-GOOD: "The bill passed 65-35 after a week of negotiations. It funds roads and broadband." (82 chars) ✓
-GOOD: "Ukraine requested additional military aid from allies. Tensions with Russia continue." (85 chars) ✓
-GOOD: "Buckley supported Paul Mescal after his Oscar snub. 'Hamnet' earned eight nominations." (86 chars) ✓
-GOOD: "Oscar nominations were announced Thursday morning. Several expected front-runners were confirmed." (97 chars) ✓
-BAD: "The bill passed." (too short - needs 2 sentences with substance)
-BAD: "The 2026 Oscar nominations ceremony was officially announced on Thursday. Several expected front-runners were confirmed including Brady Corbet." (143 chars - TOO LONG)
+GOOD EXAMPLES (title + summary that DON'T repeat):
+Title: "Senate Passes $1.2 Trillion Infrastructure Bill After Week of Debate"
+Summary: "The vote was 65-35 with bipartisan support. Funds will go to roads, bridges, and broadband expansion over five years." (117 chars) ✓
+
+Title: "Zelenskyy Warns of European Inaction on Ukraine Aid at Davos"
+Summary: "Speaking at the World Economic Forum, he criticized delays in military assistance. U.S. leadership changes have added urgency to the appeals." (142 chars) ✓
+
+Title: "Jessie Buckley Supports Paul Mescal After Oscar Snub"
+Summary: "'Hamnet' received eight nominations including Best Picture. The film has earned $45 million worldwide since its December release." (128 chars) ✓
+
+Title: "2026 Oscar Nominations Announced Thursday Morning"
+Summary: "Brady Corbet's 'The Brutalist' leads with ten nominations. The ceremony is scheduled for March 2nd at the Dolby Theatre." (121 chars) ✓
+
+BAD EXAMPLES (redundant - repeats title):
+Title: "Jessie Buckley Supports Paul Mescal" → Summary: "Jessie Buckley reacted to Paul Mescal's snub..." (REPEATS NAME AND EVENT)
+Title: "Oscar Nominations Announced" → Summary: "The Oscar nominations were announced Thursday..." (REPEATS EVENT)
+Title: "Zelenskyy Warns Leaders" → Summary: "Zelenskyy warned European leaders about..." (REPEATS SUBJECT AND VERB)
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT 3: detail_title (≤12 words MAXIMUM)
@@ -1222,19 +1240,21 @@ OUTPUT FORMAT
 Respond with JSON containing exactly these three fields:
 
 {{
-  "feed_title": "50-60 chars, max 65, NEVER truncated",
-  "feed_summary": "90-105 chars, soft max 115, 2 sentences",
+  "feed_title": "55-70 chars, max 75, NEVER truncated",
+  "feed_summary": "140-160 chars, soft max 175, 2-3 sentences, MUST NOT repeat title",
   "detail_title": "≤12 words, more specific than feed_title"
 }}
 
 BEFORE OUTPUTTING - VERIFY (CRITICAL):
-1. feed_title: COUNT EVERY CHARACTER NOW - must be ≤65 (target 50-60)
-2. feed_summary: COUNT EVERY CHARACTER NOW - must be ≤115 (target 90-105)
-3. detail_title word count: ≤12 words? (count now)
-4. Epistemic markers preserved? (check source for "expected to", "plans to")
+1. feed_title: COUNT EVERY CHARACTER NOW - must be ≤75 (target 55-70)
+2. feed_summary: COUNT EVERY CHARACTER NOW - must be ≤175 (target 140-160)
+3. feed_summary: Does it repeat the title's subject or event? If yes, REWRITE to continue from title instead
+4. detail_title word count: ≤12 words? (count now)
+5. Epistemic markers preserved? (check source for "expected to", "plans to")
 
-If feed_title is over 65 characters, REWRITE IT SHORTER before outputting.
-If feed_summary is over 115 characters, REWRITE IT SHORTER before outputting."""
+If feed_title is over 75 characters, REWRITE IT SHORTER before outputting.
+If feed_summary is over 175 characters, REWRITE IT SHORTER before outputting.
+If feed_summary repeats the title, REWRITE to add new information instead."""
 
 
 # -----------------------------------------------------------------------------
