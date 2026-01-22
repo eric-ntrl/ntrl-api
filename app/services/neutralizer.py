@@ -1099,7 +1099,7 @@ YOUR TASK
 
 Produce three distinct outputs:
 1. feed_title: Ultra-short headline (≤6 words preferred, 12 words MAXIMUM)
-2. feed_summary: 2 sentence preview (≤140 characters MAXIMUM)
+2. feed_summary: 2 sentence preview (≤115 characters MAXIMUM)
 3. detail_title: Precise headline (≤12 words MAXIMUM)
 
 These are NOT variations of the same text. Each serves a different cognitive purpose.
@@ -1129,16 +1129,16 @@ GOOD: "Senate Passes Infrastructure Bill" (4 words)
 BAD: "Apple Announces New Feature" (drops "expected to" - VIOLATION)
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 2: feed_summary (≤140 characters MAXIMUM)
+OUTPUT 2: feed_summary (≤115 characters MAXIMUM)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Purpose: Lightweight context without delivering full understanding.
 
 HARD CONSTRAINTS:
-- ≤140 characters MAXIMUM (COUNT BEFORE OUTPUTTING)
+- ≤115 characters MAXIMUM (COUNT BEFORE OUTPUTTING)
 - 2 complete sentences that END CLEANLY (no truncation)
 - NO ellipses (...) ever
-- If it doesn't fit in 140 chars, make it shorter
+- If it doesn't fit in 115 chars, make it shorter
 
 CONTENT RULES:
 - Exactly 2 sentences providing context
@@ -1151,7 +1151,7 @@ GOOD: "The bill passed 65-35 with bipartisan support. It funds roads, bridges, a
 GOOD: "Ukraine requested military aid from European allies. Tensions with Russia continue to escalate." (96 chars)
 GOOD: "Buckley expressed support for co-star Paul Mescal after his Oscar snub. 'Hamnet' received eight nominations." (109 chars)
 BAD: "The bill passed." (too short - needs 2 sentences)
-BAD: "Buckley, nominated for Best Actress for 'Hamnet,' expressed support for co-star Paul Mescal, who was not nominated for Best Supporting Actor. 'Hamnet' received eight Oscar nominations." (too long - over 140 chars)
+BAD: "Buckley, nominated for Best Actress for 'Hamnet,' expressed support for co-star Paul Mescal, who was not nominated for Best Supporting Actor." (too long - over 115 chars)
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT 3: detail_title (≤12 words MAXIMUM)
@@ -1221,13 +1221,13 @@ Respond with JSON containing exactly these three fields:
 
 {{
   "feed_title": "≤6 words preferred, 12 max",
-  "feed_summary": "≤140 characters, 2 complete sentences",
+  "feed_summary": "≤115 characters, 2 complete sentences",
   "detail_title": "≤12 words, more specific than feed_title"
 }}
 
 BEFORE OUTPUTTING - VERIFY:
 1. feed_title word count: ≤12 words? (count now)
-2. feed_summary character count: ≤140 chars? (count now)
+2. feed_summary character count: ≤115 chars? (count now)
 3. detail_title word count: ≤12 words? (count now)
 4. Epistemic markers preserved? (check source for "expected to", "plans to")
 5. Scope markers preserved? (check source for "all", "entire", "every")"""
