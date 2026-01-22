@@ -171,8 +171,8 @@ class NeutralizerProvider(ABC):
 
         Returns:
             dict with:
-            - feed_title: Ultra-short headline (≤6 words preferred, 12 max)
-            - feed_summary: 1-2 sentence preview (≤3 lines)
+            - feed_title: Short headline (50-60 chars, max 65)
+            - feed_summary: 2 sentence preview (90-105 chars, soft max 115)
             - detail_title: Precise headline for article page
         """
         pass
@@ -582,15 +582,15 @@ CONTENT OUTPUT SPECIFICATIONS
 ═══════════════════════════════════════════════════════════════════════════════
 
 FEED TITLE (feed_title)
-- Purpose: Fast scanning in feed
-- Length: ≤6 words preferred, 12 words maximum (hard cap)
+- Purpose: Fast scanning in feed (must fit 2 lines at all text sizes)
+- Length: 50-60 characters, MAXIMUM 65 characters (hard cap)
 - Content: Factual, neutral, descriptive
 - Avoid: Emotional language, urgency, clickbait, questions, teasers
 
 FEED SUMMARY (feed_summary)
-- Purpose: Lightweight context
-- Length: 1-2 complete sentences, must fit within 3 lines
-- If 2 sentences don't fit cleanly, use a single shorter sentence
+- Purpose: Lightweight context (fits ~3 lines)
+- Length: 90-105 characters, soft max 115 characters
+- 2 complete sentences with substance
 
 DETAIL TITLE (detail_title)
 - Purpose: Precise headline on article page
@@ -1098,22 +1098,22 @@ YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
 Produce three distinct outputs:
-1. feed_title: Ultra-short headline (≤6 words preferred, 12 words MAXIMUM)
-2. feed_summary: 2 SHORT sentences (90-100 characters STRICT)
+1. feed_title: Short headline (50-60 characters, MAXIMUM 65)
+2. feed_summary: 2 SHORT sentences (90-105 characters, soft max 115)
 3. detail_title: Precise headline (≤12 words MAXIMUM)
 
 These are NOT variations of the same text. Each serves a different cognitive purpose.
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 1: feed_title (≤12 words MAXIMUM, aim for ≤6)
+OUTPUT 1: feed_title (STRICT 65 CHARACTER LIMIT)
 ═══════════════════════════════════════════════════════════════════════════════
 
-Purpose: Fast scanning and orientation in the feed.
+Purpose: Fast scanning and orientation in the feed. Must fit on 2 lines at all text sizes.
 
-HARD CONSTRAINTS:
-- ≤6 words PREFERRED (aim for this)
-- 12 words MAXIMUM (NEVER exceed - will be rejected if over)
-- COUNT YOUR WORDS BEFORE OUTPUTTING
+STRICT CONSTRAINTS - TITLE MUST NEVER BE TRUNCATED:
+- MAXIMUM 65 characters (count EVERY character including spaces)
+- Target 50-60 characters (leave buffer room)
+- COUNT YOUR CHARACTERS BEFORE OUTPUTTING
 
 CONTENT RULES:
 - Factual, neutral, descriptive
@@ -1124,34 +1124,36 @@ CONTENT RULES:
 - NO colons introducing clauses (e.g., "Breaking: X happens")
 - NO ALL-CAPS except acronyms (NATO, FBI, CEO)
 
-GOOD: "Apple Expected to Announce New Feature" (7 words, preserves "expected to")
-GOOD: "Senate Passes Infrastructure Bill" (4 words)
+GOOD: "Apple Expected to Announce New iPhone Feature" (45 chars) ✓
+GOOD: "Senate Passes Infrastructure Bill After Debate" (46 chars) ✓
+GOOD: "Zelenskyy Warns of European Inaction on Ukraine" (47 chars) ✓
 BAD: "Apple Announces New Feature" (drops "expected to" - VIOLATION)
+BAD: "The United States Senate Passes Major Infrastructure Bill After Lengthy Debate" (79 chars - TOO LONG)
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 2: feed_summary (STRICT 100 CHARACTER LIMIT)
+OUTPUT 2: feed_summary (TARGET 105 CHARACTERS)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Purpose: Lightweight context without delivering full understanding.
 
-STRICT CONSTRAINTS - VIOLATION WILL BE REJECTED:
-- MAXIMUM 100 characters (count EVERY character including spaces and periods)
-- Target 85-95 characters (leave buffer room)
-- 2 short, complete sentences
-- Each sentence should be ~40-50 characters
+CONSTRAINTS:
+- Target 90-105 characters (count EVERY character including spaces and periods)
+- Maximum 115 characters (soft limit - some overflow acceptable)
+- 2 complete sentences with meaningful content
+- Each sentence should be ~45-55 characters
 - NO ellipses (...) ever
 
 CONTENT RULES:
-- Two SHORT sentences providing context
-- Keep sentences concise - avoid unnecessary words
+- Two sentences providing context and substance
+- Include specific details when possible (names, numbers, outcomes)
 - Factual, neutral tone
 
-GOOD: "The bill passed 65-35. It funds roads and broadband infrastructure." (68 chars) ✓
-GOOD: "Ukraine requested military aid. Tensions with Russia continue." (62 chars) ✓
-GOOD: "Buckley supported Paul Mescal after his snub. 'Hamnet' earned eight nods." (74 chars) ✓
-GOOD: "Oscar nominations were announced Thursday. Several surprises emerged." (70 chars) ✓
-BAD: "The bill passed." (too short - needs 2 sentences)
-BAD: "The 2026 Oscar nominations were announced on Thursday. Several expected front-runners were confirmed." (102 chars - TOO LONG)
+GOOD: "The bill passed 65-35 after a week of negotiations. It funds roads and broadband." (82 chars) ✓
+GOOD: "Ukraine requested additional military aid from allies. Tensions with Russia continue." (85 chars) ✓
+GOOD: "Buckley supported Paul Mescal after his Oscar snub. 'Hamnet' earned eight nominations." (86 chars) ✓
+GOOD: "Oscar nominations were announced Thursday morning. Several expected front-runners were confirmed." (97 chars) ✓
+BAD: "The bill passed." (too short - needs 2 sentences with substance)
+BAD: "The 2026 Oscar nominations ceremony was officially announced on Thursday. Several expected front-runners were confirmed including Brady Corbet." (143 chars - TOO LONG)
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT 3: detail_title (≤12 words MAXIMUM)
@@ -1220,18 +1222,19 @@ OUTPUT FORMAT
 Respond with JSON containing exactly these three fields:
 
 {{
-  "feed_title": "≤6 words preferred, 12 max",
-  "feed_summary": "85-100 chars ONLY, 2 short sentences",
+  "feed_title": "50-60 chars, max 65, NEVER truncated",
+  "feed_summary": "90-105 chars, soft max 115, 2 sentences",
   "detail_title": "≤12 words, more specific than feed_title"
 }}
 
 BEFORE OUTPUTTING - VERIFY (CRITICAL):
-1. feed_title word count: ≤12 words? (count now)
-2. feed_summary: COUNT EVERY CHARACTER NOW - must be ≤100 (target 85-95)
+1. feed_title: COUNT EVERY CHARACTER NOW - must be ≤65 (target 50-60)
+2. feed_summary: COUNT EVERY CHARACTER NOW - must be ≤115 (target 90-105)
 3. detail_title word count: ≤12 words? (count now)
 4. Epistemic markers preserved? (check source for "expected to", "plans to")
 
-If feed_summary is over 100 characters, REWRITE IT SHORTER before outputting."""
+If feed_title is over 65 characters, REWRITE IT SHORTER before outputting.
+If feed_summary is over 115 characters, REWRITE IT SHORTER before outputting."""
 
 
 # -----------------------------------------------------------------------------
@@ -1441,8 +1444,8 @@ def get_compression_feed_outputs_prompt() -> str:
     Get the user prompt template for feed outputs generation (Call 3: Compress).
 
     This prompt instructs the LLM to generate:
-    - feed_title: ≤6 words preferred, 12 words maximum
-    - feed_summary: 1-2 sentences, ≤3 lines
+    - feed_title: 50-60 chars, max 65 chars (must fit 2 lines)
+    - feed_summary: 90-105 chars, soft max 115 (fits ~3 lines)
     - detail_title: Longer, precise, neutral headline
 
     Output is JSON with all 3 fields.
