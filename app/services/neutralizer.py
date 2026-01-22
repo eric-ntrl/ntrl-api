@@ -1099,7 +1099,7 @@ YOUR TASK
 
 Produce three distinct outputs:
 1. feed_title: Ultra-short headline (≤6 words preferred, 12 words MAXIMUM)
-2. feed_summary: 1-2 sentence preview (≤100 characters MAXIMUM)
+2. feed_summary: 2-3 sentence preview (≤175 characters MAXIMUM)
 3. detail_title: Precise headline (≤12 words MAXIMUM)
 
 These are NOT variations of the same text. Each serves a different cognitive purpose.
@@ -1129,14 +1129,14 @@ GOOD: "Senate Passes Infrastructure Bill" (4 words)
 BAD: "Apple Announces New Feature" (drops "expected to" - VIOLATION)
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 2: feed_summary (≤100 characters MAXIMUM)
+OUTPUT 2: feed_summary (≤175 characters MAXIMUM)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Purpose: Lightweight context without delivering full understanding.
 
 HARD CONSTRAINTS:
-- ≤100 characters MAXIMUM (COUNT BEFORE OUTPUTTING)
-- 1 sentence PREFERRED (only use 2 if both fit under 100 chars)
+- ≤175 characters MAXIMUM (COUNT BEFORE OUTPUTTING)
+- 2 sentences PREFERRED (use 3 if they fit under 175 chars)
 - NO truncation or ellipses
 - If it doesn't fit, make it shorter
 
@@ -1219,13 +1219,13 @@ Respond with JSON containing exactly these three fields:
 
 {{
   "feed_title": "≤6 words preferred, 12 max",
-  "feed_summary": "≤100 characters, 1-2 sentences",
+  "feed_summary": "≤175 characters, 2-3 sentences",
   "detail_title": "≤12 words, more specific than feed_title"
 }}
 
 BEFORE OUTPUTTING - VERIFY:
 1. feed_title word count: ≤12 words? (count now)
-2. feed_summary character count: ≤100 chars? (count now)
+2. feed_summary character count: ≤175 chars? (count now)
 3. detail_title word count: ≤12 words? (count now)
 4. Epistemic markers preserved? (check source for "expected to", "plans to")
 5. Scope markers preserved? (check source for "all", "entire", "every")"""
