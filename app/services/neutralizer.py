@@ -1141,15 +1141,15 @@ HARD CONSTRAINTS:
 - If it doesn't fit, make it shorter
 
 CONTENT RULES:
-- One core fact with minimal context
-- Answer: What happened? (briefly)
-- Do NOT attempt full explanation
+- Two to three sentences providing context
+- Answer: What happened? Who was involved? Why does it matter?
+- Provide enough detail for readers to understand the story
 - Factual, neutral tone
 - NO emotional amplifiers, urgency words, or selling language
 
-GOOD: "The bill passed 65-35 with bipartisan support." (47 chars)
-GOOD: "Ukraine requested additional military aid from allies." (54 chars)
-BAD: "The U.S. Senate approved a $1.2 trillion infrastructure bill with a 69-30 vote, marking..." (too long)
+GOOD: "The bill passed 65-35 with bipartisan support. It includes funding for roads, bridges, and broadband infrastructure." (117 chars)
+GOOD: "Ukraine requested additional military aid from European allies. The request comes amid ongoing tensions with Russia." (116 chars)
+BAD: "The bill passed." (too short - needs more context)
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT 3: detail_title (≤12 words MAXIMUM)
