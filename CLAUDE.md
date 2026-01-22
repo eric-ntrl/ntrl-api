@@ -79,3 +79,32 @@ This project uses a PRD-driven development approach with Claude Code skills:
 - Follow PEP 8 conventions
 - Keep functions focused and small
 - Write tests for new functionality
+
+## Text/UI Length Constraints
+
+When UI text appears too long or gets truncated with "...", the constraint is usually in the **backend LLM prompt**, not frontend CSS.
+
+### Where to Look
+- `app/services/neutralizer.py` - Contains all LLM prompts
+- Search for `feed_summary`, `feed_title`, `detail_title`, `detail_brief`
+- Look for character/word limits in prompt text (e.g., "≤100 characters")
+
+### Key Lessons
+1. **LLMs don't count accurately** - If you need max 115 chars, tell the LLM 100
+2. **Examples > Instructions** - LLMs follow examples more than stated constraints
+3. **After changes**: Must re-neutralize articles with `force: true` flag
+4. **Frontend `numberOfLines`** only truncates display - doesn't control content length
+
+### Workflow for Length Changes
+1. Find constraint in `neutralizer.py` prompt
+2. Reduce limit (add 15-20% buffer for LLM inaccuracy)
+3. Update examples to match target length
+4. Deploy to Railway
+5. Re-neutralize: `POST /v1/neutralize/run` with `force: true`
+6. Rebuild brief: `POST /v1/brief/run`
+7. Verify in app
+
+### Reference: Line Capacity
+- Mobile displays ~38-42 chars per line
+- 2 lines ≈ 65 chars | 3 lines ≈ 100 chars | 4 lines ≈ 135 chars
+- Use `/ui-length` skill for guided workflow
