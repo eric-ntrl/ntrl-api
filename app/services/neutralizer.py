@@ -433,6 +433,7 @@ class MockNeutralizerProvider(NeutralizerProvider):
                 "feed_title": "",
                 "feed_summary": "",
                 "detail_title": "",
+                "section": "world",
             }
 
         # Use detail_brief if available, otherwise use body
@@ -485,6 +486,7 @@ class MockNeutralizerProvider(NeutralizerProvider):
             "feed_title": feed_title,
             "feed_summary": feed_summary,
             "detail_title": detail_title,
+            "section": "world",  # Mock always returns world (LLM providers do real classification)
         }
 
 
@@ -1234,15 +1236,67 @@ REFERENCE: DETAIL BRIEF (for context, already generated)
 {detail_brief}
 
 ═══════════════════════════════════════════════════════════════════════════════
+OUTPUT 4: section (REQUIRED)
+═══════════════════════════════════════════════════════════════════════════════
+
+Purpose: Categorize this article into one of 5 fixed news sections.
+
+SECTIONS (choose exactly one based on PRIMARY TOPIC):
+
+- "world"      : International/foreign affairs, non-US countries, UN, NATO, EU,
+                 foreign governments, international conflicts, global events
+                 NOT: US foreign policy (that's "us")
+
+- "us"         : US federal government, Congress, White House, Supreme Court,
+                 US elections, federal agencies (FBI, CIA, Pentagon),
+                 US foreign policy, national legislation
+                 NOT: State/local government (that's "local")
+
+- "local"      : City/municipal government, state-level politics,
+                 regional infrastructure, community events, school boards,
+                 local courts, zoning, transit
+                 NOT: Federal government (that's "us")
+
+- "business"   : Stock markets, corporate earnings, mergers, acquisitions,
+                 economic indicators (GDP, inflation), Federal Reserve policy,
+                 banking, finance, cryptocurrency
+                 INCLUDES: Tech company business performance (earnings, revenue)
+                 NOT: Tech products/features (that's "technology")
+
+- "technology" : Tech products, features, platforms, AI/ML, software, hardware,
+                 cybersecurity, data privacy, social media platforms,
+                 tech industry trends
+                 NOT: Tech company earnings (that's "business")
+
+DECISION TREE:
+1. Is it about a tech product/feature/platform/AI? → "technology"
+2. Is it about business performance, markets, economy? → "business"
+3. Is it about US federal government/politics? → "us"
+4. Is it about state/municipal government? → "local"
+5. Is it about international/foreign affairs? → "world"
+6. Still unsure? → "world" (safest default)
+
+EXAMPLES:
+- "Apple announces new iPhone feature" → "technology"
+- "Apple reports Q4 earnings" → "business"
+- "Apple faces EU antitrust probe" → "world"
+- "Senate passes infrastructure bill" → "us"
+- "City council approves transit plan" → "local"
+- "Fed raises interest rates" → "business"
+- "Zelenskyy addresses World Economic Forum" → "world"
+- "OpenAI releases new AI model" → "technology"
+
+═══════════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
 ═══════════════════════════════════════════════════════════════════════════════
 
-Respond with JSON containing exactly these three fields:
+Respond with JSON containing exactly these four fields:
 
 {{
   "feed_title": "55-70 chars, max 75, NEVER truncated",
   "feed_summary": "140-160 chars, soft max 175, 2-3 sentences, MUST NOT repeat title",
-  "detail_title": "≤12 words, more specific than feed_title"
+  "detail_title": "≤12 words, more specific than feed_title",
+  "section": "world|us|local|business|technology"
 }}
 
 BEFORE OUTPUTTING - VERIFY (CRITICAL):
@@ -1251,6 +1305,7 @@ BEFORE OUTPUTTING - VERIFY (CRITICAL):
 3. feed_summary: Does it repeat the title's subject or event? If yes, REWRITE to continue from title instead
 4. detail_title word count: ≤12 words? (count now)
 5. Epistemic markers preserved? (check source for "expected to", "plans to")
+6. section: Is it one of exactly: world, us, local, business, technology?
 
 If feed_title is over 75 characters, REWRITE IT SHORTER before outputting.
 If feed_summary is over 175 characters, REWRITE IT SHORTER before outputting.
@@ -1828,6 +1883,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 "feed_title": "",
                 "feed_summary": "",
                 "detail_title": "",
+                "section": "world",
             }
 
         if not self._api_key:
@@ -1857,6 +1913,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 "feed_title": data.get("feed_title", ""),
                 "feed_summary": data.get("feed_summary", ""),
                 "detail_title": data.get("detail_title", ""),
+                "section": data.get("section", "world"),
             }
 
         except Exception as e:
@@ -2015,13 +2072,14 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
         Generate compressed feed outputs using Gemini (Call 3: Compress).
 
         Uses shared article_system_prompt + compression_feed_outputs_prompt.
-        Returns dict with feed_title, feed_summary, detail_title.
+        Returns dict with feed_title, feed_summary, detail_title, section.
         """
         if not body and not detail_brief:
             return {
                 "feed_title": "",
                 "feed_summary": "",
                 "detail_title": "",
+                "section": "world",
             }
 
         if not self._api_key:
@@ -2051,6 +2109,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 "feed_title": data.get("feed_title", ""),
                 "feed_summary": data.get("feed_summary", ""),
                 "detail_title": data.get("detail_title", ""),
+                "section": data.get("section", "world"),
             }
 
         except Exception as e:
@@ -2218,13 +2277,14 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         Generate compressed feed outputs using Anthropic Claude (Call 3: Compress).
 
         Uses shared article_system_prompt + compression_feed_outputs_prompt.
-        Returns dict with feed_title, feed_summary, detail_title.
+        Returns dict with feed_title, feed_summary, detail_title, section.
         """
         if not body and not detail_brief:
             return {
                 "feed_title": "",
                 "feed_summary": "",
                 "detail_title": "",
+                "section": "world",
             }
 
         if not self._api_key:
@@ -2261,6 +2321,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 "feed_title": data.get("feed_title", ""),
                 "feed_summary": data.get("feed_summary", ""),
                 "detail_title": data.get("detail_title", ""),
+                "section": data.get("section", "world"),
             }
 
         except Exception as e:
@@ -2475,11 +2536,20 @@ class NeutralizerService:
                 else:
                     detail_brief = ""
 
-                # Call 3: Compress - produces feed_title, feed_summary, detail_title
+                # Call 3: Compress - produces feed_title, feed_summary, detail_title, section
                 feed_outputs = self.provider._neutralize_feed_outputs(
                     body or "",
                     detail_brief
                 )
+
+                # Apply LLM section classification if valid and different from keyword classifier
+                llm_section = feed_outputs.get("section", "").lower()
+                valid_sections = {s.value for s in models.Section}
+                if llm_section in valid_sections and llm_section != story.section:
+                    logger.info(
+                        f"Story {story.id}: section updated from '{story.section}' to '{llm_section}' (LLM classification)"
+                    )
+                    story.section = llm_section
 
                 # Determine if content was manipulative (has transparency spans)
                 has_manipulative_content = len(transparency_spans) > 0
