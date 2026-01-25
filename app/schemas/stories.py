@@ -87,3 +87,39 @@ class StoryTransparency(BaseModel):
     model_name: Optional[str] = Field(None, description="Model used for neutralization")
     prompt_version: Optional[str] = Field(None, description="Prompt version used")
     processed_at: datetime = Field(..., description="When neutralization was performed")
+
+
+class StoryDebug(BaseModel):
+    """
+    Debug view - diagnostic info for troubleshooting content display issues.
+    GET /v1/stories/{id}/debug
+    """
+    model_config = ConfigDict(from_attributes=True)
+
+    story_id: str = Field(..., description="Story ID (UUID)")
+
+    # Original content info
+    original_body: Optional[str] = Field(None, description="First 500 chars of original body from S3")
+    original_body_length: int = Field(0, description="Total length of original body")
+    original_body_available: bool = Field(False, description="Whether body is in storage")
+
+    # Neutralized content info
+    detail_full: Optional[str] = Field(None, description="First 500 chars of detail_full")
+    detail_full_length: int = Field(0, description="Total length of detail_full")
+    detail_brief: Optional[str] = Field(None, description="First 500 chars of detail_brief")
+    detail_brief_length: int = Field(0, description="Total length of detail_brief")
+
+    # Transparency spans info
+    span_count: int = Field(0, description="Number of transparency spans")
+    spans_sample: List[TransparencySpanResponse] = Field(
+        default_factory=list,
+        description="First 3 spans for debugging"
+    )
+
+    # Processing metadata
+    model_used: Optional[str] = Field(None, description="Model used for neutralization")
+    has_manipulative_content: bool = Field(False, description="Whether manipulative content was detected")
+
+    # Quality indicators
+    detail_full_readable: bool = Field(True, description="Basic readability check for detail_full")
+    issues: List[str] = Field(default_factory=list, description="Detected issues")

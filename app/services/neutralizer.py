@@ -929,6 +929,118 @@ If no changes are needed, return the original article unchanged with an empty sp
 
 
 # -----------------------------------------------------------------------------
+# Detail Full Synthesis Prompt (NEW: Synthesis approach instead of in-place filtering)
+# -----------------------------------------------------------------------------
+
+DEFAULT_SYNTHESIS_DETAIL_FULL_PROMPT = """Rewrite the following article in a neutral tone, preserving full length.
+
+═══════════════════════════════════════════════════════════════════════════════
+YOUR TASK
+═══════════════════════════════════════════════════════════════════════════════
+
+You are a NEUTRAL REWRITER. Your job is to produce a full-length neutralized
+version of the article that:
+1. REMOVES manipulative language (urgency, emotional triggers, clickbait)
+2. PRESERVES all facts, quotes, structure, and paragraph flow
+3. MAINTAINS similar length to the original (NOT shorter)
+4. ENSURES perfect grammar and readability
+
+This is NOT summarization - produce a full-length neutral version.
+
+═══════════════════════════════════════════════════════════════════════════════
+LANGUAGE TO NEUTRALIZE
+═══════════════════════════════════════════════════════════════════════════════
+
+REMOVE OR REPLACE these patterns:
+
+URGENCY (remove entirely, repair surrounding grammar):
+- "BREAKING", "BREAKING NEWS", "JUST IN", "DEVELOPING", "LIVE"
+- "shocking", "stunning", "dramatic", "explosive"
+- Start sentences cleanly without these words
+
+EMOTIONAL AMPLIFICATION (remove and repair):
+- "heartbreaking", "devastating", "horrifying", "alarming"
+- "breathtaking", "mind-blowing", "jaw-dropping"
+- "outrage", "fury", "livid" (unless direct quote)
+
+CONFLICT THEATER (replace with neutral verbs):
+- "slams" → "criticizes" or "responds to"
+- "blasts" → "criticizes"
+- "destroys" → "disputes"
+- "eviscerates" → "criticizes"
+
+CLICKBAIT (remove entirely):
+- "You won't believe"
+- "What happened next"
+- "This is huge"
+- "Here's why"
+- "Everything you need to know"
+
+ALL CAPS (convert to regular case):
+- Except acronyms like NATO, FBI, CEO
+
+═══════════════════════════════════════════════════════════════════════════════
+PRESERVE EXACTLY
+═══════════════════════════════════════════════════════════════════════════════
+
+- Original paragraph structure (same number of paragraphs)
+- All direct quotes with their attribution
+- All facts, names, dates, numbers, places, statistics
+- Real tension and conflict (news, not manipulation)
+- Epistemic markers (alleged, suspected, reportedly)
+
+═══════════════════════════════════════════════════════════════════════════════
+GRAMMAR RULES (CRITICAL)
+═══════════════════════════════════════════════════════════════════════════════
+
+When removing words, ensure sentences remain grammatically complete:
+
+WRONG: "In a development, the president announced..."
+RIGHT: "The president announced..." (clean start)
+
+WRONG: "She was to the event..." (missing verb)
+RIGHT: "She was invited to the event..." (complete)
+
+After EVERY change, read the sentence - it must sound natural.
+
+═══════════════════════════════════════════════════════════════════════════════
+ORIGINAL ARTICLE
+═══════════════════════════════════════════════════════════════════════════════
+
+{body}
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+Return ONLY the neutralized article text as plain text. No JSON. No metadata.
+Just the complete, grammatically correct, neutral article.
+
+The output should be similar in length to the input (full-length, not summarized).
+"""
+
+
+def get_synthesis_detail_full_prompt() -> str:
+    """
+    Get the user prompt template for detail_full synthesis (NEW approach).
+
+    This uses synthesis mode instead of in-place filtering:
+    - Easier for LLMs - no position tracking
+    - Better grammar preservation
+    - Produces readable output
+    """
+    return get_prompt("synthesis_detail_full_prompt", DEFAULT_SYNTHESIS_DETAIL_FULL_PROMPT)
+
+
+def build_synthesis_detail_full_prompt(body: str) -> str:
+    """
+    Build the user prompt for detail_full synthesis.
+    """
+    template = get_synthesis_detail_full_prompt()
+    return template.format(body=body or "")
+
+
+# -----------------------------------------------------------------------------
 # Detail Brief Synthesis Prompt (Call 2: Synthesize)
 # -----------------------------------------------------------------------------
 
@@ -2103,6 +2215,84 @@ class NeutralizationResponseError(Exception):
     pass
 
 
+def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str = None, model: str = None) -> DetailFullResult:
+    """
+    Fallback synthesis approach for detail_full when in-place filtering fails.
+
+    Uses synthesis mode (plain text output) instead of JSON with position tracking.
+    This produces more readable, grammatically correct output because it doesn't
+    require the LLM to track exact character positions while filtering.
+
+    Args:
+        body: Original article body
+        provider_name: "openai", "anthropic", or "gemini"
+        api_key: API key for the provider
+        model: Model name to use
+
+    Returns:
+        DetailFullResult with synthesized text and pattern-detected spans
+    """
+    if not body:
+        return DetailFullResult(detail_full="", spans=[])
+
+    # Get spans from mock provider (pattern-based detection on original body)
+    mock = MockNeutralizerProvider()
+    mock_result = mock._neutralize_detail_full(body)
+    spans = mock_result.spans
+
+    # Generate detail_full using synthesis prompt (plain text, not JSON)
+    try:
+        system_prompt = get_article_system_prompt()
+        user_prompt = build_synthesis_detail_full_prompt(body)
+
+        if provider_name == "openai" and api_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model=model or "gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+            )
+            detail_full = response.choices[0].message.content.strip()
+
+        elif provider_name == "anthropic" and api_key:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            response = client.messages.create(
+                model=model or "claude-sonnet-4-20250514",
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            detail_full = response.content[0].text.strip()
+
+        elif provider_name == "gemini" and api_key:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model_obj = genai.GenerativeModel(model or "gemini-2.0-flash")
+            full_prompt = f"{system_prompt}\n\n{user_prompt}"
+            response = model_obj.generate_content(full_prompt)
+            detail_full = response.text.strip()
+
+        else:
+            # No API key - use mock's output as fallback
+            detail_full = mock_result.detail_full
+
+        # Validate output isn't garbled
+        if _detect_garbled_output(body, detail_full):
+            logger.warning(f"Synthesis fallback also produced garbled output, using mock")
+            detail_full = mock_result.detail_full
+
+        return DetailFullResult(detail_full=detail_full, spans=spans)
+
+    except Exception as e:
+        logger.warning(f"Synthesis fallback failed: {e}, using mock output")
+        return mock_result
+
+
 def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResult:
     """
     Parse LLM JSON response for detail_full filtering into DetailFullResult.
@@ -2295,32 +2485,33 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             return parse_detail_full_response(data, body)
 
         except NeutralizationResponseError as e:
-            # LLM response missing required fields - retry with explicit instructions
+            # LLM response missing required fields or garbled - try synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
-                    f"OpenAI response missing 'filtered_article' (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                    f"OpenAI response error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(
-                    f"OpenAI detail_full failed after {MAX_RETRIES + 1} attempts: {e}. "
-                    "Falling back to mock provider."
+                # After retries failed, try synthesis fallback (produces better output than mock)
+                logger.warning(
+                    f"OpenAI filter failed after {MAX_RETRIES + 1} attempts: {e}. "
+                    "Trying synthesis fallback for better output quality."
                 )
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                return _synthesize_detail_full_fallback(body, "openai", self._api_key, self._model)
 
         except json.JSONDecodeError as e:
-            # JSON parsing failed - retry
+            # JSON parsing failed - retry, then synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"OpenAI returned invalid JSON (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
                 )
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(f"OpenAI JSON parse failed after {MAX_RETRIES + 1} attempts: {e}")
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                logger.warning(f"OpenAI JSON parse failed after {MAX_RETRIES + 1} attempts: {e}. Using synthesis fallback.")
+                return _synthesize_detail_full_fallback(body, "openai", self._api_key, self._model)
 
         except Exception as e:
-            # API error, timeout, rate limit - retry once
+            # API error, timeout, rate limit - retry once, then synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"OpenAI API error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
@@ -2329,10 +2520,10 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 time.sleep(1)  # Brief backoff before retry
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(
-                    f"OpenAI detail_full neutralization failed after {MAX_RETRIES + 1} attempts: {e}"
+                logger.warning(
+                    f"OpenAI detail_full failed after {MAX_RETRIES + 1} attempts: {e}. Using synthesis fallback."
                 )
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                return _synthesize_detail_full_fallback(body, "openai", self._api_key, self._model)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -2531,32 +2722,32 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             return parse_detail_full_response(data, body)
 
         except NeutralizationResponseError as e:
-            # LLM response missing required fields - retry
+            # LLM response missing required fields or garbled - try synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
-                    f"Gemini response missing 'filtered_article' (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                    f"Gemini response error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(
-                    f"Gemini detail_full failed after {MAX_RETRIES + 1} attempts: {e}. "
-                    "Falling back to mock provider."
+                logger.warning(
+                    f"Gemini filter failed after {MAX_RETRIES + 1} attempts: {e}. "
+                    "Using synthesis fallback."
                 )
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                return _synthesize_detail_full_fallback(body, "gemini", self._api_key, self._model)
 
         except json.JSONDecodeError as e:
-            # JSON parsing failed - retry
+            # JSON parsing failed - retry, then synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"Gemini returned invalid JSON (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
                 )
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(f"Gemini JSON parse failed after {MAX_RETRIES + 1} attempts: {e}")
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                logger.warning(f"Gemini JSON parse failed after {MAX_RETRIES + 1} attempts: {e}. Using synthesis fallback.")
+                return _synthesize_detail_full_fallback(body, "gemini", self._api_key, self._model)
 
         except Exception as e:
-            # API error, timeout, rate limit - retry once
+            # API error, timeout, rate limit - retry once, then synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"Gemini API error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
@@ -2565,10 +2756,10 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 time.sleep(1)  # Brief backoff before retry
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(
-                    f"Gemini detail_full neutralization failed after {MAX_RETRIES + 1} attempts: {e}"
+                logger.warning(
+                    f"Gemini detail_full failed after {MAX_RETRIES + 1} attempts: {e}. Using synthesis fallback."
                 )
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                return _synthesize_detail_full_fallback(body, "gemini", self._api_key, self._model)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -2775,32 +2966,32 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             return parse_detail_full_response(data, body)
 
         except NeutralizationResponseError as e:
-            # LLM response missing required fields - retry
+            # LLM response missing required fields or garbled - try synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
-                    f"Anthropic response missing 'filtered_article' (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                    f"Anthropic response error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(
-                    f"Anthropic detail_full failed after {MAX_RETRIES + 1} attempts: {e}. "
-                    "Falling back to mock provider."
+                logger.warning(
+                    f"Anthropic filter failed after {MAX_RETRIES + 1} attempts: {e}. "
+                    "Using synthesis fallback."
                 )
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                return _synthesize_detail_full_fallback(body, "anthropic", self._api_key, self._model)
 
         except json.JSONDecodeError as e:
-            # JSON parsing failed - retry
+            # JSON parsing failed - retry, then synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"Anthropic returned invalid JSON (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
                 )
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(f"Anthropic JSON parse failed after {MAX_RETRIES + 1} attempts: {e}")
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                logger.warning(f"Anthropic JSON parse failed after {MAX_RETRIES + 1} attempts: {e}. Using synthesis fallback.")
+                return _synthesize_detail_full_fallback(body, "anthropic", self._api_key, self._model)
 
         except Exception as e:
-            # API error, timeout, rate limit - retry once
+            # API error, timeout, rate limit - retry once, then synthesis fallback
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"Anthropic API error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
@@ -2809,10 +3000,10 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 time.sleep(1)  # Brief backoff before retry
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.error(
-                    f"Anthropic detail_full neutralization failed after {MAX_RETRIES + 1} attempts: {e}"
+                logger.warning(
+                    f"Anthropic detail_full failed after {MAX_RETRIES + 1} attempts: {e}. Using synthesis fallback."
                 )
-                return MockNeutralizerProvider()._neutralize_detail_full(body)
+                return _synthesize_detail_full_fallback(body, "anthropic", self._api_key, self._model)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """

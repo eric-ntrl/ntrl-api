@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models
-from app.schemas.stories import StoryDetail, StoryTransparency, TransparencySpanResponse
+from app.schemas.stories import StoryDetail, StoryTransparency, TransparencySpanResponse, StoryDebug
 from app.storage.factory import get_storage_provider
 
 logger = logging.getLogger(__name__)
@@ -295,4 +295,129 @@ def get_story_transparency(
         model_name=neutralized.model_name,
         prompt_version=neutralized.prompt_version,
         processed_at=neutralized.created_at,
+    )
+
+
+def _check_readability(text: Optional[str]) -> tuple[bool, list[str]]:
+    """
+    Basic readability check for neutralized text.
+    Returns (is_readable, list_of_issues).
+    """
+    if not text:
+        return True, []
+
+    issues = []
+
+    # Check for garbled text indicators
+    # 1. Unusual character sequences (non-English patterns)
+    unusual_chars = len([c for c in text if ord(c) > 127 and c not in '""''—–…'])
+    if unusual_chars > len(text) * 0.05:  # More than 5% unusual chars
+        issues.append(f"High unusual character ratio: {unusual_chars}/{len(text)}")
+
+    # 2. Repetitive patterns (LLM loop indicator)
+    words = text.split()
+    if len(words) > 10:
+        # Check for 3+ consecutive repeated words
+        for i in range(len(words) - 2):
+            if words[i] == words[i + 1] == words[i + 2]:
+                issues.append(f"Repetitive pattern detected: '{words[i]}' repeated 3+ times")
+                break
+
+    # 3. Missing sentence boundaries
+    sentences = text.split('.')
+    avg_sentence_len = len(text) / max(len(sentences), 1)
+    if avg_sentence_len > 500:  # Very long sentences suggest missing punctuation
+        issues.append(f"Long sentence avg: {avg_sentence_len:.0f} chars")
+
+    # 4. Truncation indicator
+    if text.endswith('...') or text.endswith('…') or text.endswith('['):
+        issues.append("Text appears truncated")
+
+    # 5. JSON/structured data leak
+    if '{' in text and '}' in text and ':' in text:
+        if text.count('{') > 2 or text.count('"') > 10:
+            issues.append("Possible JSON/structured data in text")
+
+    return len(issues) == 0, issues
+
+
+@router.get("/{story_id}/debug", response_model=StoryDebug)
+def get_story_debug(
+    story_id: str,
+    db: Session = Depends(get_db),
+) -> StoryDebug:
+    """
+    Get debug info for a story to diagnose content display issues.
+
+    Returns truncated content samples and diagnostic metadata to help
+    identify problems with original_body, detail_full, detail_brief, and spans.
+    """
+    neutralized, story_raw, source = _get_story_or_404(db, story_id)
+
+    # Get original body from storage
+    original_body = _get_body_from_storage(story_raw)
+    original_body_length = len(original_body) if original_body else 0
+    original_body_sample = original_body[:500] if original_body else None
+
+    # Get spans
+    spans = (
+        db.query(models.TransparencySpan)
+        .filter(models.TransparencySpan.story_neutralized_id == neutralized.id)
+        .order_by(models.TransparencySpan.field, models.TransparencySpan.start_char)
+        .limit(3)
+        .all()
+    )
+
+    span_responses = [
+        TransparencySpanResponse(
+            start_char=span.start_char,
+            end_char=span.end_char,
+            original_text=span.original_text,
+            action=span.action,
+            reason=span.reason,
+            replacement_text=span.replacement_text,
+        )
+        for span in spans
+    ]
+
+    # Get total span count
+    total_spans = (
+        db.query(models.TransparencySpan)
+        .filter(models.TransparencySpan.story_neutralized_id == neutralized.id)
+        .count()
+    )
+
+    # Check readability of detail_full
+    detail_full = neutralized.detail_full
+    detail_full_length = len(detail_full) if detail_full else 0
+    detail_full_sample = detail_full[:500] if detail_full else None
+    is_readable, issues = _check_readability(detail_full)
+
+    # Add span validity check
+    if original_body and spans:
+        for span in spans:
+            if span.start_char >= original_body_length or span.end_char > original_body_length:
+                issues.append(f"Span out of bounds: {span.start_char}-{span.end_char} (body len: {original_body_length})")
+                break
+
+    # Check detail_brief
+    detail_brief = neutralized.detail_brief
+    detail_brief_length = len(detail_brief) if detail_brief else 0
+    detail_brief_sample = detail_brief[:500] if detail_brief else None
+
+    return StoryDebug(
+        story_id=str(neutralized.id),
+        original_body=original_body_sample,
+        original_body_length=original_body_length,
+        original_body_available=story_raw.raw_content_available,
+        detail_full=detail_full_sample,
+        detail_full_length=detail_full_length,
+        detail_brief=detail_brief_sample,
+        detail_brief_length=detail_brief_length,
+        span_count=total_spans,
+        spans_sample=span_responses,
+        model_used=neutralized.model_name,
+        has_manipulative_content=neutralized.has_manipulative_content,
+        detail_full_readable=is_readable,
+        issues=issues,
     )
