@@ -297,93 +297,184 @@ class DetailFullGenerator:
     async def _openai_generate(
         self,
         body: str,
-        spans_formatted: str
+        spans_formatted: str,
+        retry_count: int = 0
     ) -> DetailFullResult:
-        """Generate using OpenAI API."""
-        client = await self._get_client()
+        """
+        Generate using OpenAI API with retry logic.
 
-        prompt = DETAIL_FULL_PROMPT.format(
-            body=body,
-            spans_formatted=spans_formatted
-        )
+        Retries on API errors and JSON parse failures.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        MAX_RETRIES = 2
 
-        response = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": self.config.model,
-                "max_tokens": self.config.max_tokens,
-                "temperature": self.config.temperature,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-                "response_format": {"type": "json_object"},
-            },
-        )
+        try:
+            client = await self._get_client()
 
-        if response.status_code != 200:
-            raise Exception(f"OpenAI API error: {response.status_code}")
+            prompt = DETAIL_FULL_PROMPT.format(
+                body=body,
+                spans_formatted=spans_formatted
+            )
 
-        result = response.json()
-        content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.config.model,
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": self.config.temperature,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                },
+            )
 
-        return self._parse_response(content, body)
+            if response.status_code != 200:
+                raise Exception(f"OpenAI API error: {response.status_code}")
+
+            result = response.json()
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+
+            return self._parse_response(content, body)
+
+        except Exception as e:
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"OpenAI detail_full failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
+                )
+                import asyncio
+                await asyncio.sleep(1)  # Brief backoff
+                return await self._openai_generate(body, spans_formatted, retry_count + 1)
+            else:
+                logger.error(f"OpenAI detail_full failed after {MAX_RETRIES + 1} attempts: {e}")
+                # Fall back to mock which does rule-based neutralization
+                from ..ntrl_scan.types import DetectionInstance
+                return self._mock_generate(body, [])
 
     async def _anthropic_generate(
         self,
         body: str,
-        spans_formatted: str
+        spans_formatted: str,
+        retry_count: int = 0
     ) -> DetailFullResult:
-        """Generate using Anthropic API."""
-        client = await self._get_client()
+        """
+        Generate using Anthropic API with retry logic.
 
-        prompt = DETAIL_FULL_PROMPT.format(
-            body=body,
-            spans_formatted=spans_formatted
-        )
+        Retries on API errors and JSON parse failures.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        MAX_RETRIES = 2
 
-        response = await client.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": os.getenv("ANTHROPIC_API_KEY"),
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": self.config.model,
-                "max_tokens": self.config.max_tokens,
-                "temperature": self.config.temperature,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-            },
-        )
+        try:
+            client = await self._get_client()
 
-        if response.status_code != 200:
-            raise Exception(f"Anthropic API error: {response.status_code}")
+            prompt = DETAIL_FULL_PROMPT.format(
+                body=body,
+                spans_formatted=spans_formatted
+            )
 
-        result = response.json()
-        content = result.get("content", [{}])[0].get("text", "{}")
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": os.getenv("ANTHROPIC_API_KEY"),
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": self.config.model,
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": self.config.temperature,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                },
+            )
 
-        return self._parse_response(content, body)
+            if response.status_code != 200:
+                raise Exception(f"Anthropic API error: {response.status_code}")
 
-    def _parse_response(self, content: str, fallback_body: str) -> DetailFullResult:
-        """Parse LLM response into DetailFullResult."""
+            result = response.json()
+            content = result.get("content", [{}])[0].get("text", "{}")
+
+            return self._parse_response(content, body)
+
+        except Exception as e:
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Anthropic detail_full failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
+                )
+                import asyncio
+                await asyncio.sleep(1)  # Brief backoff
+                return await self._anthropic_generate(body, spans_formatted, retry_count + 1)
+            else:
+                logger.error(f"Anthropic detail_full failed after {MAX_RETRIES + 1} attempts: {e}")
+                # Fall back to mock which does rule-based neutralization
+                return self._mock_generate(body, [])
+
+    def _parse_response(
+        self,
+        content: str,
+        fallback_body: str,
+        retry_count: int = 0
+    ) -> DetailFullResult:
+        """
+        Parse LLM response into DetailFullResult.
+
+        CRITICAL: This function now validates that neutralized_text is present
+        and different from the original. Silent fallback to original is a bug.
+        """
+        MAX_PARSE_RETRIES = 2
+
         try:
             data = json.loads(content)
+
+            # CRITICAL FIX: Check if neutralized_text exists
+            neutralized_text = data.get("neutralized_text")
+            if neutralized_text is None:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    f"V2 detail_full: LLM response missing 'neutralized_text' key. "
+                    f"Available keys: {list(data.keys())}"
+                )
+                # Don't silently return original - raise to trigger retry
+                raise ValueError("Missing neutralized_text in LLM response")
+
+            # Validate that neutralization actually happened
+            import difflib
+            ratio = difflib.SequenceMatcher(None, fallback_body, neutralized_text).ratio()
+            if ratio > 0.98:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"V2 detail_full: neutralized text nearly identical to original "
+                    f"(ratio={ratio:.3f}). Neutralization may have failed."
+                )
+
             return DetailFullResult(
-                text=data.get("neutralized_text", fallback_body),
+                text=neutralized_text,
                 changes=data.get("changes", [])
             )
-        except json.JSONDecodeError:
-            # If parsing fails, return original
-            return DetailFullResult(
-                text=fallback_body,
-                changes=[]
-            )
+
+        except json.JSONDecodeError as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"V2 detail_full: JSON parse error: {e}")
+
+            # Log the problematic content for debugging
+            if len(content) > 200:
+                logger.debug(f"Response content (truncated): {content[:200]}...")
+            else:
+                logger.debug(f"Response content: {content}")
+
+            # Don't silently return original - this is a bug
+            raise ValueError(f"Invalid JSON from LLM: {e}")
 
     async def close(self):
         """Close HTTP client."""

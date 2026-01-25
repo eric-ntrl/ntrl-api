@@ -1695,21 +1695,351 @@ def _correct_span_positions(spans: List[TransparencySpan], original_body: str) -
     return corrected
 
 
+def _extract_spans_from_diff(
+    original: str,
+    filtered: str,
+    field: str = "body"
+) -> List[TransparencySpan]:
+    """
+    Compare original and filtered text to find changes the LLM made
+    but didn't report in spans array.
+
+    Uses difflib to find actual differences between the original and filtered text.
+    This catches changes that the LLM made but forgot to report.
+
+    Args:
+        original: Original article body
+        filtered: Filtered article body from LLM
+        field: Field name for the spans (default "body")
+
+    Returns:
+        List of TransparencySpan objects representing detected changes
+    """
+    import difflib
+
+    if not original or not filtered:
+        return []
+
+    spans = []
+    matcher = difflib.SequenceMatcher(None, original, filtered, autojunk=False)
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'replace':
+            # Text was changed - this is the most common manipulation fix
+            original_text = original[i1:i2]
+            replacement_text = filtered[j1:j2]
+
+            # Only track if it's a meaningful change (not just whitespace)
+            if original_text.strip() and replacement_text.strip():
+                spans.append(TransparencySpan(
+                    field=field,
+                    start_char=i1,
+                    end_char=i2,
+                    original_text=original_text,
+                    action=SpanAction.REPLACED,
+                    reason=SpanReason.EMOTIONAL_MANIPULATION,  # Default, could be refined
+                    replacement_text=replacement_text,
+                ))
+        elif tag == 'delete':
+            # Text was removed entirely
+            original_text = original[i1:i2]
+
+            # Only track if it's meaningful content
+            if original_text.strip():
+                spans.append(TransparencySpan(
+                    field=field,
+                    start_char=i1,
+                    end_char=i2,
+                    original_text=original_text,
+                    action=SpanAction.REMOVED,
+                    reason=SpanReason.URGENCY_INFLATION,  # Default for removals
+                    replacement_text=None,
+                ))
+
+    return spans
+
+
+def _merge_spans(
+    llm_spans: List[TransparencySpan],
+    diff_spans: List[TransparencySpan]
+) -> List[TransparencySpan]:
+    """
+    Merge LLM-reported spans with diff-detected spans.
+
+    LLM spans have better reason/action metadata, so prefer them when
+    there's overlap. Diff spans catch changes the LLM forgot to report.
+
+    Args:
+        llm_spans: Spans reported by the LLM (may have better reasons)
+        diff_spans: Spans detected from text diff (guaranteed accurate positions)
+
+    Returns:
+        Merged list of spans, deduplicated and sorted by position
+    """
+    if not diff_spans:
+        return llm_spans
+    if not llm_spans:
+        return diff_spans
+
+    # Index LLM spans by their character ranges for quick lookup
+    llm_ranges = {}
+    for span in llm_spans:
+        llm_ranges[(span.start_char, span.end_char)] = span
+
+    merged = list(llm_spans)  # Start with all LLM spans
+    used_positions = {(s.start_char, s.end_char) for s in llm_spans}
+
+    # Add diff spans that don't overlap with LLM spans
+    for diff_span in diff_spans:
+        key = (diff_span.start_char, diff_span.end_char)
+        if key not in used_positions:
+            # Check for partial overlap
+            overlaps = False
+            for llm_start, llm_end in used_positions:
+                # Check if ranges overlap
+                if not (diff_span.end_char <= llm_start or diff_span.start_char >= llm_end):
+                    overlaps = True
+                    break
+
+            if not overlaps:
+                merged.append(diff_span)
+                used_positions.add(key)
+
+    # Sort by position
+    merged.sort(key=lambda s: s.start_char)
+    return merged
+
+
+def _validate_neutralization(original: str, filtered: str) -> bool:
+    """
+    Verify that filtered text is actually different from original.
+    If they're too similar (>98%), neutralization likely failed silently.
+
+    Args:
+        original: Original article body
+        filtered: Filtered article body
+
+    Returns:
+        True if neutralization appears to have worked, False if it looks unchanged
+    """
+    import difflib
+
+    if not original or not filtered:
+        return True  # Edge case - can't validate empty content
+
+    # Quick length check first
+    if original == filtered:
+        logger.warning("Neutralization validation FAILED: filtered == original (exact match)")
+        return False
+
+    # Use SequenceMatcher for similarity ratio
+    ratio = difflib.SequenceMatcher(None, original, filtered, autojunk=False).ratio()
+
+    if ratio > 0.98:
+        logger.warning(f"Neutralization validation WARNING: ratio={ratio:.3f} - text nearly unchanged")
+        return False
+
+    if ratio > 0.95:
+        logger.info(f"Neutralization ratio {ratio:.3f} - minimal changes detected")
+
+    return True
+
+
+def _convert_v2_detection_to_transparency_span(detection) -> TransparencySpan:
+    """
+    Convert a V2 DetectionInstance to a V1 TransparencySpan.
+
+    This enables using the more reliable V2 ntrl-scan detection
+    for transparency spans in the V1 pipeline.
+
+    Args:
+        detection: DetectionInstance from ntrl-scan
+
+    Returns:
+        TransparencySpan for V1 transparency display
+    """
+    from app.services.ntrl_scan.types import SpanAction as V2SpanAction
+
+    # Map V2 SpanAction to V1 SpanAction
+    action_mapping = {
+        V2SpanAction.REMOVE: SpanAction.REMOVED,
+        V2SpanAction.REPLACE: SpanAction.REPLACED,
+        V2SpanAction.REWRITE: SpanAction.SOFTENED,
+        V2SpanAction.ANNOTATE: SpanAction.SOFTENED,
+        V2SpanAction.PRESERVE: SpanAction.SOFTENED,
+    }
+
+    # Map V2 type categories to V1 SpanReason based on taxonomy
+    # Categories: A=Attention, B=Emotional, C=Cognitive, D=Linguistic, E=Structural, F=Incentive
+    def map_type_to_reason(type_id: str) -> SpanReason:
+        if not type_id:
+            return SpanReason.RHETORICAL_FRAMING
+        category = type_id.split('.')[0] if '.' in type_id else type_id[0]
+        category_mapping = {
+            'A': SpanReason.URGENCY_INFLATION,  # Attention/clickbait
+            'B': SpanReason.EMOTIONAL_MANIPULATION,  # Emotional
+            'C': SpanReason.RHETORICAL_FRAMING,  # Cognitive
+            'D': SpanReason.RHETORICAL_FRAMING,  # Linguistic
+            'E': SpanReason.RHETORICAL_FRAMING,  # Structural
+            'F': SpanReason.AGENDA_SIGNALING,  # Incentive/meta
+        }
+        return category_mapping.get(category.upper(), SpanReason.RHETORICAL_FRAMING)
+
+    action = action_mapping.get(detection.recommended_action, SpanAction.SOFTENED)
+    reason = map_type_to_reason(detection.type_id_primary)
+
+    return TransparencySpan(
+        field="body",
+        start_char=detection.span_start,
+        end_char=detection.span_end,
+        original_text=detection.text,
+        action=action,
+        reason=reason,
+        replacement_text=None,  # V2 doesn't provide replacement text
+    )
+
+
+async def _enhance_spans_with_v2_scan_async(
+    original_body: str,
+    llm_spans: List[TransparencySpan]
+) -> List[TransparencySpan]:
+    """
+    Async implementation of V2 ntrl-scan span enhancement.
+
+    V2 ntrl-scan uses regex patterns and spaCy NLP for precise detection
+    that doesn't rely on LLM self-reporting (which is unreliable).
+
+    Args:
+        original_body: The original article body (before neutralization)
+        llm_spans: Spans reported by the LLM
+
+    Returns:
+        Merged spans combining LLM and V2 detection
+    """
+    from app.services.ntrl_scan.scanner import NTRLScanner, ScannerConfig
+    from app.services.ntrl_scan.types import ArticleSegment
+
+    if not original_body:
+        return llm_spans
+
+    try:
+        # Use fast mode (no semantic detector) to avoid adding latency
+        config = ScannerConfig(
+            enable_lexical=True,
+            enable_structural=True,
+            enable_semantic=False,  # Skip semantic to keep it fast
+        )
+        scanner = NTRLScanner(config)
+        scan_result = await scanner.scan(original_body, ArticleSegment.BODY)
+
+        if not scan_result.spans:
+            return llm_spans
+
+        # Convert V2 detections to V1 spans
+        v2_spans = [
+            _convert_v2_detection_to_transparency_span(detection)
+            for detection in scan_result.spans
+        ]
+
+        # Log enhancement
+        if v2_spans and not llm_spans:
+            logger.info(
+                f"V2 ntrl-scan detected {len(v2_spans)} spans, LLM reported 0 - using V2 spans"
+            )
+        elif v2_spans and len(v2_spans) > len(llm_spans):
+            logger.info(
+                f"V2 ntrl-scan detected {len(v2_spans)} spans, LLM reported {len(llm_spans)} - merging"
+            )
+
+        # Merge LLM and V2 spans (V2 has accurate positions, LLM may have better reasons)
+        return _merge_spans(llm_spans, v2_spans)
+
+    except Exception as e:
+        logger.warning(f"V2 ntrl-scan enhancement failed: {e} - using LLM spans only")
+        return llm_spans
+
+
+def _enhance_spans_with_v2_scan(
+    original_body: str,
+    llm_spans: List[TransparencySpan]
+) -> List[TransparencySpan]:
+    """
+    Enhance LLM-reported spans with V2 ntrl-scan detection.
+
+    Synchronous wrapper around the async implementation. Properly handles
+    cases where an event loop is already running (e.g., in FastAPI context).
+
+    Args:
+        original_body: The original article body (before neutralization)
+        llm_spans: Spans reported by the LLM
+
+    Returns:
+        Merged spans combining LLM and V2 detection
+    """
+    import asyncio
+
+    try:
+        # Try to get current event loop
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # We're in an async context (e.g., FastAPI) - create a new loop in thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    _enhance_spans_with_v2_scan_async(original_body, llm_spans)
+                )
+                return future.result(timeout=10)
+        else:
+            # No running loop - use asyncio.run
+            return asyncio.run(_enhance_spans_with_v2_scan_async(original_body, llm_spans))
+    except RuntimeError:
+        # No event loop exists - create one
+        return asyncio.run(_enhance_spans_with_v2_scan_async(original_body, llm_spans))
+    except Exception as e:
+        logger.warning(f"V2 ntrl-scan sync wrapper failed: {e} - using LLM spans only")
+        return llm_spans
+
+
+class NeutralizationResponseError(Exception):
+    """Raised when LLM response is missing required fields."""
+    pass
+
+
 def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResult:
     """
     Parse LLM JSON response for detail_full filtering into DetailFullResult.
 
+    CRITICAL: This function NO LONGER silently falls back to original_body.
+    If the LLM response is missing 'filtered_article', it raises an exception
+    so the caller can retry or handle the error appropriately.
+
     Args:
         data: Parsed JSON dict from LLM with filtered_article and spans
-        original_body: Original body text (for fallback if parsing fails)
+        original_body: Original body text (used for span detection, NOT fallback)
 
     Returns:
         DetailFullResult with filtered article and transparency spans
-    """
-    filtered_article = data.get("filtered_article", original_body)
-    spans_data = data.get("spans", [])
 
-    spans = []
+    Raises:
+        NeutralizationResponseError: If LLM response is missing 'filtered_article'
+    """
+    # CRITICAL FIX: Do NOT silently fall back to original_body
+    # This was the root cause of full view showing non-neutralized content
+    filtered_article = data.get("filtered_article")
+
+    if filtered_article is None:
+        logger.error(
+            "LLM response missing 'filtered_article' key - this is a critical error. "
+            f"Available keys: {list(data.keys())}"
+        )
+        raise NeutralizationResponseError(
+            "LLM response missing 'filtered_article' - cannot silently return original"
+        )
+
+    # Parse LLM-reported spans
+    spans_data = data.get("spans", [])
+    llm_spans = []
     for span_data in spans_data:
         try:
             span = TransparencySpan(
@@ -1721,17 +2051,42 @@ def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResu
                 reason=_parse_span_reason(span_data.get("reason", "rhetorical_framing")),
                 replacement_text=span_data.get("replacement_text"),
             )
-            spans.append(span)
+            llm_spans.append(span)
         except Exception as e:
             logger.warning(f"Failed to parse span: {e}")
             continue
 
-    # Correct span positions by searching for actual text in body
-    corrected_spans = _correct_span_positions(spans, original_body)
+    # Correct LLM span positions by searching for actual text in body
+    corrected_llm_spans = _correct_span_positions(llm_spans, original_body)
+
+    # CRITICAL FIX: Extract spans from actual diff to catch changes LLM didn't report
+    # LLMs frequently return empty spans arrays even when they made changes
+    diff_spans = _extract_spans_from_diff(original_body, filtered_article)
+
+    if diff_spans and not corrected_llm_spans:
+        logger.info(
+            f"LLM reported 0 spans but diff detected {len(diff_spans)} changes - "
+            "using diff-extracted spans"
+        )
+    elif diff_spans and len(diff_spans) > len(corrected_llm_spans):
+        logger.info(
+            f"LLM reported {len(corrected_llm_spans)} spans, "
+            f"diff detected {len(diff_spans)} - merging"
+        )
+
+    # Merge LLM spans with diff-detected spans (catches what LLM missed)
+    merged_spans = _merge_spans(corrected_llm_spans, diff_spans)
+
+    # Validate that neutralization actually happened
+    if not _validate_neutralization(original_body, filtered_article):
+        logger.warning(
+            "Neutralization validation failed - filtered text nearly identical to original. "
+            "This may indicate LLM did not properly neutralize the content."
+        )
 
     return DetailFullResult(
         detail_full=filtered_article,
-        spans=corrected_spans,
+        spans=merged_spans,
     )
 
 
@@ -1795,12 +2150,15 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             logger.error(f"OpenAI neutralization failed: {e}")
             return MockNeutralizerProvider().neutralize(title, description, body)
 
-    def _neutralize_detail_full(self, body: str) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
         Filter an article body using OpenAI (Call 1: Filter & Track).
 
         Uses shared article_system_prompt + filter_detail_full_prompt.
+        Includes retry logic for transient failures and response parsing errors.
         """
+        MAX_RETRIES = 2
+
         if not body:
             return DetailFullResult(detail_full="", spans=[])
 
@@ -1829,9 +2187,45 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             data = json.loads(response.choices[0].message.content)
             return parse_detail_full_response(data, body)
 
+        except NeutralizationResponseError as e:
+            # LLM response missing required fields - retry with explicit instructions
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"OpenAI response missing 'filtered_article' (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                )
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(
+                    f"OpenAI detail_full failed after {MAX_RETRIES + 1} attempts: {e}. "
+                    "Falling back to mock provider."
+                )
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
+
+        except json.JSONDecodeError as e:
+            # JSON parsing failed - retry
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"OpenAI returned invalid JSON (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                )
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(f"OpenAI JSON parse failed after {MAX_RETRIES + 1} attempts: {e}")
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
+
         except Exception as e:
-            logger.error(f"OpenAI detail_full neutralization failed: {e}")
-            return MockNeutralizerProvider()._neutralize_detail_full(body)
+            # API error, timeout, rate limit - retry once
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"OpenAI API error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
+                )
+                import time
+                time.sleep(1)  # Brief backoff before retry
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(
+                    f"OpenAI detail_full neutralization failed after {MAX_RETRIES + 1} attempts: {e}"
+                )
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -1992,12 +2386,15 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             logger.error(f"Gemini neutralization failed: {e}")
             return MockNeutralizerProvider().neutralize(title, description, body)
 
-    def _neutralize_detail_full(self, body: str) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
         Filter an article body using Gemini (Call 1: Filter & Track).
 
         Uses shared article_system_prompt + filter_detail_full_prompt.
+        Includes retry logic for transient failures and response parsing errors.
         """
+        MAX_RETRIES = 2
+
         if not body:
             return DetailFullResult(detail_full="", spans=[])
 
@@ -2026,9 +2423,45 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             data = json.loads(response.text)
             return parse_detail_full_response(data, body)
 
+        except NeutralizationResponseError as e:
+            # LLM response missing required fields - retry
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Gemini response missing 'filtered_article' (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                )
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(
+                    f"Gemini detail_full failed after {MAX_RETRIES + 1} attempts: {e}. "
+                    "Falling back to mock provider."
+                )
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
+
+        except json.JSONDecodeError as e:
+            # JSON parsing failed - retry
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Gemini returned invalid JSON (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                )
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(f"Gemini JSON parse failed after {MAX_RETRIES + 1} attempts: {e}")
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
+
         except Exception as e:
-            logger.error(f"Gemini detail_full neutralization failed: {e}")
-            return MockNeutralizerProvider()._neutralize_detail_full(body)
+            # API error, timeout, rate limit - retry once
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Gemini API error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
+                )
+                import time
+                time.sleep(1)  # Brief backoff before retry
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(
+                    f"Gemini detail_full neutralization failed after {MAX_RETRIES + 1} attempts: {e}"
+                )
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -2190,12 +2623,15 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             logger.error(f"Anthropic neutralization failed: {e}")
             return MockNeutralizerProvider().neutralize(title, description, body)
 
-    def _neutralize_detail_full(self, body: str) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
         Filter an article body using Anthropic Claude (Call 1: Filter & Track).
 
         Uses shared article_system_prompt + filter_detail_full_prompt.
+        Includes retry logic for transient failures and response parsing errors.
         """
+        MAX_RETRIES = 2
+
         if not body:
             return DetailFullResult(detail_full="", spans=[])
 
@@ -2231,9 +2667,45 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             data = json.loads(text.strip())
             return parse_detail_full_response(data, body)
 
+        except NeutralizationResponseError as e:
+            # LLM response missing required fields - retry
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Anthropic response missing 'filtered_article' (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                )
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(
+                    f"Anthropic detail_full failed after {MAX_RETRIES + 1} attempts: {e}. "
+                    "Falling back to mock provider."
+                )
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
+
+        except json.JSONDecodeError as e:
+            # JSON parsing failed - retry
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Anthropic returned invalid JSON (attempt {retry_count + 1}/{MAX_RETRIES + 1}), retrying..."
+                )
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(f"Anthropic JSON parse failed after {MAX_RETRIES + 1} attempts: {e}")
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
+
         except Exception as e:
-            logger.error(f"Anthropic detail_full neutralization failed: {e}")
-            return MockNeutralizerProvider()._neutralize_detail_full(body)
+            # API error, timeout, rate limit - retry once
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Anthropic API error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
+                )
+                import time
+                time.sleep(1)  # Brief backoff before retry
+                return self._neutralize_detail_full(body, retry_count + 1)
+            else:
+                logger.error(
+                    f"Anthropic detail_full neutralization failed after {MAX_RETRIES + 1} attempts: {e}"
+                )
+                return MockNeutralizerProvider()._neutralize_detail_full(body)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -2526,6 +2998,21 @@ class NeutralizerService:
                 if body:
                     detail_full_result = self.provider._neutralize_detail_full(body)
                     transparency_spans = detail_full_result.spans
+
+                    # CRITICAL FIX: Enhance LLM spans with V2 ntrl-scan detection
+                    # LLMs are unreliable at tracking spans - they often return empty arrays
+                    # V2 ntrl-scan uses regex + spaCy for precise detection
+                    try:
+                        enhanced_spans = _enhance_spans_with_v2_scan(body, transparency_spans)
+                        if len(enhanced_spans) != len(transparency_spans):
+                            logger.info(
+                                f"Story {story.id}: V2 scan enhanced spans "
+                                f"({len(transparency_spans)} LLM → {len(enhanced_spans)} total)"
+                            )
+                        transparency_spans = enhanced_spans
+                    except Exception as e:
+                        logger.warning(f"V2 scan enhancement failed for story {story.id}: {e}")
+                        # Continue with LLM spans only
                 else:
                     detail_full_result = DetailFullResult(detail_full="", spans=[])
                     transparency_spans = []
@@ -2717,6 +3204,21 @@ class NeutralizerService:
                 if body:
                     detail_full_result = self.provider._neutralize_detail_full(body)
                     transparency_spans = detail_full_result.spans
+
+                    # CRITICAL FIX: Enhance LLM spans with V2 ntrl-scan detection
+                    # LLMs are unreliable at tracking spans - they often return empty arrays
+                    # V2 ntrl-scan uses regex + spaCy for precise detection
+                    try:
+                        enhanced_spans = _enhance_spans_with_v2_scan(body, transparency_spans)
+                        if len(enhanced_spans) != len(transparency_spans):
+                            logger.info(
+                                f"Story {story_id}: V2 scan enhanced spans "
+                                f"({len(transparency_spans)} LLM → {len(enhanced_spans)} total)"
+                            )
+                        transparency_spans = enhanced_spans
+                    except Exception as e:
+                        logger.warning(f"V2 scan enhancement failed for story {story_id}: {e}")
+                        # Continue with LLM spans only
                 else:
                     detail_full_result = DetailFullResult(detail_full="", spans=[])
                     transparency_spans = []
