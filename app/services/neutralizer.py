@@ -3332,14 +3332,16 @@ class NeutralizerService:
 
         started_at = datetime.utcnow()
 
-        # Get stories to process - only those with body content available
-        query = db.query(models.StoryRaw).filter(
-            models.StoryRaw.is_duplicate == False,
-            models.StoryRaw.raw_content_available == True,  # Skip articles without body
-            models.StoryRaw.raw_content_uri.isnot(None),    # Must have storage reference
-        )
-
+        # Get stories to process
         if story_ids:
+            # When specific IDs are requested, skip is_duplicate filter
+            # (user explicitly wants these stories re-neutralized)
+            # Still require body content to be available
+            query = db.query(models.StoryRaw).filter(
+                models.StoryRaw.raw_content_available == True,
+                models.StoryRaw.raw_content_uri.isnot(None),
+            )
+
             # Convert string IDs to UUIDs
             requested_uuids = [uuid.UUID(sid) for sid in story_ids]
 
@@ -3365,13 +3367,20 @@ class NeutralizerService:
                         existing_raw_ids.add(mapping[0])
 
             query = query.filter(models.StoryRaw.id.in_(existing_raw_ids))
-        elif not force:
-            # Only get stories without current neutralization
-            subq = (
-                db.query(models.StoryNeutralized.story_raw_id)
-                .filter(models.StoryNeutralized.is_current == True)
+        else:
+            # Default query: exclude duplicates, require body content
+            query = db.query(models.StoryRaw).filter(
+                models.StoryRaw.is_duplicate == False,
+                models.StoryRaw.raw_content_available == True,
+                models.StoryRaw.raw_content_uri.isnot(None),
             )
-            query = query.filter(~models.StoryRaw.id.in_(subq))
+            if not force:
+                # Only get stories without current neutralization
+                subq = (
+                    db.query(models.StoryNeutralized.story_raw_id)
+                    .filter(models.StoryNeutralized.is_current == True)
+                )
+                query = query.filter(~models.StoryRaw.id.in_(subq))
 
         # Prioritize fresh articles - most recent first
         stories = query.order_by(models.StoryRaw.published_at.desc()).limit(limit).all()
