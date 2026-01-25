@@ -514,10 +514,13 @@ def run_pipeline(
 
 class ScheduledRunRequest(BaseModel):
     """Request for scheduled pipeline run."""
-    max_items_per_source: int = Field(20, ge=1, le=100, description="Max items to ingest per source")
-    neutralize_limit: int = Field(100, ge=1, le=500, description="Max stories to neutralize")
+    # DEVELOPMENT MODE: Using low limits to conserve resources
+    # Before production: increase max_items_per_source to 50+, neutralize_limit to 100+
+    max_items_per_source: int = Field(25, ge=1, le=100, description="Max items to ingest per source")
+    neutralize_limit: int = Field(25, ge=1, le=500, description="Max stories to neutralize")
     max_workers: int = Field(5, ge=1, le=10, description="Parallel workers for neutralization")
     cutoff_hours: int = Field(24, ge=1, le=72, description="Hours to look back for brief")
+    cleanup_old_articles: bool = Field(True, description="Hide articles older than cutoff_hours")
 
 
 class ScheduledRunResponse(BaseModel):
@@ -619,6 +622,28 @@ def run_scheduled_pipeline(
         brief_section_count = len(brief_result.get('sections', []))
     except Exception as e:
         errors.append(f"Brief failed: {e}")
+
+    # Stage 4: Cleanup old articles (hide articles older than cutoff_hours)
+    cleanup_hidden_count = 0
+    if request.cleanup_old_articles:
+        try:
+            from datetime import timedelta
+            from app import models as app_models
+            cutoff_time = datetime.utcnow() - timedelta(hours=request.cutoff_hours)
+
+            # Hide old articles by setting is_active=False on StoryRaw
+            result = (
+                db.query(app_models.StoryRaw)
+                .filter(
+                    app_models.StoryRaw.is_active == True,
+                    app_models.StoryRaw.published_at < cutoff_time,
+                )
+                .update({app_models.StoryRaw.is_active: False})
+            )
+            cleanup_hidden_count = result
+            db.commit()
+        except Exception as e:
+            errors.append(f"Cleanup failed: {e}")
 
     finished_at = datetime.utcnow()
     duration_ms = int((finished_at - started_at).total_seconds() * 1000)

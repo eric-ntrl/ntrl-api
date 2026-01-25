@@ -20,100 +20,45 @@ DISPLAY:        Neutralized content by default, originals only in "ntrl view"
 
 See `docs/ARCHITECTURE.md` for full details.
 
+## The 4-View Content Architecture
+
+| View | UI Location | Content Source | Description |
+|------|-------------|----------------|-------------|
+| **Original** | ntrl-view (highlight OFF) | `original_body` | Original text from S3 (minus publisher cruft) |
+| **ntrl-view** | ntrl-view (highlight ON) | `original_body` + `spans` | Same text with manipulative phrases highlighted |
+| **Full** | Article Detail (Full tab) | `detail_full` | LLM-neutralized full article, grammar-corrected |
+| **Brief** | Article Detail (Brief tab) | `detail_brief` | LLM-synthesized short summary |
+
+**Key insight**: Spans ALWAYS reference positions in `original_body`, not in `detail_full`. This allows highlighting the original text to show what was changed.
+
+## LLM Neutralization: Why Synthesis > In-Place Filtering
+
+### The Problem with In-Place Filtering
+Asking LLMs to surgically edit text while tracking character positions produces **garbled output**:
+- LLMs are bad at counting characters
+- Removing words breaks grammar ("She was to the event...")
+- JSON position tracking adds cognitive load
+
+### The Solution: Synthesis Fallback
+When filtering fails, use synthesis mode:
+1. Ask LLM to rewrite the full article neutrally (plain text, no JSON)
+2. Detect spans separately using pattern matching on original body
+3. Result: readable output + valid spans
+
+### Current Implementation
+- Primary: JSON-based filter prompt (tries to track spans)
+- Fallback: Synthesis prompt (plain text) + pattern-based span detection
+- See `_synthesize_detail_full_fallback()` in `neutralizer.py`
+
 ## Tech Stack
 
 - **Framework**: FastAPI (Python 3.11) with Uvicorn
 - **Database**: PostgreSQL with SQLAlchemy ORM
 - **Migrations**: Alembic
 - **Storage**: S3 or local filesystem for raw articles
-- **AI**: Pluggable neutralizers (mock, OpenAI, Anthropic)
+- **AI**: Pluggable neutralizers (mock, OpenAI, Anthropic, Gemini)
 - **NLP**: spaCy (en_core_web_sm) for structural detection
 - **Dependencies**: Pipenv
-
-## NTRL Filter v2 Architecture
-
-The v2 architecture uses a two-phase approach for detecting and neutralizing manipulation:
-
-```
-Article Input
-     │
-     ▼
-┌─────────────────────────────────────────────┐
-│ Phase 1: ntrl-scan (Detection) ~400ms       │
-│   ├── Lexical: regex patterns (~20ms)       │
-│   ├── Structural: spaCy NLP (~80ms)         │
-│   └── Semantic: LLM detection (~300ms)      │
-│   → Outputs: DetectionInstance spans        │
-├─────────────────────────────────────────────┤
-│ Phase 2: ntrl-fix (Rewriting) ~800ms        │
-│   ├── Detail Full: span-guided rewrite      │
-│   ├── Detail Brief: synthesis               │
-│   ├── Feed Outputs: title/summary           │
-│   └── Red-Line Validator: 10 invariance     │
-│   → Outputs: Neutralized content            │
-└─────────────────────────────────────────────┘
-     │
-     ▼
-Neutralized Content + Transparency Package
-```
-
-**Target latency**: 1-2 seconds per article
-
-### V2 API Endpoints
-
-```
-POST /v2/scan         - Detection only (returns spans)
-POST /v2/process      - Full pipeline (scan + fix)
-POST /v2/batch        - Batch processing (up to 100 articles)
-POST /v2/transparency - Full transparency package
-```
-
-### Manipulation Taxonomy
-
-The taxonomy (`app/taxonomy.py`) defines 115 manipulation types across 6 categories:
-
-| Category | Name | Examples |
-|----------|------|----------|
-| A | Attention & Engagement | Curiosity gaps, urgency markers, clickbait |
-| B | Emotional & Affective | Rage verbs, fear appeals, tribal priming |
-| C | Cognitive & Epistemic | False balance, motive certainty, anecdote-as-proof |
-| D | Linguistic & Framing | Passive voice, vague attribution, loaded terms |
-| E | Structural & Editorial | Buried lede, missing context |
-| F | Incentive & Meta | Agenda masking, incentive opacity |
-
-### Red-Line Validator
-
-The validator (`ntrl_fix/validator.py`) enforces 10 invariance checks:
-
-1. **Entity invariance** - Names, orgs, places preserved
-2. **Number invariance** - All numbers preserved exactly
-3. **Date invariance** - All dates preserved
-4. **Attribution invariance** - Who said what preserved
-5. **Modality invariance** - "alleged" never becomes "confirmed"
-6. **Causality invariance** - Causal claims unchanged
-7. **Risk invariance** - Warnings preserved
-8. **Quote integrity** - Direct quotes verbatim
-9. **Scope invariance** - Quantifiers unchanged
-10. **Negation integrity** - "not" never accidentally removed
-
-### Key V2 Classes
-
-```python
-# Detection
-from app.services.ntrl_scan import NTRLScanner, ScannerConfig
-scanner = NTRLScanner(config=ScannerConfig(enable_semantic=True))
-result = await scanner.scan(text, ArticleSegment.BODY)
-
-# Rewriting
-from app.services.ntrl_fix import NTRLFixer, FixerConfig
-fixer = NTRLFixer(config=FixerConfig())
-result = await fixer.fix(body, title, body_scan, title_scan)
-
-# Full Pipeline
-from app.services.ntrl_pipeline import NTRLPipeline, PipelineConfig
-pipeline = NTRLPipeline(config=PipelineConfig())
-result = await pipeline.process(body, title)
-```
 
 ## Key Commands
 
@@ -132,10 +77,55 @@ pipenv run alembic revision --autogenerate -m "description"
 pipenv install
 ```
 
+## Development Mode Rules (IMPORTANT)
+
+During development/testing, follow these resource-conservation rules:
+
+### Limits
+- **Ingestion**: Max 25 articles per run
+- **Neutralization**: Max 25 articles per run
+- **Articles in UI**: Only show articles from last 24 hours
+
+### Cleanup
+- Articles older than 24 hours are automatically hidden (`is_active=False`)
+- The `scheduled-run` endpoint handles this automatically
+- Hidden articles remain in DB but don't appear in briefs
+
+### Testing Workflow
+1. Run ingestion (limit 25)
+2. Run neutralization (limit 25)
+3. Rebuild brief
+4. Test in UI
+5. Old articles auto-hidden on next scheduled run
+
+### Before Production
+- [ ] Increase `max_items_per_source` in ScheduledRunRequest (50+)
+- [ ] Increase `neutralize_limit` in ScheduledRunRequest (100+)
+- [ ] Review ingestion timing (currently every 4 hours)
+- [ ] Decide on article retention policy
+- [ ] Review cleanup behavior
+
 ## Staging Environment
 
 - **API URL**: `https://api-staging-7b4d.up.railway.app`
 - **Admin API Key**: `staging-key-123` (use in `X-API-Key` header)
+
+### Railway Cron Setup
+
+The scheduled pipeline should run on Railway (NOT locally). Set up in Railway dashboard:
+
+1. Go to Railway project → Settings → Cron
+2. Add cron job:
+   - **Schedule**: `0 */4 * * *` (every 4 hours)
+   - **Endpoint**: `POST /v1/pipeline/scheduled-run`
+   - **Headers**: `X-API-Key: staging-key-123`, `Content-Type: application/json`
+   - **Body**: `{}` (uses defaults: limit 25, cleanup enabled)
+
+The `scheduled-run` endpoint automatically:
+- Ingests up to 25 new articles
+- Neutralizes up to 25 pending articles
+- Rebuilds the brief
+- Hides articles older than 24 hours
 
 ### Common Operations
 
@@ -144,11 +134,11 @@ pipenv install
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/ingest/run" \
   -H "X-API-Key: staging-key-123"
 
-# Neutralize pending articles
+# Neutralize pending articles (or force re-neutralize)
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: staging-key-123" \
-  -d '{"limit": 50}'
+  -d '{"limit": 50, "force": true}'
 
 # Rebuild the daily brief
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
@@ -156,7 +146,21 @@ curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
 
 # Check system status
 curl "https://api-staging-7b4d.up.railway.app/v1/status"
+
+# Debug a specific story (see content lengths, readability, span validity)
+curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug" \
+  -H "X-API-Key: staging-key-123"
 ```
+
+### Debug Endpoint (`/v1/stories/{id}/debug`)
+Returns diagnostic info for troubleshooting content display:
+- `original_body`: First 500 chars from S3
+- `original_body_length`: Total length
+- `detail_full`: First 500 chars of neutralized text
+- `detail_full_readable`: Boolean - passes grammar checks
+- `issues`: Array of detected problems (garbled text, broken spans, etc.)
+- `span_count`: Number of transparency spans
+- `spans_sample`: First 3 spans for inspection
 
 ## Project Structure
 
@@ -169,112 +173,152 @@ app/
 ├── routers/
 │   ├── admin.py         # V1 admin endpoints
 │   ├── brief.py         # V1 brief endpoints
-│   ├── stories.py       # V1 story endpoints
+│   ├── stories.py       # V1 story endpoints + debug endpoint
 │   ├── sources.py       # V1 sources endpoints
-│   └── pipeline.py      # V2 pipeline endpoints (/v2/scan, /v2/process, /v2/batch)
+│   └── pipeline.py      # V2 pipeline endpoints
 ├── schemas/             # Pydantic request/response schemas
 ├── services/
 │   ├── ingestion.py     # RSS ingestion
-│   ├── neutralizer.py   # V1 neutralizer (legacy)
+│   ├── neutralizer.py   # V1 neutralizer with synthesis fallback
 │   ├── brief_assembly.py
-│   ├── ntrl_scan/       # V2 detection phase
-│   │   ├── lexical_detector.py    # Regex patterns (~20ms)
-│   │   ├── structural_detector.py # spaCy NLP (~80ms)
-│   │   ├── semantic_detector.py   # LLM detection (~300ms)
-│   │   └── scanner.py             # Parallel orchestrator
-│   ├── ntrl_fix/        # V2 rewriting phase
-│   │   ├── detail_full_gen.py     # Full article neutralization
-│   │   ├── detail_brief_gen.py    # Brief synthesis
-│   │   ├── feed_outputs_gen.py    # Title/summary generation
-│   │   ├── validator.py           # 10 red-line invariance checks
-│   │   └── fixer.py               # Parallel orchestrator
-│   ├── ntrl_pipeline.py # V2 unified pipeline
-│   └── ntrl_batcher.py  # V2 batch processing
+│   └── ...
 ├── storage/             # Object storage providers (S3, local)
 └── jobs/                # Background jobs
-migrations/              # Alembic migrations
-tests/                   # Unit tests (156 tests for v2)
 ```
-
-## Development Workflow
-
-This project uses a PRD-driven development approach with Claude Code skills:
-
-1. **PRD** (`docs/prd/`) - Product requirements documents define features
-2. **Stories** (`docs/stories/`) - Bite-sized implementation units with acceptance criteria
-3. **Skills** - Claude Code commands for self-optimization:
-   - `/prd` - Load and analyze a PRD
-   - `/story` - Work on a specific story
-   - `/validate` - Check acceptance criteria
-
-## Code Style
-
-- Use type hints for all function signatures
-- Follow PEP 8 conventions
-- Keep functions focused and small
-- Write tests for new functionality
 
 ## Text/UI Length Constraints
 
-When UI text appears too long or gets truncated with "...", the constraint is usually in the **backend LLM prompt**, not frontend CSS.
+When UI text appears too long or gets truncated, the constraint is usually in the **backend LLM prompt**, not frontend CSS.
 
 ### Where to Look
 - `app/services/neutralizer.py` - Contains all LLM prompts
 - Search for `feed_summary`, `feed_title`, `detail_title`, `detail_brief`
-- Look for character/word limits in prompt text (e.g., "≤100 characters")
-
-### Key Lessons
-1. **LLMs don't count accurately** - If you need max 115 chars, tell the LLM 100
-2. **Examples > Instructions** - LLMs follow examples more than stated constraints
-3. **After changes**: Must re-neutralize articles with `force: true` flag
-4. **Frontend `numberOfLines`** only truncates display - doesn't control content length
 
 ### Workflow for Length Changes
 1. Find constraint in `neutralizer.py` prompt
 2. Reduce limit (add 15-20% buffer for LLM inaccuracy)
-3. Update examples to match target length
-4. Deploy to Railway
-5. Re-neutralize: `POST /v1/neutralize/run` with `force: true`
-6. Rebuild brief: `POST /v1/brief/run`
-7. Verify in app
+3. Deploy to Railway (push to main)
+4. Re-neutralize: `POST /v1/neutralize/run` with `force: true`
+5. Rebuild brief: `POST /v1/brief/run`
+6. Verify in app
 
-### Reference: Line Capacity
-- Mobile displays ~38-42 chars per line
-- 2 lines ≈ 65 chars | 3 lines ≈ 100 chars | 4 lines ≈ 135 chars
-- Use `/ui-length` skill for guided workflow
+## UI Verification Workflow
 
-## UI Verification (CRITICAL)
+### Step 1: Deploy Backend Changes
+```bash
+cd /Users/ericrbrown/Documents/NTRL/code/ntrl-api
+git add -A && git commit -m "description" && git push origin main
+# Wait ~30s for Railway deploy
+curl "https://api-staging-7b4d.up.railway.app/v1/status"
+```
 
-**When making changes that affect the mobile app UI, Claude MUST verify the changes work before asking the user to test.**
+### Step 2: Re-neutralize Test Articles
+```bash
+# Re-neutralize with new code
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: staging-key-123" \
+  -d '{"limit": 5, "force": true}'
 
-Changes that require UI verification:
-- Neutralization output (detail_full, detail_brief, feed_title, feed_summary)
-- Transparency spans (ntrl-view highlights)
-- Any API response format changes
+# Rebuild brief to include new content
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
+  -H "X-API-Key: staging-key-123"
+```
 
-### How to Verify
+### Step 3: Check Debug Endpoint
+```bash
+# Get a story ID from the brief
+curl -s "https://api-staging-7b4d.up.railway.app/v1/brief?hours=24" | \
+  python3 -c "import json,sys; d=json.load(sys.stdin); print(d['sections'][0]['stories'][0]['id'])"
 
-After deploying backend changes to staging:
+# Check debug info
+curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug" \
+  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+```
 
-1. **Re-neutralize articles** on staging:
-   ```bash
-   curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
-     -H "Content-Type: application/json" \
-     -H "X-API-Key: staging-key-123" \
-     -d '{"neutralize_limit": 10, "skip_ingest": true, "skip_brief": false}'
-   ```
+### Step 4: Test in App (Playwright - RECOMMENDED)
+```bash
+cd /Users/ericrbrown/Documents/NTRL/code/ntrl-app
 
-2. **Test the UI** using ntrl-app's testing tools (see `../ntrl-app/CLAUDE.md` for methods):
-   - Playwright for web screenshots
-   - Maestro for iOS simulator
-   - Direct simulator screenshots via `xcrun simctl`
+# Ensure Expo is running
+npm start -- --web &
 
-3. **Verify specific screens**:
-   - Feed view: Are titles neutralized?
-   - Article detail (full view): Is detail_full neutralized?
-   - NTRL view: Are transparency spans highlighted?
+# Create and run capture script
+cat > capture-screens.cjs << 'EOF'
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const page = await context.newPage();
+  await page.goto('http://localhost:8081');
+  await page.waitForTimeout(4000);
+  await page.screenshot({ path: '/tmp/web-feed.png' });
 
-4. **Only after visual verification**, report results to the user.
+  // Click article, capture Brief/Full/ntrl views
+  await page.click('text=<article-title>');
+  await page.waitForTimeout(2000);
+  await page.screenshot({ path: '/tmp/web-brief.png' });
 
-### Related Project
-The mobile app is at `../ntrl-app/` - see its CLAUDE.md for UI testing commands.
+  await page.click('text=Full');
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: '/tmp/web-full.png' });
+
+  await page.click('text=ntrl view');
+  await page.waitForTimeout(2000);
+  await page.screenshot({ path: '/tmp/web-ntrl.png' });
+
+  await browser.close();
+})();
+EOF
+node capture-screens.cjs
+
+# View screenshots
+# Use Read tool on /tmp/web-feed.png, /tmp/web-brief.png, etc.
+```
+
+### Alternative: iOS Simulator (if Playwright unavailable)
+```bash
+# Boot simulator
+xcrun simctl boot "iPhone 17 Pro"
+open -a Simulator
+
+# Open app via Expo
+xcrun simctl openurl booted "exp://127.0.0.1:8081"
+sleep 10
+
+# Capture screenshot
+xcrun simctl io booted screenshot /tmp/sim-screenshot.png
+```
+
+**Note**: Maestro often has driver timeout issues. Playwright is more reliable for automated UI capture.
+
+## Console Logging (Frontend Debug)
+
+The frontend logs diagnostic info to console:
+- `[ArticleDetail] Transparency data received:` - spans and originalBody info
+- `[ArticleDetail] Detail content:` - brief/full lengths and previews
+- `[ArticleDetail] Navigating to NtrlView:` - what's being passed
+- `[NtrlView] Received data:` - what NtrlView received
+
+Check these in Expo dev tools or browser console.
+
+## Prompt Optimization Tips
+
+### For detail_full (neutralized full article)
+- Use synthesis mode (plain text output) for reliability
+- Don't ask LLM to track character positions
+- Focus prompt on: grammar preservation, fact preservation, manipulation removal
+- Validate output isn't garbled before saving
+
+### For detail_brief (summary)
+- This works well - synthesis is natural for LLMs
+- Keep 3-5 paragraphs, no headers/bullets
+- Emphasize: only use info from source, no added context
+
+### For feed_title/feed_summary
+- Strict character limits (LLMs overcount, so ask for 10-15% less)
+- Examples > instructions for length compliance
+
+## Related Project
+
+The mobile app is at `../ntrl-app/` - see its CLAUDE.md for frontend details.

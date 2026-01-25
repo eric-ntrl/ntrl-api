@@ -110,7 +110,7 @@ class BriefAssemblyService:
         - Has current neutralization
         - Published after cutoff
         """
-        # Query for neutralized, non-duplicate stories
+        # Query for neutralized, non-duplicate, active stories
         results = (
             db.query(models.StoryNeutralized, models.StoryRaw, models.Source)
             .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
@@ -118,6 +118,7 @@ class BriefAssemblyService:
             .filter(
                 models.StoryNeutralized.is_current == True,
                 models.StoryRaw.is_duplicate == False,
+                models.StoryRaw.is_active == True,  # Only include active stories
                 models.StoryRaw.published_at >= cutoff_time,
                 models.StoryRaw.section.isnot(None),
             )
