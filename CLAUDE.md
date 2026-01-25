@@ -132,6 +132,32 @@ pipenv run alembic revision --autogenerate -m "description"
 pipenv install
 ```
 
+## Staging Environment
+
+- **API URL**: `https://api-staging-7b4d.up.railway.app`
+- **Admin API Key**: `staging-key-123` (use in `X-API-Key` header)
+
+### Common Operations
+
+```bash
+# Trigger RSS ingestion
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/ingest/run" \
+  -H "X-API-Key: staging-key-123"
+
+# Neutralize pending articles
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: staging-key-123" \
+  -d '{"limit": 50}'
+
+# Rebuild the daily brief
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
+  -H "X-API-Key: staging-key-123"
+
+# Check system status
+curl "https://api-staging-7b4d.up.railway.app/v1/status"
+```
+
 ## Project Structure
 
 ```
