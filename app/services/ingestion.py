@@ -22,13 +22,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.request import Request, urlopen
 
 import feedparser
-import trafilatura
 from sqlalchemy.orm import Session
 
 from app import models
 from app.models import PipelineStage, PipelineStatus
 from app.services.deduper import Deduper
 from app.services.classifier import SectionClassifier
+from app.services.body_extractor import BodyExtractor, ExtractionResult
 from app.storage.factory import get_storage_provider
 from app.storage.base import ContentType
 
@@ -49,6 +49,7 @@ class IngestionService:
     def __init__(self):
         self.deduper = Deduper()
         self.classifier = SectionClassifier()
+        self.body_extractor = BodyExtractor()
         self._storage = None
 
     @property
@@ -107,12 +108,21 @@ class IngestionService:
         started_at: Optional[datetime] = None,
         error_message: Optional[str] = None,
         metadata: Optional[dict] = None,
+        trace_id: Optional[str] = None,
+        entry_url: Optional[str] = None,
+        failure_reason: Optional[str] = None,
+        retry_count: int = 0,
     ) -> models.PipelineLog:
-        """Create a pipeline log entry."""
+        """Create a pipeline log entry with enhanced observability."""
         now = datetime.utcnow()
         duration_ms = None
         if started_at:
             duration_ms = int((now - started_at).total_seconds() * 1000)
+
+        # Compute entry_url_hash for indexing
+        entry_url_hash = None
+        if entry_url:
+            entry_url_hash = hashlib.sha256(entry_url.encode()).hexdigest()
 
         log = models.PipelineLog(
             id=uuid.uuid4(),
@@ -124,6 +134,11 @@ class IngestionService:
             duration_ms=duration_ms,
             error_message=error_message,
             log_metadata=metadata,
+            trace_id=trace_id,
+            entry_url=entry_url,
+            entry_url_hash=entry_url_hash,
+            failure_reason=failure_reason,
+            retry_count=retry_count,
         )
         db.add(log)
         return log
@@ -139,47 +154,30 @@ class IngestionService:
             content = response.read()
         return feedparser.parse(content)
 
-    def _extract_article_body(self, url: str, timeout: int = 15) -> Optional[str]:
+    def _extract_article_body(self, url: str) -> ExtractionResult:
         """
-        Extract article body text from a URL using trafilatura.
+        Extract article body text using the hardened BodyExtractor.
 
-        Returns the main article text or None if extraction fails.
+        Uses retries with exponential backoff and newspaper3k fallback.
+        Returns ExtractionResult with success status and failure details.
         """
         if not url:
-            return None
-
-        try:
-            # Fetch and extract with trafilatura (handles HTML fetching and text extraction)
-            downloaded = trafilatura.fetch_url(url)
-            if not downloaded:
-                logger.warning(f"Failed to download article from {url}")
-                return None
-
-            # Extract main text content
-            text = trafilatura.extract(
-                downloaded,
-                include_comments=False,
-                include_tables=False,
-                no_fallback=False,
+            from app.services.body_extractor import ExtractionFailureReason
+            return ExtractionResult(
+                success=False,
+                failure_reason=ExtractionFailureReason.DOWNLOAD_FAILED,
             )
 
-            if text and len(text) > 100:  # Minimum viable article length
-                logger.debug(f"Extracted {len(text)} chars from {url}")
-                return text
-            else:
-                logger.warning(f"Extracted text too short from {url}: {len(text) if text else 0} chars")
-                return None
-
-        except Exception as e:
-            logger.warning(f"Article extraction failed for {url}: {e}")
-            return None
+        return self.body_extractor.extract(url)
 
     def _normalize_entry(
         self,
         entry: dict,
         source: models.Source,
     ) -> Dict[str, Any]:
-        """Normalize a feed entry to standard format."""
+        """Normalize a feed entry to standard format with extraction metrics."""
+        import re
+
         # Get URL
         url = entry.get('link') or entry.get('id') or ''
 
@@ -190,7 +188,6 @@ class IngestionService:
         description = entry.get('summary') or entry.get('description') or ''
         # Strip HTML if present
         if '<' in description:
-            import re
             description = re.sub(r'<[^>]+>', '', description)
 
         # Get body - try RSS content field first
@@ -198,16 +195,36 @@ class IngestionService:
         if 'content' in entry and entry['content']:
             rss_body = entry['content'][0].get('value', '')
             if '<' in rss_body:
-                import re
                 rss_body = re.sub(r'<[^>]+>', '', rss_body)
 
         # Extract from article URL (RSS feeds usually only have short excerpts)
-        extracted_body = self._extract_article_body(url) if url else None
+        extraction_result = self._extract_article_body(url) if url else None
 
         # Use extracted body if available and longer, otherwise fall back to RSS
-        if extracted_body and len(extracted_body) > len(rss_body or ''):
-            body = extracted_body
-        else:
+        body = None
+        body_downloaded = False
+        extractor_used = None
+        extraction_failure_reason = None
+        extraction_duration_ms = 0
+
+        if extraction_result:
+            extraction_duration_ms = extraction_result.duration_ms
+            if extraction_result.success and extraction_result.body:
+                if len(extraction_result.body) > len(rss_body or ''):
+                    body = extraction_result.body
+                    body_downloaded = True
+                    extractor_used = extraction_result.extractor_used
+                else:
+                    body = rss_body
+            else:
+                # Extraction failed - record reason
+                extraction_failure_reason = (
+                    extraction_result.failure_reason.value
+                    if extraction_result.failure_reason else None
+                )
+                body = rss_body
+
+        if not body:
             body = rss_body
 
         # Get author
@@ -237,6 +254,11 @@ class IngestionService:
             'published_at': published,
             'source_slug': source.slug,
             'raw_entry': dict(entry),
+            # Extraction metrics
+            'body_downloaded': body_downloaded,
+            'extractor_used': extractor_used,
+            'extraction_failure_reason': extraction_failure_reason,
+            'extraction_duration_ms': extraction_duration_ms,
         }
 
     def ingest_source(
@@ -244,12 +266,13 @@ class IngestionService:
         db: Session,
         source: models.Source,
         max_items: int = 20,
+        trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Ingest stories from a single source.
+        Ingest stories from a single source with enhanced observability.
 
         Returns:
-            Dict with ingested count, skipped count, errors
+            Dict with ingested count, skipped count, body download stats, errors
         """
         started_at = datetime.utcnow()
         result = {
@@ -257,6 +280,8 @@ class IngestionService:
             'source_name': source.name,
             'ingested': 0,
             'skipped_duplicate': 0,
+            'body_downloaded': 0,
+            'body_failed': 0,
             'errors': [],
         }
 
@@ -266,12 +291,21 @@ class IngestionService:
             entries = feed.entries[:max_items]
 
             for entry in entries:
+                entry_started_at = datetime.utcnow()
+                entry_url = entry.get('link') or entry.get('id') or ''
+
                 try:
-                    # Normalize
+                    # Normalize (includes body extraction with retries)
                     normalized = self._normalize_entry(entry, source)
 
                     if not normalized['url']:
                         continue
+
+                    # Track body extraction metrics
+                    if normalized.get('body_downloaded'):
+                        result['body_downloaded'] += 1
+                    elif normalized.get('extraction_failure_reason'):
+                        result['body_failed'] += 1
 
                     # Check for duplicates
                     is_dup, original = self.deduper.is_duplicate(
@@ -328,19 +362,37 @@ class IngestionService:
                     db.flush()  # Flush to satisfy FK constraint for pipeline log
                     result['ingested'] += 1
 
-                    # Log successful ingest
+                    # Log successful ingest with extraction metrics
                     self._log_pipeline(
                         db,
                         stage=PipelineStage.INGEST,
                         status=PipelineStatus.COMPLETED,
                         story_raw_id=story.id,
-                        started_at=started_at,
-                        metadata={'source': source.slug, 'url': normalized['url']},
+                        started_at=entry_started_at,
+                        trace_id=trace_id,
+                        entry_url=normalized['url'],
+                        metadata={
+                            'source': source.slug,
+                            'body_downloaded': normalized.get('body_downloaded', False),
+                            'extractor_used': normalized.get('extractor_used'),
+                            'extraction_duration_ms': normalized.get('extraction_duration_ms', 0),
+                        },
                     )
 
                 except Exception as e:
                     logger.error(f"Error processing entry from {source.slug}: {e}")
                     result['errors'].append(str(e))
+                    # Log failed entry with details
+                    self._log_pipeline(
+                        db,
+                        stage=PipelineStage.INGEST,
+                        status=PipelineStatus.FAILED,
+                        started_at=entry_started_at,
+                        trace_id=trace_id,
+                        entry_url=entry_url,
+                        error_message=str(e),
+                        metadata={'source': source.slug},
+                    )
 
             db.commit()
 
@@ -354,6 +406,7 @@ class IngestionService:
                 stage=PipelineStage.INGEST,
                 status=PipelineStatus.FAILED,
                 started_at=started_at,
+                trace_id=trace_id,
                 error_message=str(e),
                 metadata={'source': source_slug},
             )
@@ -366,14 +419,19 @@ class IngestionService:
         db: Session,
         source_slugs: Optional[List[str]] = None,
         max_items_per_source: int = 20,
+        trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Ingest stories from all active sources (or specified sources).
 
         Returns:
-            Dict with overall results and per-source breakdown
+            Dict with overall results, per-source breakdown, and body download metrics
         """
         started_at = datetime.utcnow()
+
+        # Generate trace_id if not provided
+        if trace_id is None:
+            trace_id = str(uuid.uuid4())
 
         # Get sources
         query = db.query(models.Source).filter(models.Source.is_active == True)
@@ -386,19 +444,26 @@ class IngestionService:
             'started_at': started_at,
             'finished_at': None,
             'duration_ms': 0,
+            'trace_id': trace_id,
             'sources_processed': 0,
             'total_ingested': 0,
             'total_skipped_duplicate': 0,
+            'total_body_downloaded': 0,
+            'total_body_failed': 0,
             'source_results': [],
             'errors': [],
         }
 
         for source in sources:
-            source_result = self.ingest_source(db, source, max_items=max_items_per_source)
+            source_result = self.ingest_source(
+                db, source, max_items=max_items_per_source, trace_id=trace_id
+            )
             result['source_results'].append(source_result)
             result['sources_processed'] += 1
             result['total_ingested'] += source_result['ingested']
             result['total_skipped_duplicate'] += source_result['skipped_duplicate']
+            result['total_body_downloaded'] += source_result.get('body_downloaded', 0)
+            result['total_body_failed'] += source_result.get('body_failed', 0)
             if source_result['errors']:
                 result['errors'].extend(source_result['errors'])
 

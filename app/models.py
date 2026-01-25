@@ -403,7 +403,7 @@ class DailyBriefItem(Base):
 # -----------------------------------------------------------------------------
 
 class PipelineLog(Base):
-    """Audit trail for pipeline steps."""
+    """Audit trail for pipeline steps with enhanced observability."""
     __tablename__ = "pipeline_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -416,6 +416,19 @@ class PipelineLog(Base):
     story_raw_id = Column(UUID(as_uuid=True), ForeignKey("stories_raw.id"), nullable=True)
     brief_id = Column(UUID(as_uuid=True), ForeignKey("daily_briefs.id"), nullable=True)
 
+    # Trace ID for correlating across pipeline stages
+    trace_id = Column(String(36), nullable=True, index=True)
+
+    # Entry-level tracking (for per-article observability)
+    entry_url = Column(String(2048), nullable=True)
+    entry_url_hash = Column(String(64), nullable=True, index=True)
+
+    # Structured failure reason (from ExtractionFailureReason enum)
+    failure_reason = Column(String(64), nullable=True)
+
+    # Retry tracking
+    retry_count = Column(Integer, default=0)
+
     # Details
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     finished_at = Column(DateTime, nullable=True)
@@ -426,6 +439,61 @@ class PipelineLog(Base):
     __table_args__ = (
         Index("ix_pipeline_logs_stage", "stage"),
         Index("ix_pipeline_logs_started_at", "started_at"),
+        Index("ix_pipeline_logs_trace_id", "trace_id"),
+        Index("ix_pipeline_logs_entry_url_hash", "entry_url_hash"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# PipelineRunSummary
+# -----------------------------------------------------------------------------
+
+class PipelineRunSummary(Base):
+    """
+    Summary of a complete pipeline run (ingest -> neutralize -> brief).
+
+    Created after each full pipeline run to track overall health metrics
+    and enable alerting when thresholds are breached.
+    """
+    __tablename__ = "pipeline_run_summaries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trace_id = Column(String(36), nullable=False, unique=True, index=True)
+
+    # Timing
+    started_at = Column(DateTime, nullable=False)
+    finished_at = Column(DateTime, nullable=False)
+    duration_ms = Column(Integer, nullable=False)
+
+    # Ingestion stats
+    ingest_total = Column(Integer, default=0, nullable=False)
+    ingest_success = Column(Integer, default=0, nullable=False)
+    ingest_body_downloaded = Column(Integer, default=0, nullable=False)
+    ingest_body_failed = Column(Integer, default=0, nullable=False)
+    ingest_skipped_duplicate = Column(Integer, default=0, nullable=False)
+
+    # Neutralization stats
+    neutralize_total = Column(Integer, default=0, nullable=False)
+    neutralize_success = Column(Integer, default=0, nullable=False)
+    neutralize_skipped_no_body = Column(Integer, default=0, nullable=False)
+    neutralize_failed = Column(Integer, default=0, nullable=False)
+
+    # Brief stats
+    brief_story_count = Column(Integer, default=0, nullable=False)
+    brief_section_count = Column(Integer, default=0, nullable=False)
+
+    # Overall status
+    status = Column(String(20), nullable=False)  # "completed", "partial", "failed"
+
+    # Alerts triggered (list of alert codes)
+    alerts = Column(JSONB, default=[], nullable=False)
+
+    # Trigger info
+    trigger = Column(String(20), nullable=False)  # "scheduled", "manual", "api"
+
+    __table_args__ = (
+        Index("ix_pipeline_run_summaries_finished_at", "finished_at"),
+        Index("ix_pipeline_run_summaries_status", "status"),
     )
 
 

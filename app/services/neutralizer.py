@@ -2830,8 +2830,12 @@ class NeutralizerService:
 
         started_at = datetime.utcnow()
 
-        # Get stories to process
-        query = db.query(models.StoryRaw).filter(models.StoryRaw.is_duplicate == False)
+        # Get stories to process - only those with body content available
+        query = db.query(models.StoryRaw).filter(
+            models.StoryRaw.is_duplicate == False,
+            models.StoryRaw.raw_content_available == True,  # Skip articles without body
+            models.StoryRaw.raw_content_uri.isnot(None),    # Must have storage reference
+        )
 
         if story_ids:
             query = query.filter(models.StoryRaw.id.in_([uuid.UUID(sid) for sid in story_ids]))
@@ -2854,6 +2858,7 @@ class NeutralizerService:
             'total_processed': 0,
             'total_skipped': 0,
             'total_failed': 0,
+            'skipped_no_body': 0,  # Stories skipped due to missing body content
             'story_results': [],
             'max_workers': max_workers,
         }
@@ -2864,9 +2869,16 @@ class NeutralizerService:
             return result
 
         # Prepare data for parallel processing (extract from ORM objects)
+        # Skip stories where body is empty/unavailable even after storage check
         story_data = []
+        skipped_no_body = 0
         for story in stories:
             body = _get_body_from_storage(story)
+            if not body or len(body.strip()) < 100:
+                # Skip stories without usable body content
+                logger.warning(f"Skipping story {story.id} - no body content available")
+                skipped_no_body += 1
+                continue
             story_data.append({
                 'story_id': story.id,
                 'title': story.original_title,
@@ -2874,6 +2886,8 @@ class NeutralizerService:
                 'body': body,
                 'story_obj': story,  # Keep reference for db operations
             })
+
+        result['skipped_no_body'] = skipped_no_body
 
         # Check for existing neutralizations
         existing_map = {}

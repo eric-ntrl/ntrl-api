@@ -6,8 +6,9 @@ POST /v1/ingest/run - Trigger RSS ingestion
 POST /v1/neutralize/run - Trigger neutralization
 POST /v1/brief/run - Trigger brief assembly
 POST /v1/pipeline/run - Run full pipeline (ingest + neutralize + brief)
+POST /v1/pipeline/scheduled-run - Run full pipeline with observability (for Railway cron)
 POST /v1/reset - Reset all article data (testing only, disabled in production)
-GET  /v1/status - Get system status and configuration
+GET  /v1/status - Get system status, config, and pipeline health metrics
 """
 
 import os
@@ -50,9 +51,28 @@ class LastRunInfo(BaseModel):
     duration_ms: Optional[int] = None
 
 
+class PipelineHealthInfo(BaseModel):
+    """Pipeline health metrics from latest run."""
+    trace_id: Optional[str] = None
+    finished_at: Optional[datetime] = None
+    status: Optional[str] = None
+    body_download_rate: Optional[float] = None
+    neutralization_rate: Optional[float] = None
+    brief_story_count: Optional[int] = None
+    alerts: List[str] = Field(default_factory=list)
+
+
+class AlertThresholds(BaseModel):
+    """Alert threshold values."""
+    body_download_rate_min: int = 70
+    neutralization_rate_min: int = 90
+    brief_story_count_min: int = 10
+
+
 class StatusResponse(BaseModel):
     """System status response."""
     status: str = "ok"
+    health: str = "unknown"
     neutralizer_provider: Optional[str] = None
     neutralizer_model: Optional[str] = None
     neutralizer_error: Optional[str] = None
@@ -67,6 +87,8 @@ class StatusResponse(BaseModel):
     last_ingest: Optional[LastRunInfo] = None
     last_neutralize: Optional[LastRunInfo] = None
     last_brief: Optional[LastRunInfo] = None
+    latest_pipeline_run: Optional[PipelineHealthInfo] = None
+    thresholds: AlertThresholds = Field(default_factory=AlertThresholds)
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -74,10 +96,11 @@ def get_status(
     db: Session = Depends(get_db),
 ) -> StatusResponse:
     """
-    Get system status and current LLM configuration.
+    Get system status, LLM configuration, and pipeline health metrics.
 
     Returns which neutralizer provider and model are active,
-    plus timestamps of last pipeline runs.
+    timestamps of last pipeline runs, and health metrics from
+    the latest pipeline run (body download rate, alerts, etc.).
     """
     from app import models
 
@@ -119,8 +142,47 @@ def get_status(
         models.Source.is_active == True
     ).count()
 
+    # Get latest pipeline run summary for health metrics
+    latest_run = (
+        db.query(models.PipelineRunSummary)
+        .order_by(models.PipelineRunSummary.finished_at.desc())
+        .first()
+    )
+
+    pipeline_health = None
+    health = "unknown"
+
+    if latest_run:
+        body_download_rate = (
+            latest_run.ingest_body_downloaded / latest_run.ingest_total * 100
+            if latest_run.ingest_total > 0 else 0
+        )
+        neutralization_rate = (
+            latest_run.neutralize_success / latest_run.neutralize_total * 100
+            if latest_run.neutralize_total > 0 else 0
+        )
+
+        pipeline_health = PipelineHealthInfo(
+            trace_id=latest_run.trace_id,
+            finished_at=latest_run.finished_at,
+            status=latest_run.status,
+            body_download_rate=round(body_download_rate, 1),
+            neutralization_rate=round(neutralization_rate, 1),
+            brief_story_count=latest_run.brief_story_count,
+            alerts=latest_run.alerts or [],
+        )
+
+        # Determine overall health
+        if latest_run.status == "completed" and not latest_run.alerts:
+            health = "healthy"
+        elif latest_run.status == "failed":
+            health = "unhealthy"
+        else:
+            health = "degraded"
+
     return StatusResponse(
         status="ok" if not config_error else "error",
+        health=health,
         neutralizer_provider=provider_name,
         neutralizer_model=model_name,
         neutralizer_error=config_error,
@@ -135,6 +197,8 @@ def get_status(
         last_ingest=get_last_run("ingest"),
         last_neutralize=get_last_run("neutralize"),
         last_brief=get_last_run("brief_assemble"),
+        latest_pipeline_run=pipeline_health,
+        thresholds=AlertThresholds(),
     )
 
 
@@ -441,6 +505,179 @@ def run_pipeline(
             'stories_in_brief': stages[2].details.get('total_stories', 0) if len(stages) > 2 else 0,
             'errors': errors,
         }
+    )
+
+
+# -----------------------------------------------------------------------------
+# Scheduled pipeline endpoint (for Railway cron)
+# -----------------------------------------------------------------------------
+
+class ScheduledRunRequest(BaseModel):
+    """Request for scheduled pipeline run."""
+    max_items_per_source: int = Field(20, ge=1, le=100, description="Max items to ingest per source")
+    neutralize_limit: int = Field(100, ge=1, le=500, description="Max stories to neutralize")
+    max_workers: int = Field(5, ge=1, le=10, description="Parallel workers for neutralization")
+    cutoff_hours: int = Field(24, ge=1, le=72, description="Hours to look back for brief")
+
+
+class ScheduledRunResponse(BaseModel):
+    """Response from scheduled pipeline run with summary stats."""
+    status: str
+    trace_id: str
+    started_at: datetime
+    finished_at: datetime
+    duration_ms: int
+    ingest_total: int
+    ingest_body_downloaded: int
+    ingest_body_failed: int
+    ingest_skipped_duplicate: int
+    neutralize_total: int
+    neutralize_success: int
+    neutralize_skipped_no_body: int
+    neutralize_failed: int
+    brief_story_count: int
+    brief_section_count: int
+    alerts: List[str]
+
+
+@router.post("/pipeline/scheduled-run", response_model=ScheduledRunResponse)
+def run_scheduled_pipeline(
+    request: ScheduledRunRequest = ScheduledRunRequest(),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> ScheduledRunResponse:
+    """
+    Run the full pipeline with observability for scheduled/cron execution.
+
+    This endpoint runs ingest -> neutralize -> brief and creates a
+    PipelineRunSummary record with health metrics and alerts.
+
+    Designed to be called by Railway cron on a configurable schedule.
+    The endpoint returns detailed metrics that can be used for monitoring.
+    """
+    import uuid as uuid_module
+    from app import models
+    from app.services.alerts import check_alerts
+
+    started_at = datetime.utcnow()
+    trace_id = str(uuid_module.uuid4())
+
+    # Initialize counters
+    ingest_total = 0
+    ingest_success = 0
+    ingest_body_downloaded = 0
+    ingest_body_failed = 0
+    ingest_skipped_duplicate = 0
+    neutralize_total = 0
+    neutralize_success = 0
+    neutralize_skipped_no_body = 0
+    neutralize_failed = 0
+    brief_story_count = 0
+    brief_section_count = 0
+    errors = []
+
+    # Stage 1: Ingest
+    try:
+        ingest_service = IngestionService()
+        ingest_result = ingest_service.ingest_all(
+            db,
+            max_items_per_source=request.max_items_per_source,
+            trace_id=trace_id,
+        )
+        ingest_success = ingest_result.get('total_ingested', 0)
+        ingest_total = ingest_success + ingest_result.get('total_skipped_duplicate', 0)
+        ingest_body_downloaded = ingest_result.get('total_body_downloaded', 0)
+        ingest_body_failed = ingest_result.get('total_body_failed', 0)
+        ingest_skipped_duplicate = ingest_result.get('total_skipped_duplicate', 0)
+    except Exception as e:
+        errors.append(f"Ingest failed: {e}")
+
+    # Stage 2: Neutralize
+    try:
+        neutralize_service = NeutralizerService()
+        neutralize_result = neutralize_service.neutralize_pending(
+            db,
+            limit=request.neutralize_limit,
+            max_workers=request.max_workers,
+        )
+        neutralize_total = neutralize_result.get('total_processed', 0) + neutralize_result.get('total_skipped', 0)
+        neutralize_success = neutralize_result.get('total_processed', 0) - neutralize_result.get('total_failed', 0)
+        neutralize_skipped_no_body = neutralize_result.get('skipped_no_body', 0)
+        neutralize_failed = neutralize_result.get('total_failed', 0)
+    except Exception as e:
+        errors.append(f"Neutralize failed: {e}")
+
+    # Stage 3: Brief assembly
+    try:
+        brief_service = BriefAssemblyService()
+        brief_result = brief_service.assemble_brief(
+            db,
+            cutoff_hours=request.cutoff_hours,
+            force=True,
+        )
+        brief_story_count = brief_result.get('total_stories', 0)
+        brief_section_count = len(brief_result.get('sections', []))
+    except Exception as e:
+        errors.append(f"Brief failed: {e}")
+
+    finished_at = datetime.utcnow()
+    duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+
+    # Determine overall status
+    if errors and ingest_total == 0 and neutralize_total == 0:
+        overall_status = "failed"
+    elif errors:
+        overall_status = "partial"
+    else:
+        overall_status = "completed"
+
+    # Create PipelineRunSummary record
+    summary = models.PipelineRunSummary(
+        id=uuid_module.uuid4(),
+        trace_id=trace_id,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=duration_ms,
+        ingest_total=ingest_total,
+        ingest_success=ingest_success,
+        ingest_body_downloaded=ingest_body_downloaded,
+        ingest_body_failed=ingest_body_failed,
+        ingest_skipped_duplicate=ingest_skipped_duplicate,
+        neutralize_total=neutralize_total,
+        neutralize_success=neutralize_success,
+        neutralize_skipped_no_body=neutralize_skipped_no_body,
+        neutralize_failed=neutralize_failed,
+        brief_story_count=brief_story_count,
+        brief_section_count=brief_section_count,
+        status=overall_status,
+        alerts=[],
+        trigger="scheduled",
+    )
+
+    # Check alerts based on the summary
+    alerts = check_alerts(summary)
+    summary.alerts = alerts
+
+    db.add(summary)
+    db.commit()
+
+    return ScheduledRunResponse(
+        status=overall_status,
+        trace_id=trace_id,
+        started_at=started_at,
+        finished_at=finished_at,
+        duration_ms=duration_ms,
+        ingest_total=ingest_total,
+        ingest_body_downloaded=ingest_body_downloaded,
+        ingest_body_failed=ingest_body_failed,
+        ingest_skipped_duplicate=ingest_skipped_duplicate,
+        neutralize_total=neutralize_total,
+        neutralize_success=neutralize_success,
+        neutralize_skipped_no_body=neutralize_skipped_no_body,
+        neutralize_failed=neutralize_failed,
+        brief_story_count=brief_story_count,
+        brief_section_count=brief_section_count,
+        alerts=alerts,
     )
 
 
