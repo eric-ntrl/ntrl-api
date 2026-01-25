@@ -2079,9 +2079,12 @@ def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResu
 
     # Validate that neutralization actually happened
     if not _validate_neutralization(original_body, filtered_article):
-        logger.warning(
+        # CRITICAL FIX: If LLM returned text unchanged, raise error to trigger retry
+        # This catches cases where LLM returns original text as 'filtered_article'
+        # The retry may use different sampling or eventually fall back to mock provider
+        raise NeutralizationResponseError(
             "Neutralization validation failed - filtered text nearly identical to original. "
-            "This may indicate LLM did not properly neutralize the content."
+            "LLM did not properly neutralize the content."
         )
 
     return DetailFullResult(
