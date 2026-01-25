@@ -1861,6 +1861,52 @@ def _merge_spans(
     return merged
 
 
+def _detect_garbled_output(original: str, filtered: str) -> bool:
+    """
+    Detect if the filtered output is garbled (over-filtered, broken grammar).
+
+    Signs of garbling:
+    1. Output is much shorter than input (<60% length)
+    2. Many consecutive punctuation marks or articles without following words
+    3. Sentences starting with lowercase after period
+
+    Returns:
+        True if output appears garbled, False if it looks OK
+    """
+    if not original or not filtered:
+        return False
+
+    # Check 1: Output too short (over-filtering)
+    length_ratio = len(filtered) / len(original)
+    if length_ratio < 0.60:
+        logger.warning(
+            f"Garbled output detected: length_ratio={length_ratio:.2f} "
+            f"(filtered={len(filtered)}, original={len(original)})"
+        )
+        return True
+
+    # Check 2: Look for broken grammar patterns
+    # Pattern: ". The " followed by punctuation or article (e.g., ". The , " or ". The a ")
+    broken_patterns = [
+        r'\. [A-Z][a-z]* [,\.\!\?]',  # "The ," or "She ."
+        r'\. [A-Z][a-z]* (a|an|the) [,\.\!\?]',  # "The a ," broken article
+        r"'s [,\.\!\?]",  # "'s ," missing word after possessive
+        r'\. [,\.\!\?]',  # Direct ". ," or ". ."
+    ]
+
+    import re
+    broken_count = 0
+    for pattern in broken_patterns:
+        matches = re.findall(pattern, filtered)
+        broken_count += len(matches)
+
+    if broken_count > 5:
+        logger.warning(f"Garbled output detected: {broken_count} broken grammar patterns found")
+        return True
+
+    return False
+
+
 def _validate_neutralization(original: str, filtered: str) -> bool:
     """
     Verify that filtered text is actually different from original.
@@ -2136,6 +2182,13 @@ def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResu
         raise NeutralizationResponseError(
             "Neutralization validation failed - filtered text nearly identical to original. "
             "LLM did not properly neutralize the content."
+        )
+
+    # Check for garbled output (over-filtered, broken grammar)
+    if _detect_garbled_output(original_body, filtered_article):
+        raise NeutralizationResponseError(
+            "Garbled output detected - LLM over-filtered the content leaving broken grammar. "
+            "Falling back to mock provider for cleaner output."
         )
 
     return DetailFullResult(
