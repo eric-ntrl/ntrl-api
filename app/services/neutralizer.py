@@ -761,12 +761,35 @@ DEFAULT_FILTER_DETAIL_FULL_PROMPT = """Filter the following article to produce a
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
-You are an aggressive FILTER. Your job is to:
-1. AGGRESSIVELY REMOVE all manipulative language (see detailed lists below)
+You are a NEUTRALIZATION FILTER. Your job is to:
+1. REMOVE or REPLACE manipulative language (see detailed lists below)
 2. PRESERVE facts, quotes, structure, and real conflict
 3. TRACK every change you make with transparency spans
+4. ENSURE the output remains grammatically correct and readable
 
-This is a neutralization filter, not a light editing pass. If in doubt, REMOVE IT.
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: GRAMMAR PRESERVATION (HIGHEST PRIORITY)
+═══════════════════════════════════════════════════════════════════════════════
+
+Your output MUST be grammatically correct, readable prose. Follow these rules:
+
+1. NEVER leave broken sentences - if removing a word breaks grammar, either:
+   - Rephrase the sentence to be grammatically complete, OR
+   - Keep the word if no clean removal is possible
+
+2. NEVER remove words that leave gaps like:
+   - "He attended the at the center" (missing noun)
+   - "She was to the event" (missing verb)
+   - "The announced that" (missing subject/object)
+
+3. When removing adjectives/adverbs, ensure the sentence still flows:
+   - WRONG: "The event was a" → broken
+   - RIGHT: "The event was a success" → keep "success"
+
+4. Publisher boilerplate (sign-up prompts, navigation text) should be removed
+   as complete blocks, not word-by-word.
+
+5. After EVERY removal, mentally read the sentence - if it sounds broken, fix it.
 
 ═══════════════════════════════════════════════════════════════════════════════
 WORDS/PHRASES THAT MUST BE REMOVED (delete entirely or replace)
@@ -840,12 +863,15 @@ PRESERVE EXACTLY
 DO NOT
 ═══════════════════════════════════════════════════════════════════════════════
 
+- BREAK GRAMMAR - this is the #1 rule. Never leave incomplete sentences.
+- Remove words that leave syntactic gaps (missing subjects, verbs, objects)
 - Add new facts, context, or explanation
 - Remove facts even if uncomfortable
 - Downshift factual severity ("killed" → "shot" is wrong if death occurred)
 - Infer motives or intent beyond what's stated
 - Change quoted material (preserve exactly as written, even if manipulative)
 - Remove attributed emotional language inside quotes (that's the speaker's words)
+- Remove individual words from the middle of sentences without rephrasing
 
 ═══════════════════════════════════════════════════════════════════════════════
 ORIGINAL ARTICLE
@@ -892,6 +918,12 @@ SPAN FIELD DEFINITIONS:
 - action: One of "removed", "replaced", "softened"
 - reason: One of "clickbait", "urgency_inflation", "emotional_trigger", "selling", "agenda_signaling", "rhetorical_framing", "publisher_cruft"
 - replacement_text: (Optional) The text that replaced the original, if action is "replaced"
+
+BEFORE RETURNING, VALIDATE:
+1. Read through filtered_article - every sentence must be grammatically complete
+2. No sentence should have missing words that make it unreadable
+3. The text should flow naturally as if written by a journalist
+4. If you find broken sentences, FIX THEM before returning
 
 If no changes are needed, return the original article unchanged with an empty spans array."""
 
