@@ -242,3 +242,39 @@ When UI text appears too long or gets truncated with "...", the constraint is us
 - Mobile displays ~38-42 chars per line
 - 2 lines ≈ 65 chars | 3 lines ≈ 100 chars | 4 lines ≈ 135 chars
 - Use `/ui-length` skill for guided workflow
+
+## UI Verification (CRITICAL)
+
+**When making changes that affect the mobile app UI, Claude MUST verify the changes work before asking the user to test.**
+
+Changes that require UI verification:
+- Neutralization output (detail_full, detail_brief, feed_title, feed_summary)
+- Transparency spans (ntrl-view highlights)
+- Any API response format changes
+
+### How to Verify
+
+After deploying backend changes to staging:
+
+1. **Re-neutralize articles** on staging:
+   ```bash
+   curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
+     -H "Content-Type: application/json" \
+     -H "X-API-Key: staging-key-123" \
+     -d '{"neutralize_limit": 10, "skip_ingest": true, "skip_brief": false}'
+   ```
+
+2. **Test the UI** using ntrl-app's testing tools (see `../ntrl-app/CLAUDE.md` for methods):
+   - Playwright for web screenshots
+   - Maestro for iOS simulator
+   - Direct simulator screenshots via `xcrun simctl`
+
+3. **Verify specific screens**:
+   - Feed view: Are titles neutralized?
+   - Article detail (full view): Is detail_full neutralized?
+   - NTRL view: Are transparency spans highlighted?
+
+4. **Only after visual verification**, report results to the user.
+
+### Related Project
+The mobile app is at `../ntrl-app/` - see its CLAUDE.md for UI testing commands.
