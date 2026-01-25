@@ -27,7 +27,93 @@ See `docs/ARCHITECTURE.md` for full details.
 - **Migrations**: Alembic
 - **Storage**: S3 or local filesystem for raw articles
 - **AI**: Pluggable neutralizers (mock, OpenAI, Anthropic)
+- **NLP**: spaCy (en_core_web_sm) for structural detection
 - **Dependencies**: Pipenv
+
+## NTRL Filter v2 Architecture
+
+The v2 architecture uses a two-phase approach for detecting and neutralizing manipulation:
+
+```
+Article Input
+     │
+     ▼
+┌─────────────────────────────────────────────┐
+│ Phase 1: ntrl-scan (Detection) ~400ms       │
+│   ├── Lexical: regex patterns (~20ms)       │
+│   ├── Structural: spaCy NLP (~80ms)         │
+│   └── Semantic: LLM detection (~300ms)      │
+│   → Outputs: DetectionInstance spans        │
+├─────────────────────────────────────────────┤
+│ Phase 2: ntrl-fix (Rewriting) ~800ms        │
+│   ├── Detail Full: span-guided rewrite      │
+│   ├── Detail Brief: synthesis               │
+│   ├── Feed Outputs: title/summary           │
+│   └── Red-Line Validator: 10 invariance     │
+│   → Outputs: Neutralized content            │
+└─────────────────────────────────────────────┘
+     │
+     ▼
+Neutralized Content + Transparency Package
+```
+
+**Target latency**: 1-2 seconds per article
+
+### V2 API Endpoints
+
+```
+POST /v2/scan         - Detection only (returns spans)
+POST /v2/process      - Full pipeline (scan + fix)
+POST /v2/batch        - Batch processing (up to 100 articles)
+POST /v2/transparency - Full transparency package
+```
+
+### Manipulation Taxonomy
+
+The taxonomy (`app/taxonomy.py`) defines 115 manipulation types across 6 categories:
+
+| Category | Name | Examples |
+|----------|------|----------|
+| A | Attention & Engagement | Curiosity gaps, urgency markers, clickbait |
+| B | Emotional & Affective | Rage verbs, fear appeals, tribal priming |
+| C | Cognitive & Epistemic | False balance, motive certainty, anecdote-as-proof |
+| D | Linguistic & Framing | Passive voice, vague attribution, loaded terms |
+| E | Structural & Editorial | Buried lede, missing context |
+| F | Incentive & Meta | Agenda masking, incentive opacity |
+
+### Red-Line Validator
+
+The validator (`ntrl_fix/validator.py`) enforces 10 invariance checks:
+
+1. **Entity invariance** - Names, orgs, places preserved
+2. **Number invariance** - All numbers preserved exactly
+3. **Date invariance** - All dates preserved
+4. **Attribution invariance** - Who said what preserved
+5. **Modality invariance** - "alleged" never becomes "confirmed"
+6. **Causality invariance** - Causal claims unchanged
+7. **Risk invariance** - Warnings preserved
+8. **Quote integrity** - Direct quotes verbatim
+9. **Scope invariance** - Quantifiers unchanged
+10. **Negation integrity** - "not" never accidentally removed
+
+### Key V2 Classes
+
+```python
+# Detection
+from app.services.ntrl_scan import NTRLScanner, ScannerConfig
+scanner = NTRLScanner(config=ScannerConfig(enable_semantic=True))
+result = await scanner.scan(text, ArticleSegment.BODY)
+
+# Rewriting
+from app.services.ntrl_fix import NTRLFixer, FixerConfig
+fixer = NTRLFixer(config=FixerConfig())
+result = await fixer.fix(body, title, body_scan, title_scan)
+
+# Full Pipeline
+from app.services.ntrl_pipeline import NTRLPipeline, PipelineConfig
+pipeline = NTRLPipeline(config=PipelineConfig())
+result = await pipeline.process(body, title)
+```
 
 ## Key Commands
 
@@ -53,13 +139,35 @@ app/
 ├── main.py              # FastAPI entry point
 ├── database.py          # DB configuration
 ├── models.py            # SQLAlchemy ORM models
-├── routers/             # API endpoints (brief, stories, sources, admin)
+├── taxonomy.py          # 115 manipulation types (v2)
+├── routers/
+│   ├── admin.py         # V1 admin endpoints
+│   ├── brief.py         # V1 brief endpoints
+│   ├── stories.py       # V1 story endpoints
+│   ├── sources.py       # V1 sources endpoints
+│   └── pipeline.py      # V2 pipeline endpoints (/v2/scan, /v2/process, /v2/batch)
 ├── schemas/             # Pydantic request/response schemas
-├── services/            # Business logic (ingestion, neutralizer, brief_assembly)
+├── services/
+│   ├── ingestion.py     # RSS ingestion
+│   ├── neutralizer.py   # V1 neutralizer (legacy)
+│   ├── brief_assembly.py
+│   ├── ntrl_scan/       # V2 detection phase
+│   │   ├── lexical_detector.py    # Regex patterns (~20ms)
+│   │   ├── structural_detector.py # spaCy NLP (~80ms)
+│   │   ├── semantic_detector.py   # LLM detection (~300ms)
+│   │   └── scanner.py             # Parallel orchestrator
+│   ├── ntrl_fix/        # V2 rewriting phase
+│   │   ├── detail_full_gen.py     # Full article neutralization
+│   │   ├── detail_brief_gen.py    # Brief synthesis
+│   │   ├── feed_outputs_gen.py    # Title/summary generation
+│   │   ├── validator.py           # 10 red-line invariance checks
+│   │   └── fixer.py               # Parallel orchestrator
+│   ├── ntrl_pipeline.py # V2 unified pipeline
+│   └── ntrl_batcher.py  # V2 batch processing
 ├── storage/             # Object storage providers (S3, local)
 └── jobs/                # Background jobs
 migrations/              # Alembic migrations
-tests/                   # Unit tests
+tests/                   # Unit tests (156 tests for v2)
 ```
 
 ## Development Workflow

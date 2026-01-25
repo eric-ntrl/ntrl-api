@@ -5,11 +5,13 @@ Schemas for story endpoints.
 
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TransparencySpanResponse(BaseModel):
     """A single span of manipulative content that was modified."""
+    model_config = ConfigDict(from_attributes=True)
+
     start_char: int = Field(..., description="Start position in original text")
     end_char: int = Field(..., description="End position in original text")
     original_text: str = Field(..., description="The original manipulative text")
@@ -17,15 +19,14 @@ class TransparencySpanResponse(BaseModel):
     reason: str = Field(..., description="Why this was flagged (e.g., clickbait, urgency_inflation)")
     replacement_text: Optional[str] = Field(None, description="Replacement text if replaced/softened")
 
-    class Config:
-        from_attributes = True
-
 
 class StoryDetail(BaseModel):
     """
     Story detail - shows filtered/neutralized content first.
     GET /v1/stories/{id}
     """
+    model_config = ConfigDict(from_attributes=True)
+
     id: str = Field(..., description="Story ID (UUID)")
 
     # Feed outputs (for list views)
@@ -49,15 +50,14 @@ class StoryDetail(BaseModel):
     # Section
     section: Optional[str] = Field(None, description="Section classification")
 
-    class Config:
-        from_attributes = True
-
 
 class StoryTransparency(BaseModel):
     """
     Transparency view - shows what was removed and why.
     GET /v1/stories/{id}/transparency
     """
+    model_config = ConfigDict(from_attributes=True)
+
     id: str = Field(..., description="Story ID (UUID)")
 
     # Original content (for comparison)
@@ -87,6 +87,3 @@ class StoryTransparency(BaseModel):
     model_name: Optional[str] = Field(None, description="Model used for neutralization")
     prompt_version: Optional[str] = Field(None, description="Prompt version used")
     processed_at: datetime = Field(..., description="When neutralization was performed")
-
-    class Config:
-        from_attributes = True

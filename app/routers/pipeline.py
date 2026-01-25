@@ -13,7 +13,7 @@ These endpoints use the new two-phase architecture for improved performance.
 
 from typing import Optional
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.ntrl_pipeline import (
     NTRLPipeline,
@@ -47,6 +47,8 @@ class ScanRequest(BaseModel):
 
 class ScanResponse(BaseModel):
     """Response from detection."""
+    model_config = ConfigDict(from_attributes=True)
+
     body_detections: int
     title_detections: int
     total_detections: int
@@ -55,9 +57,6 @@ class ScanResponse(BaseModel):
     detections_by_severity: dict[int, int]
     body_spans: list[dict]
     title_spans: list[dict]
-
-    class Config:
-        from_attributes = True
 
 
 class ProcessRequest(BaseModel):
@@ -72,6 +71,8 @@ class ProcessRequest(BaseModel):
 
 class ProcessResponse(BaseModel):
     """Response from full pipeline."""
+    model_config = ConfigDict(from_attributes=True)
+
     # Neutralized content
     detail_full: str
     detail_brief: str
@@ -92,9 +93,6 @@ class ProcessResponse(BaseModel):
     # Transparency summary
     detections_by_category: dict[str, int]
     changes_by_action: dict[str, int]
-
-    class Config:
-        from_attributes = True
 
 
 class BatchArticle(BaseModel):

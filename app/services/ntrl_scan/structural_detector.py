@@ -72,7 +72,7 @@ class StructuralDetector:
             self.nlp = spacy.load(model_name)
 
         # Disable components we don't need for speed
-        self.nlp.disable_pipes(["ner"])  # Keep parser and tagger
+        self.nlp.select_pipes(disable=["ner"])  # Keep parser and tagger
 
     def detect(
         self,

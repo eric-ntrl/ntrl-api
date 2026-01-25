@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -36,6 +36,8 @@ class SourceCreate(BaseModel):
 
 class SourceResponse(BaseModel):
     """Source response."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     name: str
     slug: str
@@ -43,9 +45,6 @@ class SourceResponse(BaseModel):
     default_section: Optional[str]
     is_active: bool
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class SourceListResponse(BaseModel):

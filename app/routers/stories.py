@@ -114,11 +114,13 @@ def _get_story_or_404(db: Session, story_id: str) -> tuple:
 # List Stories
 # -----------------------------------------------------------------------------
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 
 class StoryListItem(BaseModel):
     """Story list item showing before/after comparison."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     # Original (before)
     original_title: str
@@ -134,9 +136,6 @@ class StoryListItem(BaseModel):
     section: Optional[str]
     has_manipulative_content: bool
     is_neutralized: bool
-
-    class Config:
-        from_attributes = True
 
 
 class StoryListResponse(BaseModel):
