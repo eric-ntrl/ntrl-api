@@ -1,0 +1,5 @@
+FROM alpine:latest
+RUN apk add --no-cache curl
+COPY scripts/run-pipeline.sh /run-pipeline.sh
+RUN chmod +x /run-pipeline.sh
+CMD ["/run-pipeline.sh"]
