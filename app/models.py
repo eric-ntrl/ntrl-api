@@ -28,7 +28,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -219,6 +219,11 @@ class StoryNeutralized(Base):
     story_raw = relationship("StoryRaw", back_populates="neutralized")
     spans = relationship("TransparencySpan", back_populates="story_neutralized",
                         order_by="TransparencySpan.start_char")
+    manipulation_spans = relationship(
+        "ManipulationSpan",
+        back_populates="story_neutralized",
+        order_by="ManipulationSpan.span_start"
+    )
 
     __table_args__ = (
         UniqueConstraint("story_raw_id", "version", name="uq_story_version"),
@@ -254,6 +259,70 @@ class TransparencySpan(Base):
 
     __table_args__ = (
         Index("ix_transparency_spans_story", "story_neutralized_id"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# ManipulationSpan (NTRL Filter v2)
+# -----------------------------------------------------------------------------
+
+class ManipulationSpan(Base):
+    """
+    Enhanced manipulation span with full taxonomy support (NTRL Filter v2).
+
+    Each span represents a detected manipulation instance in the original article,
+    with precise location, taxonomy binding, scoring, and action taken.
+
+    This model powers both detection (ntrl-scan) and transparency (ntrl-view).
+    """
+    __tablename__ = "manipulation_spans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    story_neutralized_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("stories_neutralized.id"),
+        nullable=False
+    )
+
+    # Taxonomy binding (references app/taxonomy.py)
+    type_id_primary = Column(String(10), nullable=False)    # e.g., "A.1.1"
+    type_ids_secondary = Column(ARRAY(String), default=[])  # Additional types
+
+    # Location in original text
+    segment = Column(String(20), nullable=False)     # title/deck/lede/body/caption
+    span_start = Column(Integer, nullable=False)     # Character index in segment
+    span_end = Column(Integer, nullable=False)       # Exclusive end index
+    original_text = Column(Text, nullable=False)     # Exact text that was flagged
+
+    # Scoring
+    confidence = Column(Float, nullable=False)       # Detection confidence (0-1)
+    severity = Column(Integer, nullable=False)       # Base severity (1-5)
+    severity_weighted = Column(Float, nullable=True) # After segment multiplier
+
+    # Decision
+    action = Column(String(20), nullable=False)      # remove/replace/rewrite/annotate/preserve
+    rewritten_text = Column(Text, nullable=True)     # Result after action (if applicable)
+    rationale = Column(Text, nullable=True)          # Brief explanation for transparency
+
+    # Audit / Provenance
+    detector_source = Column(String(20), nullable=False)  # lexical/structural/semantic
+    exemptions_applied = Column(ARRAY(String), default=[])  # Guardrails that applied
+    rewrite_template_id = Column(String(64), nullable=True)  # Template used (if any)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    story_neutralized = relationship(
+        "StoryNeutralized",
+        back_populates="manipulation_spans"
+    )
+
+    __table_args__ = (
+        Index("ix_manipulation_spans_story", "story_neutralized_id"),
+        Index("ix_manipulation_spans_type", "type_id_primary"),
+        Index("ix_manipulation_spans_segment", "segment"),
+        Index("ix_manipulation_spans_severity", "severity"),
     )
 
 

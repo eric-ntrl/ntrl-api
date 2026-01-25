@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
-from app.routers import brief_router, stories_router, admin_router, sources_router
+from app.routers import brief_router, stories_router, admin_router, sources_router, pipeline_router
 
 # Create app
 app = FastAPI(
@@ -70,6 +70,7 @@ app.include_router(brief_router)
 app.include_router(stories_router)
 app.include_router(admin_router)
 app.include_router(sources_router)
+app.include_router(pipeline_router)  # NTRL Filter v2 pipeline
 
 
 # ---------------------------------------------------------------------------
@@ -91,10 +92,11 @@ def root() -> dict:
     """Root endpoint with API info."""
     return {
         "service": "NTRL API",
-        "version": "1.0.0",
-        "description": "Neutral News Backend - Phase 1 POC",
+        "version": "2.0.0",
+        "description": "Neutral News Backend",
         "docs": "/docs",
         "endpoints": {
+            # V1 endpoints (legacy)
             "brief": "GET /v1/brief",
             "story": "GET /v1/stories/{id}",
             "transparency": "GET /v1/stories/{id}/transparency",
@@ -103,5 +105,10 @@ def root() -> dict:
             "ingest": "POST /v1/ingest/run",
             "neutralize": "POST /v1/neutralize/run",
             "brief_run": "POST /v1/brief/run",
+            # V2 endpoints (NTRL Filter v2)
+            "v2_scan": "POST /v2/scan",
+            "v2_process": "POST /v2/process",
+            "v2_batch": "POST /v2/batch",
+            "v2_transparency": "POST /v2/transparency",
         },
     }
