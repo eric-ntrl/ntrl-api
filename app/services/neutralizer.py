@@ -188,15 +188,23 @@ MANIPULATIVE_PATTERNS = {
         r'\b(shocking|unbelievable|you won\'t believe|mind-blowing|jaw-dropping)\b',
         r'\b(must see|must read|can\'t miss|don\'t miss)\b',
         r'\b(secret|hidden|exposed|revealed)\b',
+        r'\b(stunning|explosive|bombshell)\b',
     ],
     SpanReason.URGENCY_INFLATION: [
         r'\b(breaking|urgent|just in|developing|happening now)\b',
         r'\b(alert|emergency|crisis|chaos)\b',
+        r'\b(grinds to a halt|comes to a standstill|at a standstill)\b',
+        r'\b(huge delays|massive delays|major delays)\b',
+        r'\bROAD CLOSED\b',  # All-caps urgency
+        r'\b[A-Z]{4,}\s+[A-Z]{4,}\b',  # Consecutive all-caps words (e.g., "ROAD CLOSED")
     ],
     SpanReason.EMOTIONAL_TRIGGER: [
         r'\b(outrage|fury|furious|enraged|livid)\b',
         r'\b(slams|blasts|destroys|demolishes|eviscerates)\b',
         r'\b(heartbreaking|devastating|horrifying|terrifying)\b',
+        r'\b(horror|nightmare|nightmare scenario)\b',
+        r'\bhorror\s+\w+\b',  # "horror smash", "horror crash", etc.
+        r'\b(sparking|sparks|sparked)\s+(huge|massive|widespread|major)\b',
     ],
     SpanReason.SELLING: [
         r'\b(exclusive|insider|behind the scenes)\b',
@@ -226,6 +234,17 @@ REPLACEMENTS = {
     'just in': '',
     'must see': '',
     'must read': '',
+    'horror': '',
+    'nightmare': '',
+    'stunning': 'notable',
+    'explosive': '',
+    'bombshell': '',
+    'grinds to a halt': 'stops',
+    'comes to a standstill': 'stops',
+    'huge delays': 'delays',
+    'massive delays': 'delays',
+    'major delays': 'delays',
+    'road closed': 'road closure',
 }
 
 
