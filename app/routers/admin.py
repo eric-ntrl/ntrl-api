@@ -520,7 +520,6 @@ class ScheduledRunRequest(BaseModel):
     neutralize_limit: int = Field(25, ge=1, le=500, description="Max stories to neutralize")
     max_workers: int = Field(5, ge=1, le=10, description="Parallel workers for neutralization")
     cutoff_hours: int = Field(24, ge=1, le=72, description="Hours to look back for brief")
-    cleanup_old_articles: bool = Field(True, description="Hide articles older than cutoff_hours")
 
 
 class ScheduledRunResponse(BaseModel):
@@ -623,27 +622,11 @@ def run_scheduled_pipeline(
     except Exception as e:
         errors.append(f"Brief failed: {e}")
 
-    # Stage 4: Cleanup old articles (hide articles older than cutoff_hours)
+    # Stage 4: Cleanup old articles (disabled for now)
+    # TODO: Re-enable once is_active column is properly populated in database
+    # The brief assembly already filters by published_at >= cutoff_time (24h)
+    # so old articles won't appear in the UI anyway
     cleanup_hidden_count = 0
-    if request.cleanup_old_articles:
-        try:
-            from datetime import timedelta
-            from app import models as app_models
-            cutoff_time = datetime.utcnow() - timedelta(hours=request.cutoff_hours)
-
-            # Hide old articles by setting is_active=False on StoryRaw
-            result = (
-                db.query(app_models.StoryRaw)
-                .filter(
-                    app_models.StoryRaw.is_active == True,
-                    app_models.StoryRaw.published_at < cutoff_time,
-                )
-                .update({app_models.StoryRaw.is_active: False})
-            )
-            cleanup_hidden_count = result
-            db.commit()
-        except Exception as e:
-            errors.append(f"Cleanup failed: {e}")
 
     finished_at = datetime.utcnow()
     duration_ms = int((finished_at - started_at).total_seconds() * 1000)

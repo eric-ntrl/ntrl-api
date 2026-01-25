@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_
 
 from app import models
 from app.models import Section, SECTION_ORDER, PipelineStage, PipelineStatus
@@ -110,8 +110,8 @@ class BriefAssemblyService:
         - Has current neutralization
         - Published after cutoff
         """
-        # Query for neutralized, non-duplicate, active stories
-        # Include stories where is_active is True OR NULL (backwards compatible)
+        # Query for neutralized, non-duplicate stories
+        # TODO: Add is_active filter once database column is properly populated
         results = (
             db.query(models.StoryNeutralized, models.StoryRaw, models.Source)
             .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
@@ -119,10 +119,6 @@ class BriefAssemblyService:
             .filter(
                 models.StoryNeutralized.is_current == True,
                 models.StoryRaw.is_duplicate == False,
-                or_(
-                    models.StoryRaw.is_active == True,
-                    models.StoryRaw.is_active.is_(None),
-                ),
                 models.StoryRaw.published_at >= cutoff_time,
                 models.StoryRaw.section.isnot(None),
             )
