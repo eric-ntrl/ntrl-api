@@ -3340,7 +3340,31 @@ class NeutralizerService:
         )
 
         if story_ids:
-            query = query.filter(models.StoryRaw.id.in_([uuid.UUID(sid) for sid in story_ids]))
+            # Convert string IDs to UUIDs
+            requested_uuids = [uuid.UUID(sid) for sid in story_ids]
+
+            # Check which IDs are StoryRaw IDs
+            existing_raw_ids = set(
+                row[0] for row in db.query(models.StoryRaw.id)
+                .filter(models.StoryRaw.id.in_(requested_uuids))
+                .all()
+            )
+
+            # For IDs not found in StoryRaw, check if they're StoryNeutralized IDs
+            # and get the corresponding story_raw_id
+            missing_ids = [uid for uid in requested_uuids if uid not in existing_raw_ids]
+            if missing_ids:
+                # These might be StoryNeutralized IDs - get the corresponding story_raw_ids
+                neutralized_mappings = (
+                    db.query(models.StoryNeutralized.story_raw_id)
+                    .filter(models.StoryNeutralized.id.in_(missing_ids))
+                    .all()
+                )
+                for mapping in neutralized_mappings:
+                    if mapping[0]:  # story_raw_id is not None
+                        existing_raw_ids.add(mapping[0])
+
+            query = query.filter(models.StoryRaw.id.in_(existing_raw_ids))
         elif not force:
             # Only get stories without current neutralization
             subq = (
