@@ -1,0 +1,131 @@
+{
+  "article_id": "011",
+  "corpus_version": "1.0",
+  "annotated_by": "human_reviewed",
+  "source": "Daily Mail",
+  "category": "entertainment",
+  "notes": "Celebrity romance article with heavy manipulation. Tests new entertainment/celebrity hype category.",
+  "original_body": "Kylie Jenner and Timothée Chalamet enjoyed a sun-drenched romantic escape to Cabo San Lucas, where the couple looked more in love than ever. The reality star, 27, showed off her toned figure in a bikini as she cozied up to the Oscar-nominated actor, 29, at a beloved waterfront restaurant. Sources say the A-list pair appeared relaxed and affectionate during their intimate getaway, spending time at a secluded waterfront property. The couple, who have been dating since early 2023, were spotted on a luxurious boat before dining at a celebrity hotspot. An insider exclusively revealed that the two are 'totally into each other' and 'visibly smitten.' The tender moment captured by photographers shows the pair engaged in an intimate conversation over lunch.",
+  "expected_spans": [
+    {
+      "span_id": "011-001",
+      "text": "sun-drenched romantic escape",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-002",
+      "text": "looked more in love than ever",
+      "reason": "rhetorical_framing",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-003",
+      "text": "showed off her toned figure",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-004",
+      "text": "cozied up",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-005",
+      "text": "beloved waterfront restaurant",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "011-006",
+      "text": "A-list pair",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "011-007",
+      "text": "appeared relaxed and affectionate",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-008",
+      "text": "intimate getaway",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-009",
+      "text": "secluded waterfront property",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "011-010",
+      "text": "luxurious boat",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "011-011",
+      "text": "celebrity hotspot",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-012",
+      "text": "exclusively revealed",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-013",
+      "text": "visibly smitten",
+      "reason": "rhetorical_framing",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-014",
+      "text": "tender moment",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    },
+    {
+      "span_id": "011-015",
+      "text": "intimate conversation",
+      "reason": "rhetorical_framing",
+      "action": "replace",
+      "confidence": "high"
+    }
+  ],
+  "expected_brief_banned": [
+    "romantic",
+    "sun-drenched",
+    "cozied up",
+    "tender",
+    "intimate",
+    "beloved",
+    "luxurious",
+    "secluded",
+    "a-list",
+    "smitten",
+    "affectionate",
+    "toned figure",
+    "showed off"
+  ]
+}

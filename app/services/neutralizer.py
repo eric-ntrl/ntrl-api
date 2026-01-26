@@ -1203,6 +1203,28 @@ These are more nuanced patterns. Flag ONLY when used by the journalist (not in q
     FLAG: "on the warpath" (should be "strongly opposing")
     NOTE: These military/violent idioms sensationalize ordinary disagreements
 
+13. ENTERTAINMENT/CELEBRITY HYPE - Romance/lifestyle manipulation in celebrity coverage
+    FLAG: "romantic escape", "romantic getaway", "sun-drenched romantic escape"
+    FLAG: "looked more in love than ever", "cozied up", "tender moment"
+    FLAG: "intimate conversation", "intimate moment", "intimate getaway"
+    FLAG: "showed off her toned figure", "showed off his toned physique", "flaunted"
+    FLAG: "celebrity hotspot", "beloved Cabo restaurant", "beloved restaurant"
+    FLAG: "totally into each other", "visibly smitten", "obsessed with"
+    FLAG: "luxurious boat", "luxury yacht", "exclusive resort"
+    FLAG: "exclusively revealed", "exclusively reported"
+    FLAG: "A-list pair", "A-list couple", "power couple"
+    FLAG: "secluded waterfront property", "secluded getaway"
+    FLAG: "appeared relaxed and affectionate", "relaxed and affectionate"
+    REPLACE: "romantic getaway" → "trip" or "vacation"
+    REPLACE: "sun-drenched romantic escape" → "vacation"
+    REPLACE: "luxury yacht" → "boat"
+    REPLACE: "celebrity hotspot" → "restaurant"
+    REPLACE: "showed off her toned figure" → "wore a bikini"
+    REPLACE: "appeared relaxed and affectionate" → "spent time together"
+    DO NOT FLAG: Direct quotes with attribution
+    DO NOT FLAG: "romantic comedy" as genre name (legitimate use)
+    DO NOT FLAG: Factual statements like "they are a couple" or "they are dating"
+
 BUT STILL NEVER FLAG (even if matching above):
 - Factual statistics even if alarming ("500 dead", "record high")
 - Quoted speech (even if manipulative - that's the source, not the journalist)
@@ -1320,6 +1342,19 @@ Output: {{"phrases": [
 ]}}
 
 Why: These military metaphors sensationalize ordinary political disagreement.
+
+Example 9d - Entertainment/celebrity hype (FLAG these):
+Input: "Kylie Jenner and Timothée Chalamet enjoyed a sun-drenched romantic escape in Cabo, where they cozied up at a beloved waterfront restaurant. The couple looked more in love than ever during their intimate getaway."
+
+Output: {{"phrases": [
+  {{"phrase": "sun-drenched romantic escape", "reason": "rhetorical_framing", "action": "replace", "replacement": "vacation"}},
+  {{"phrase": "cozied up", "reason": "rhetorical_framing", "action": "replace", "replacement": "dined"}},
+  {{"phrase": "beloved waterfront restaurant", "reason": "rhetorical_framing", "action": "replace", "replacement": "waterfront restaurant"}},
+  {{"phrase": "looked more in love than ever", "reason": "rhetorical_framing", "action": "remove", "replacement": null}},
+  {{"phrase": "intimate getaway", "reason": "rhetorical_framing", "action": "replace", "replacement": "trip"}}
+]}}
+
+Why: These phrases inject romantic/emotional framing that isn't factual reporting. "Sun-drenched romantic escape" editorializes a vacation. "Looked more in love than ever" is subjective speculation. "Beloved" and "intimate" are emotional descriptors that manipulate reader perception.
 
 ═══════════════════════════════════════════════════════════════════════════════
 FALSE POSITIVE EXAMPLES - WHAT NOT TO FLAG
@@ -1601,6 +1636,60 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
     return filtered
 
 
+# -----------------------------------------------------------------------------
+# Brief Neutralization Validation
+# -----------------------------------------------------------------------------
+
+# Phrases that should be neutralized in detail_brief (entertainment/hype focus)
+BRIEF_BANNED_PHRASES = {
+    # Romance/celebrity hype (phrases)
+    "romantic escape", "romantic getaway", "sun-drenched",
+    "tender moment", "intimate conversation", "intimate getaway",
+    "cozied up", "looked more in love", "visibly smitten",
+    "totally into each other", "obsessed with",
+    # Romance/celebrity hype (standalone words)
+    "romantic", "intimate", "tender", "beloved", "smitten",
+    "luxurious", "secluded", "affectionate",
+    # Personal descriptors
+    "showed off", "toned figure", "toned physique", "flaunted",
+    "relaxed and affectionate", "appeared relaxed",
+    # Loaded modifiers
+    "celebrity hotspot", "beloved restaurant", "beloved cabo",
+    "a-list", "power couple", "luxury yacht", "luxurious boat",
+    "exclusive resort", "secluded getaway", "secluded waterfront",
+    "exclusively revealed", "exclusively reported",
+}
+
+
+def validate_brief_neutralization(brief: str) -> List[str]:
+    """
+    Check if brief contains phrases that should have been neutralized.
+
+    This is a post-generation validation step to catch entertainment/hype
+    language that slipped through the LLM neutralization.
+
+    Args:
+        brief: The generated detail_brief text
+
+    Returns:
+        List of violations found (for logging/debugging). Empty list if clean.
+    """
+    if not brief:
+        return []
+
+    violations = []
+    brief_lower = brief.lower()
+
+    for phrase in BRIEF_BANNED_PHRASES:
+        if phrase.lower() in brief_lower:
+            violations.append(phrase)
+
+    if violations:
+        logger.warning(f"Brief contains un-neutralized phrases: {violations}")
+
+    return violations
+
+
 def get_synthesis_detail_full_prompt() -> str:
     """
     Get the user prompt template for detail_full synthesis (NEW approach).
@@ -1776,11 +1865,28 @@ EMOTIONAL: shocking, devastating, terrifying, unprecedented, historic,
            dramatic, catastrophic, dire, significant (as amplifier)
 JUDGMENT: dangerous, reckless, extreme, radical (unless quoted)
 VAGUE AMPLIFIERS: significantly, substantially, major (unless quoted)
+ENTERTAINMENT HYPE: romantic, intimate, tender, beloved, exclusive,
+                    luxurious, luxury, secluded, sun-drenched, A-list
+PERSONAL DESCRIPTORS: toned, stunning, gorgeous, handsome, smitten,
+                      obsessed, affectionate, relaxed and affectionate
+LOADED MODIFIERS: celebrity hotspot, power couple, looked more in love,
+                  cozied up, showed off, flaunted
 
 Use factual language instead:
 - "significantly impacted" → state the specific impact
 - "unprecedented" → describe what actually happened
 - "catastrophic" → use the factual severity from the source
+
+ENTERTAINMENT NEUTRALIZATION EXAMPLES:
+- "romantic getaway" → "trip" or "vacation"
+- "sun-drenched romantic escape" → "vacation"
+- "luxury yacht" → "boat"
+- "celebrity hotspot" → "restaurant"
+- "showed off her toned figure" → "wore a bikini"
+- "appeared relaxed and affectionate" → "spent time together"
+- "looked more in love than ever" → OMIT (speculative)
+- "cozied up" → "dined" or "sat together"
+- "beloved restaurant" → "restaurant"
 
 ═══════════════════════════════════════════════════════════════════════════════
 PRESERVE EXACTLY (Scan original and verify these appear in your output)
@@ -3612,8 +3718,10 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 # Note: No JSON response format - we want plain text
             )
 
-            # Return plain text response
-            return response.choices[0].message.content.strip()
+            # Return plain text response with validation
+            brief = response.choices[0].message.content.strip()
+            validate_brief_neutralization(brief)  # Log warnings for violations
+            return brief
 
         except Exception as e:
             logger.error(f"OpenAI detail_brief synthesis failed: {e}")
@@ -3848,7 +3956,9 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             )
 
             response = model.generate_content(user_prompt)
-            return response.text.strip()
+            brief = response.text.strip()
+            validate_brief_neutralization(brief)  # Log warnings for violations
+            return brief
 
         except Exception as e:
             logger.error(f"Gemini detail_brief synthesis failed: {e}")
@@ -4083,8 +4193,10 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 ],
             )
 
-            # Return plain text response (no JSON parsing needed)
-            return response.content[0].text.strip()
+            # Return plain text response with validation
+            brief = response.content[0].text.strip()
+            validate_brief_neutralization(brief)  # Log warnings for violations
+            return brief
 
         except Exception as e:
             logger.error(f"Anthropic detail_brief synthesis failed: {e}")
