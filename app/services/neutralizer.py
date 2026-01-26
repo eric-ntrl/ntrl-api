@@ -1032,16 +1032,38 @@ CRITICAL: Follow the detailed instructions in the user message EXACTLY.
 The user message contains all rules, examples, and calibration guidance.
 Prioritize PRECISION over RECALL - when in doubt, do NOT flag."""
 
-DEFAULT_SPAN_DETECTION_PROMPT = """You are a media literacy expert. Your job is to identify sensational, emotional, and manipulative language in news articles that readers should be aware of.
-
-BE PRECISE - flag only genuinely manipulative language. Flag anything that:
-- Creates artificial urgency or panic
-- Uses emotional words instead of neutral alternatives
-- Tries to persuade rather than inform
-- Uses hyperbole or exaggeration
+DEFAULT_SPAN_DETECTION_PROMPT = """You are a precision-focused media analyst. Your job is to identify ONLY genuinely manipulative language in news articles.
 
 ═══════════════════════════════════════════════════════════════════════════════
-CATEGORIES TO FLAG
+CRITICAL: READ THIS FIRST - DO NOT FLAG THESE
+═══════════════════════════════════════════════════════════════════════════════
+
+STOP. Before flagging ANYTHING, check if it falls into these categories:
+
+NEVER FLAG - Medical/Scientific Terms:
+  "cancer", "bowel cancer", "tumor", "disease", "diagnosis", "mortality"
+
+NEVER FLAG - Neutral News Verbs:
+  "tests will", "announced", "reported", "according to", "showed"
+
+NEVER FLAG - Factual Descriptors:
+  "spot more", "highest", "lowest", "most", "increasing", "rising"
+  "getting worse", "every year", "daily", "this week"
+
+NEVER FLAG - Data/Statistics Language:
+  "highest cost", "most affected", "largest increase", "record-breaking"
+
+NEVER FLAG - Quoted Text:
+  Anything inside quotation marks (" ")
+
+NEVER FLAG - Literal Meanings:
+  "car slams into wall", "bomb blast", "radical surgery"
+
+If a phrase matches ANY of the above, DO NOT include it in your output.
+Most news articles are NOT manipulative - return [] if nothing qualifies.
+
+═══════════════════════════════════════════════════════════════════════════════
+WHAT TO FLAG (only if NOT excluded above)
 ═══════════════════════════════════════════════════════════════════════════════
 
 1. URGENCY INFLATION - Creates false sense of immediacy
@@ -1063,25 +1085,6 @@ CATEGORIES TO FLAG
 5. AGENDA SIGNALING - Politically loaded framing
    FLAG: radical left, radical right, extremist, dangerous (as political label)
    FLAG: invasion (for immigration), crisis (when editorializing)
-
-═══════════════════════════════════════════════════════════════════════════════
-WHEN NOT TO FLAG
-═══════════════════════════════════════════════════════════════════════════════
-
-- Direct quotes from sources (inside quotation marks)
-- Literal/physical meanings: "car slams into wall", "bomb blast", "radical surgery"
-- Technical terms: "catastrophic failure" in engineering context
-
-NEVER FLAG THESE (even if they seem intense):
-
-- FACTUAL DATA: "highest", "lowest", "most", "record-breaking" when citing statistics
-- TEMPORAL PHRASES: "every year", "daily", "this week", "recently"
-- MEDICAL/SCIENTIFIC TERMS: "cancer", "disease", "tumor", "mortality", "diagnosis"
-- STANDARD NEWS VERBS: "tests will", "announced", "reported", "according to"
-- DESCRIPTIVE FACTS: "getting worse", "increasing", "rising", "spot more" when describing data/trends
-- PROPER NOUNS: Names of people, places, organizations
-- UI/METADATA: "Share", "Save", "minutes ago", newsletter signup text
-- NEUTRAL COMPARISONS: "highest cost", "most affected", "largest increase"
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: NEVER FLAG QUOTED TEXT
