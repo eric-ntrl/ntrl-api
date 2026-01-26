@@ -1,0 +1,44 @@
+{
+  "description": "Track precision, recall, and F1 scores over time for highlight accuracy",
+  "thresholds": {
+    "precision_min": 0.75,
+    "recall_min": 0.75,
+    "f1_min": 0.75,
+    "position_accuracy_min": 1.0
+  },
+  "history": [
+    {
+      "date": "2026-01-25T23:09:23.741349",
+      "precision": 0.0326,
+      "recall": 0.4054,
+      "f1": 0.0604,
+      "true_positives": 15,
+      "false_positives": 445,
+      "false_negatives": 22,
+      "articles_tested": 10,
+      "test_passed": false
+    },
+    {
+      "date": "2026-01-25T23:10:49.890556",
+      "precision": 0.0326,
+      "recall": 0.3947,
+      "f1": 0.0602,
+      "true_positives": 15,
+      "false_positives": 445,
+      "false_negatives": 23,
+      "articles_tested": 10,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-25T23:13:29.933680",
+      "precision": 0.0326,
+      "recall": 0.3947,
+      "f1": 0.0602,
+      "true_positives": 15,
+      "false_positives": 445,
+      "false_negatives": 23,
+      "articles_tested": 10,
+      "test_passed": true
+    }
+  ]
+}

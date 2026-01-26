@@ -1,0 +1,98 @@
+{
+  "article_id": "005",
+  "corpus_version": "1.0",
+  "annotated_by": "automated",
+  "notes": "Heavy emotional manipulation around flood disaster coverage",
+  "expected_spans": [
+    {
+      "span_id": "005-001",
+      "start_char": 0,
+      "end_char": 12,
+      "text": "Heartbreaking",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-002",
+      "start_char": 40,
+      "end_char": 51,
+      "text": "Devastating",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-003",
+      "start_char": 93,
+      "end_char": 110,
+      "text": "utter devastation",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-004",
+      "start_char": 116,
+      "end_char": 136,
+      "text": "will break your heart",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-005",
+      "start_char": 198,
+      "end_char": 210,
+      "text": "catastrophic",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-006",
+      "start_char": 405,
+      "end_char": 419,
+      "text": "Heart-wrenching",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-007",
+      "start_char": 475,
+      "end_char": 486,
+      "text": "desperately",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-008",
+      "start_char": 519,
+      "end_char": 537,
+      "text": "wiped off the map",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "005-009",
+      "start_char": 812,
+      "end_char": 818,
+      "text": "tragic",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "005-010",
+      "start_char": 904,
+      "end_char": 922,
+      "text": "woefully inadequate",
+      "reason": "emotional_trigger",
+      "action": "remove",
+      "confidence": "high"
+    }
+  ]
+}

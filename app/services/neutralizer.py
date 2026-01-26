@@ -1020,6 +1020,187 @@ The output should be similar in length to the input (full-length, not summarized
 """
 
 
+# -----------------------------------------------------------------------------
+# Span Detection Prompt (NEW: LLM-based context-aware detection)
+# -----------------------------------------------------------------------------
+
+DEFAULT_SPAN_DETECTION_PROMPT = """Analyze this article and identify ALL manipulative language.
+
+═══════════════════════════════════════════════════════════════════════════════
+YOUR TASK
+═══════════════════════════════════════════════════════════════════════════════
+
+Identify manipulative phrases that distort reader perception through:
+- Urgency inflation (BREAKING, JUST IN, developing)
+- Emotional triggers (slams, blasts, devastating, shocking)
+- Clickbait language (you won't believe, shocking revelation)
+- Agenda signaling (radical, extremist, dangerous)
+- Rhetorical manipulation (some say, critics say without attribution)
+- Selling language (exclusive, viral, trending)
+
+═══════════════════════════════════════════════════════════════════════════════
+CONTEXT-AWARE DETECTION RULES
+═══════════════════════════════════════════════════════════════════════════════
+
+IMPORTANT: Consider context before flagging.
+
+1. LITERAL vs FIGURATIVE usage:
+   - "slams" as criticism → FLAG (emotional trigger)
+   - "car slams into wall" → DO NOT FLAG (literal usage)
+   - "blasts" as criticism → FLAG (emotional trigger)
+   - "bomb blasts" → DO NOT FLAG (literal usage)
+
+2. QUOTED vs AUTHOR language:
+   - Author writes "shocking revelation" → FLAG (author's manipulation)
+   - Quote: "This is shocking," said Smith → DO NOT FLAG (quoted speech)
+   - Paraphrase with emotional language → FLAG (author chose those words)
+
+3. JUSTIFIED vs INFLATED urgency:
+   - "BREAKING" on routine news → FLAG (urgency inflation)
+   - "Breaking news" on actual developing story → STILL FLAG (remove regardless)
+   - "Emergency declared" when factual → DO NOT FLAG (factual statement)
+
+4. FACTUAL vs EDITORIAL adjectives:
+   - "dangerous situation" (author's judgment) → FLAG if not factually dangerous
+   - "dangerous chemicals" (factual) → DO NOT FLAG
+   - "radical proposal" (judgment) → FLAG
+   - "radical surgery" (medical term) → DO NOT FLAG
+
+═══════════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════════════════════
+
+Return a JSON array of manipulative phrases found. For each phrase:
+- phrase: The EXACT text as it appears in the article (copy-paste precision)
+- reason: One of: clickbait, urgency_inflation, emotional_trigger, selling, agenda_signaling, rhetorical_framing
+- action: One of: remove (delete entirely), replace (substitute), softened (flag but keep)
+- replacement: If action is "replace", provide the neutral replacement text
+
+Return ONLY the JSON array, no other text.
+
+If the article contains NO manipulative language, return an empty array: []
+
+EXAMPLES:
+
+Input: "BREAKING: Senator slams critics in devastating speech"
+Output: [
+  {{"phrase": "BREAKING:", "reason": "urgency_inflation", "action": "remove", "replacement": null}},
+  {{"phrase": "slams", "reason": "emotional_trigger", "action": "replace", "replacement": "criticizes"}},
+  {{"phrase": "devastating", "reason": "emotional_trigger", "action": "remove", "replacement": null}}
+]
+
+Input: "The car slammed into the wall, causing significant damage."
+Output: []
+
+═══════════════════════════════════════════════════════════════════════════════
+ARTICLE TO ANALYZE
+═══════════════════════════════════════════════════════════════════════════════
+
+{body}
+
+═══════════════════════════════════════════════════════════════════════════════
+RESPONSE
+═══════════════════════════════════════════════════════════════════════════════
+
+Return ONLY a JSON array of manipulative phrases (or empty array if none found):"""
+
+
+def get_span_detection_prompt() -> str:
+    """
+    Get the prompt for LLM-based span detection.
+
+    This prompt asks the LLM to identify manipulative phrases WITH context awareness:
+    - Understands literal vs figurative usage
+    - Distinguishes author language from quotes
+    - Applies judgment about justified vs inflated urgency
+    """
+    return get_prompt("span_detection_prompt", DEFAULT_SPAN_DETECTION_PROMPT)
+
+
+def build_span_detection_prompt(body: str) -> str:
+    """Build the prompt for LLM-based span detection."""
+    template = get_span_detection_prompt()
+    return template.format(body=body or "")
+
+
+def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan]:
+    """
+    Find character positions for LLM-identified manipulative phrases.
+
+    This is the position matching step of the hybrid LLM + pattern approach:
+    1. LLM identifies phrases with context awareness (no positions)
+    2. This function finds exact positions in the original body
+
+    Args:
+        body: The original article body text
+        llm_phrases: List of dicts from LLM with {phrase, reason, action, replacement}
+
+    Returns:
+        List of TransparencySpan objects with accurate character positions
+    """
+    if not body or not llm_phrases:
+        return []
+
+    spans = []
+    body_lower = body.lower()
+
+    for phrase_data in llm_phrases:
+        phrase = phrase_data.get("phrase", "")
+        if not phrase:
+            continue
+
+        reason_str = phrase_data.get("reason", "emotional_trigger")
+        action_str = phrase_data.get("action", "softened")
+        replacement = phrase_data.get("replacement")
+
+        # Parse reason to enum
+        reason = _parse_span_reason(reason_str)
+
+        # Parse action to enum
+        action = _parse_span_action(action_str)
+
+        # Find all occurrences of the phrase
+        start = 0
+        phrase_lower = phrase.lower()
+
+        while True:
+            # Try exact match first
+            pos = body.find(phrase, start)
+
+            # If not found, try case-insensitive
+            if pos == -1:
+                pos = body_lower.find(phrase_lower, start)
+                if pos != -1:
+                    # Use the actual text at this position
+                    phrase = body[pos:pos + len(phrase)]
+
+            if pos == -1:
+                break
+
+            spans.append(TransparencySpan(
+                field="body",
+                start_char=pos,
+                end_char=pos + len(phrase),
+                original_text=body[pos:pos + len(phrase)],
+                action=action,
+                reason=reason,
+                replacement_text=replacement if action == SpanAction.REPLACED else None,
+            ))
+
+            start = pos + 1
+
+    # Sort by position and remove overlaps
+    spans.sort(key=lambda s: s.start_char)
+    non_overlapping = []
+    last_end = -1
+    for span in spans:
+        if span.start_char >= last_end:
+            non_overlapping.append(span)
+            last_end = span.end_char
+
+    return non_overlapping
+
+
 def get_synthesis_detail_full_prompt() -> str:
     """
     Get the user prompt template for detail_full synthesis (NEW approach).
@@ -1775,11 +1956,11 @@ def parse_llm_response(
 def _parse_span_action(action: str) -> SpanAction:
     """Parse action string to SpanAction enum."""
     action_lower = action.lower()
-    if action_lower == "removed":
+    if action_lower in ("removed", "remove"):
         return SpanAction.REMOVED
-    elif action_lower == "replaced":
+    elif action_lower in ("replaced", "replace"):
         return SpanAction.REPLACED
-    elif action_lower == "softened":
+    elif action_lower in ("softened", "soften"):
         return SpanAction.SOFTENED
     else:
         return SpanAction.SOFTENED  # Default
@@ -1798,6 +1979,190 @@ def _parse_span_reason(reason: str) -> SpanReason:
         "publisher_cruft": SpanReason.SELLING,  # Map to closest enum
     }
     return mapping.get(reason_lower, SpanReason.RHETORICAL_FRAMING)
+
+
+def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[TransparencySpan]:
+    """
+    Detect manipulative spans using OpenAI LLM with context awareness.
+
+    This is the hybrid approach:
+    1. LLM identifies phrases with semantic understanding (no position tracking)
+    2. find_phrase_positions() locates exact character positions
+
+    Benefits over pattern-only approach:
+    - Understands "slams" as criticism vs "car slams into wall"
+    - Distinguishes author language from quoted speech
+    - Applies judgment about justified vs inflated urgency
+
+    Args:
+        body: Original article body text
+        api_key: OpenAI API key
+        model: Model name (e.g., "gpt-4o-mini")
+
+    Returns:
+        List of TransparencySpan with accurate positions
+    """
+    if not body or not api_key:
+        return []
+
+    try:
+        import json
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        system_prompt = get_article_system_prompt()
+        user_prompt = build_span_detection_prompt(body)
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,  # Lower temp for more consistent detection
+            response_format={"type": "json_object"},
+        )
+
+        # Parse LLM response
+        content = response.choices[0].message.content.strip()
+
+        # Handle JSON response (might be {"phrases": [...]} or just [...])
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                llm_phrases = data
+            elif isinstance(data, dict):
+                # Try common keys
+                llm_phrases = data.get("phrases", data.get("spans", data.get("manipulative_phrases", [])))
+            else:
+                llm_phrases = []
+        except json.JSONDecodeError:
+            logger.warning(f"LLM span detection returned invalid JSON: {content[:200]}")
+            return []
+
+        # Convert to TransparencySpans with position matching
+        spans = find_phrase_positions(body, llm_phrases)
+        logger.info(f"LLM span detection found {len(spans)} manipulative phrases")
+        return spans
+
+    except Exception as e:
+        logger.warning(f"LLM span detection failed: {e}")
+        return []
+
+
+def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[TransparencySpan]:
+    """
+    Detect manipulative spans using Gemini LLM with context awareness.
+
+    See detect_spans_via_llm_openai for details on the hybrid approach.
+    """
+    if not body or not api_key:
+        return []
+
+    try:
+        import json
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+
+        system_prompt = get_article_system_prompt()
+        user_prompt = build_span_detection_prompt(body)
+
+        gemini_model = genai.GenerativeModel(
+            model_name=model,
+            system_instruction=system_prompt,
+            generation_config={
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            },
+        )
+
+        response = gemini_model.generate_content(user_prompt)
+        content = response.text.strip()
+
+        # Parse response
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                llm_phrases = data
+            elif isinstance(data, dict):
+                llm_phrases = data.get("phrases", data.get("spans", data.get("manipulative_phrases", [])))
+            else:
+                llm_phrases = []
+        except json.JSONDecodeError:
+            logger.warning(f"Gemini span detection returned invalid JSON: {content[:200]}")
+            return []
+
+        spans = find_phrase_positions(body, llm_phrases)
+        logger.info(f"Gemini span detection found {len(spans)} manipulative phrases")
+        return spans
+
+    except Exception as e:
+        logger.warning(f"Gemini span detection failed: {e}")
+        return []
+
+
+def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[TransparencySpan]:
+    """
+    Detect manipulative spans using Anthropic Claude with context awareness.
+
+    See detect_spans_via_llm_openai for details on the hybrid approach.
+    """
+    if not body or not api_key:
+        return []
+
+    try:
+        import json
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        system_prompt = get_article_system_prompt()
+        user_prompt = build_span_detection_prompt(body)
+
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+
+        content = response.content[0].text.strip()
+
+        # Claude may wrap JSON in markdown code blocks
+        if content.startswith("```"):
+            # Extract JSON from code block
+            lines = content.split("\n")
+            json_lines = []
+            in_block = False
+            for line in lines:
+                if line.startswith("```"):
+                    in_block = not in_block
+                    continue
+                if in_block:
+                    json_lines.append(line)
+            content = "\n".join(json_lines)
+
+        # Parse response
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                llm_phrases = data
+            elif isinstance(data, dict):
+                llm_phrases = data.get("phrases", data.get("spans", data.get("manipulative_phrases", [])))
+            else:
+                llm_phrases = []
+        except json.JSONDecodeError:
+            logger.warning(f"Anthropic span detection returned invalid JSON: {content[:200]}")
+            return []
+
+        spans = find_phrase_positions(body, llm_phrases)
+        logger.info(f"Anthropic span detection found {len(spans)} manipulative phrases")
+        return spans
+
+    except Exception as e:
+        logger.warning(f"Anthropic span detection failed: {e}")
+        return []
 
 
 def _correct_span_positions(spans: List[TransparencySpan], original_body: str) -> List[TransparencySpan]:
@@ -2456,7 +2821,10 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
         - No position tracking = better grammar preservation
         - More consistent, readable output
 
-        Spans are detected separately via pattern matching on the original body.
+        Spans are detected via hybrid LLM + position matching:
+        1. LLM identifies manipulative phrases with context awareness
+        2. Position matcher finds exact character positions in original body
+        3. Falls back to pattern-based detection if LLM fails
         """
         MAX_RETRIES = 2
 
@@ -2467,10 +2835,15 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
             return MockNeutralizerProvider()._neutralize_detail_full(body)
 
-        # Get spans from mock provider (pattern-based detection on original body)
-        mock = MockNeutralizerProvider()
-        mock_result = mock._neutralize_detail_full(body)
-        spans = mock_result.spans
+        # Get spans via LLM-based detection (context-aware)
+        # Falls back to pattern-based if LLM detection fails
+        spans = detect_spans_via_llm_openai(body, self._api_key, self._model)
+        if not spans:
+            # LLM detection failed or returned empty - fall back to pattern-based
+            logger.info("LLM span detection returned no results, using pattern-based fallback")
+            mock = MockNeutralizerProvider()
+            mock_result = mock._neutralize_detail_full(body)
+            spans = mock_result.spans
 
         try:
             from openai import OpenAI
@@ -2495,7 +2868,9 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
                 logger.warning("OpenAI synthesis produced garbled output, using mock")
-                return mock_result
+                mock = MockNeutralizerProvider()
+                mock_result = mock._neutralize_detail_full(body)
+                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
 
@@ -2510,7 +2885,9 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
                 logger.warning(f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
-                return mock_result
+                mock = MockNeutralizerProvider()
+                mock_result = mock._neutralize_detail_full(body)
+                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -2676,7 +3053,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
         Neutralize an article body using Gemini with SYNTHESIS approach.
 
         Uses synthesis mode (plain text output) as the primary approach.
-        Spans are detected separately via pattern matching on the original body.
+        Spans are detected via hybrid LLM + position matching for context awareness.
         """
         MAX_RETRIES = 2
 
@@ -2687,10 +3064,14 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
             return MockNeutralizerProvider()._neutralize_detail_full(body)
 
-        # Get spans from mock provider (pattern-based detection on original body)
-        mock = MockNeutralizerProvider()
-        mock_result = mock._neutralize_detail_full(body)
-        spans = mock_result.spans
+        # Get spans via LLM-based detection (context-aware)
+        # Falls back to pattern-based if LLM detection fails
+        spans = detect_spans_via_llm_gemini(body, self._api_key, self._model)
+        if not spans:
+            logger.info("Gemini LLM span detection returned no results, using pattern-based fallback")
+            mock = MockNeutralizerProvider()
+            mock_result = mock._neutralize_detail_full(body)
+            spans = mock_result.spans
 
         try:
             import google.generativeai as genai
@@ -2715,7 +3096,9 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
                 logger.warning("Gemini synthesis produced garbled output, using mock")
-                return mock_result
+                mock = MockNeutralizerProvider()
+                mock_result = mock._neutralize_detail_full(body)
+                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
 
@@ -2730,7 +3113,9 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
                 logger.warning(f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
-                return mock_result
+                mock = MockNeutralizerProvider()
+                mock_result = mock._neutralize_detail_full(body)
+                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -2897,7 +3282,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         Neutralize an article body using Anthropic Claude with SYNTHESIS approach.
 
         Uses synthesis mode (plain text output) as the primary approach.
-        Spans are detected separately via pattern matching on the original body.
+        Spans are detected via hybrid LLM + position matching for context awareness.
         """
         MAX_RETRIES = 2
 
@@ -2908,10 +3293,14 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
             return MockNeutralizerProvider()._neutralize_detail_full(body)
 
-        # Get spans from mock provider (pattern-based detection on original body)
-        mock = MockNeutralizerProvider()
-        mock_result = mock._neutralize_detail_full(body)
-        spans = mock_result.spans
+        # Get spans via LLM-based detection (context-aware)
+        # Falls back to pattern-based if LLM detection fails
+        spans = detect_spans_via_llm_anthropic(body, self._api_key, self._model)
+        if not spans:
+            logger.info("Anthropic LLM span detection returned no results, using pattern-based fallback")
+            mock = MockNeutralizerProvider()
+            mock_result = mock._neutralize_detail_full(body)
+            spans = mock_result.spans
 
         try:
             import anthropic
@@ -2935,7 +3324,9 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
                 logger.warning("Anthropic synthesis produced garbled output, using mock")
-                return mock_result
+                mock = MockNeutralizerProvider()
+                mock_result = mock._neutralize_detail_full(body)
+                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
 
@@ -2950,7 +3341,9 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
                 logger.warning(f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
-                return mock_result
+                mock = MockNeutralizerProvider()
+                mock_result = mock._neutralize_detail_full(body)
+                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
