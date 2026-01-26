@@ -1,8 +1,8 @@
 {
   "article_id": "003",
-  "corpus_version": "1.1",
+  "corpus_version": "1.2",
   "annotated_by": "human_reviewed",
-  "notes": "Heavy clickbait and selling language about Apple feature. Added LLM-detected spans after review.",
+  "notes": "Heavy clickbait and selling language about Apple feature. v1.2: Removed 'game-changer' and 'undisputed leader' (inside quotes - quotes preserve attribution).",
   "expected_spans": [
     {
       "span_id": "003-001",
@@ -60,24 +60,6 @@
     },
     {
       "span_id": "003-007",
-      "start_char": 575,
-      "end_char": 587,
-      "text": "game-changer",
-      "reason": "selling",
-      "action": "remove",
-      "confidence": "high"
-    },
-    {
-      "span_id": "003-008",
-      "start_char": 665,
-      "end_char": 682,
-      "text": "undisputed leader",
-      "reason": "selling",
-      "action": "remove",
-      "confidence": "high"
-    },
-    {
-      "span_id": "003-009",
       "start_char": 725,
       "end_char": 743,
       "text": "really interesting",
@@ -86,7 +68,7 @@
       "confidence": "medium"
     },
     {
-      "span_id": "003-010",
+      "span_id": "003-008",
       "start_char": 1154,
       "end_char": 1176,
       "text": "scrambling to catch up",
@@ -95,7 +77,7 @@
       "confidence": "medium"
     },
     {
-      "span_id": "003-011",
+      "span_id": "003-009",
       "start_char": 1440,
       "end_char": 1460,
       "text": "technological marvel",
@@ -104,7 +86,7 @@
       "confidence": "high"
     },
     {
-      "span_id": "003-012",
+      "span_id": "003-010",
       "start_char": 1514,
       "end_char": 1531,
       "text": "never be the same",
@@ -113,7 +95,7 @@
       "confidence": "high"
     },
     {
-      "span_id": "003-013",
+      "span_id": "003-011",
       "start_char": 1616,
       "end_char": 1644,
       "text": "breathless with anticipation",
@@ -122,7 +104,7 @@
       "confidence": "high"
     },
     {
-      "span_id": "003-014",
+      "span_id": "003-012",
       "start_char": 1647,
       "end_char": 1657,
       "text": "Stay tuned",
@@ -131,7 +113,7 @@
       "confidence": "high"
     },
     {
-      "span_id": "003-015",
+      "span_id": "003-013",
       "start_char": 1683,
       "end_char": 1693,
       "text": "incredible",

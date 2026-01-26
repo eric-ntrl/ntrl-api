@@ -1026,7 +1026,7 @@ The output should be similar in length to the input (full-length, not summarized
 
 DEFAULT_SPAN_DETECTION_PROMPT = """You are a media literacy expert. Your job is to identify sensational, emotional, and manipulative language in news articles that readers should be aware of.
 
-BE AGGRESSIVE - news articles commonly contain manipulative language. Flag anything that:
+BE PRECISE - flag only genuinely manipulative language. Flag anything that:
 - Creates artificial urgency or panic
 - Uses emotional words instead of neutral alternatives
 - Tries to persuade rather than inform
@@ -1063,6 +1063,18 @@ WHEN NOT TO FLAG
 - Direct quotes from sources (inside quotation marks)
 - Literal/physical meanings: "car slams into wall", "bomb blast", "radical surgery"
 - Technical terms: "catastrophic failure" in engineering context
+
+═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: NEVER FLAG QUOTED TEXT
+═══════════════════════════════════════════════════════════════════════════════
+
+Text inside quotation marks (" ") must NEVER be flagged.
+Quotes preserve attribution - readers can judge the speaker's words themselves.
+
+If a phrase appears inside quotes, DO NOT include it in your output.
+This applies to ALL quoted speech, regardless of how manipulative the language seems.
+
+The journalist is not endorsing the language - they are reporting what someone said.
 
 ═══════════════════════════════════════════════════════════════════════════════
 OUTPUT FORMAT - JSON ARRAY
@@ -1113,6 +1125,13 @@ Output: [
   {{"phrase": "catastrophic", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "ravage", "reason": "emotional_trigger", "action": "replace", "replacement": "affect"}}
 ]
+
+Example 5 - Quoted speech (DO NOT FLAG):
+Input: "Governor Abbott said 'this is an invasion caused by the radical left.'"
+
+Output: []
+
+(Empty array - even though "invasion" and "radical left" are manipulative terms, they appear inside quotes. The journalist is reporting what the Governor said, not endorsing it. Readers can judge the speaker's words themselves.)
 
 ═══════════════════════════════════════════════════════════════════════════════
 ARTICLE TO ANALYZE
@@ -1221,6 +1240,50 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
             last_end = span.end_char
 
     return non_overlapping
+
+
+def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[TransparencySpan]:
+    """
+    Remove spans that fall inside quotation marks.
+
+    This is a post-filter to catch any manipulative language that the LLM
+    flagged inside quoted speech. Quotes preserve attribution - readers
+    can judge the speaker's words themselves.
+    """
+    if not body or not spans:
+        return spans
+
+    # Find all quote boundaries
+    quote_ranges = []
+    in_quote = False
+    quote_start = 0
+    for i, char in enumerate(body):
+        if char == '"':
+            if in_quote:
+                quote_ranges.append((quote_start, i + 1))
+                in_quote = False
+            else:
+                quote_start = i
+                in_quote = True
+
+    if not quote_ranges:
+        return spans
+
+    # Filter out spans inside quotes
+    filtered = []
+    for span in spans:
+        inside_quote = any(
+            start <= span.start_char < end or start < span.end_char <= end
+            for start, end in quote_ranges
+        )
+        if not inside_quote:
+            filtered.append(span)
+
+    filtered_count = len(spans) - len(filtered)
+    if filtered_count > 0:
+        logger.info(f"Filtered out {filtered_count} spans inside quotes")
+
+    return filtered
 
 
 def get_synthesis_detail_full_prompt() -> str:
@@ -2074,6 +2137,7 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
 
         # Convert to TransparencySpans with position matching
         spans = find_phrase_positions(body, llm_phrases)
+        spans = filter_spans_in_quotes(body, spans)
         logger.info(f"LLM span detection found {len(spans)} manipulative phrases")
         return spans
 
@@ -2136,6 +2200,7 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
             return []
 
         spans = find_phrase_positions(body, llm_phrases)
+        spans = filter_spans_in_quotes(body, spans)
         logger.info(f"Gemini span detection found {len(spans)} manipulative phrases")
         return spans
 
@@ -2211,6 +2276,7 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
             return []
 
         spans = find_phrase_positions(body, llm_phrases)
+        spans = filter_spans_in_quotes(body, spans)
         logger.info(f"Anthropic span detection found {len(spans)} manipulative phrases")
         return spans
 

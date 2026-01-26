@@ -1,8 +1,8 @@
 {
   "article_id": "010",
-  "corpus_version": "1.1",
+  "corpus_version": "1.2",
   "annotated_by": "human_reviewed",
-  "notes": "Political agenda signaling and emotional manipulation in border coverage. Added 'weak enforcement' and 'emboldened' after LLM review.",
+  "notes": "Political agenda signaling and emotional manipulation in border coverage. v1.2: Removed 'invasion' and 'radical left' (inside quotes - quotes preserve attribution).",
   "expected_spans": [
     {
       "span_id": "010-001",
@@ -57,26 +57,6 @@
       "reason": "emotional_trigger",
       "action": "softened",
       "confidence": "medium"
-    },
-    {
-      "span_id": "010-007",
-      "start_char": 435,
-      "end_char": 443,
-      "text": "invasion",
-      "reason": "agenda_signaling",
-      "action": "softened",
-      "confidence": "medium",
-      "note": "Inside quote - preserve but flag"
-    },
-    {
-      "span_id": "010-008",
-      "start_char": 502,
-      "end_char": 514,
-      "text": "radical left",
-      "reason": "agenda_signaling",
-      "action": "softened",
-      "confidence": "medium",
-      "note": "Inside quote - preserve but flag"
     }
   ]
 }
