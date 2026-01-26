@@ -1099,14 +1099,23 @@ This applies to ALL quoted speech, regardless of how manipulative the language s
 The journalist is not endorsing the language - they are reporting what someone said.
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT FORMAT - JSON ARRAY
+OUTPUT FORMAT - JSON OBJECT WITH PHRASES ARRAY
 ═══════════════════════════════════════════════════════════════════════════════
 
-Return a JSON array. For each phrase found:
-- phrase: EXACT text from article
+Return a JSON object with a "phrases" key containing an array. Include ALL manipulative phrases found in the article, not just the first one.
+
+Format:
+{{"phrases": [
+  {{"phrase": "EXACT text", "reason": "category", "action": "remove|replace|softened", "replacement": "text or null"}}
+]}}
+
+For each phrase:
+- phrase: EXACT text from article (case-sensitive, must match exactly)
 - reason: clickbait | urgency_inflation | emotional_trigger | selling | agenda_signaling | rhetorical_framing
 - action: remove | replace | softened
 - replacement: neutral text if action is "replace", else null
+
+IMPORTANT: Find ALL manipulative phrases in the article, not just one.
 
 ═══════════════════════════════════════════════════════════════════════════════
 EXAMPLES
@@ -1115,43 +1124,43 @@ EXAMPLES
 Example 1 - Heavy manipulation:
 Input: "BREAKING NEWS - In a shocking turn of events, world leaders are scrambling as the dramatic announcement could have devastating consequences."
 
-Output: [
+Output: {{"phrases": [
   {{"phrase": "BREAKING NEWS", "reason": "urgency_inflation", "action": "remove", "replacement": null}},
   {{"phrase": "shocking", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "scrambling", "reason": "emotional_trigger", "action": "replace", "replacement": "responding"}},
   {{"phrase": "dramatic", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "devastating", "reason": "emotional_trigger", "action": "remove", "replacement": null}}
-]
+]}}
 
 Example 2 - Tech hype article:
 Input: "Apple's mind-blowing new feature is a game-changer that will revolutionize the industry."
 
-Output: [
+Output: {{"phrases": [
   {{"phrase": "mind-blowing", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "game-changer", "reason": "selling", "action": "remove", "replacement": null}},
   {{"phrase": "revolutionize", "reason": "selling", "action": "replace", "replacement": "change"}}
-]
+]}}
 
 Example 3 - Clean article (no manipulation):
 Input: "The Federal Reserve announced it would hold interest rates steady at 5.25%, citing stable inflation data."
 
-Output: []
+Output: {{"phrases": []}}
 
 Example 4 - Disaster coverage with emotional framing:
 Input: "In scenes of utter devastation that will break your heart, families desperately flee as catastrophic floods ravage the region."
 
-Output: [
+Output: {{"phrases": [
   {{"phrase": "utter devastation", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "will break your heart", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "desperately", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "catastrophic", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "ravage", "reason": "emotional_trigger", "action": "replace", "replacement": "affect"}}
-]
+]}}
 
 Example 5 - Quoted speech (DO NOT FLAG):
 Input: "Governor Abbott said 'this is an invasion caused by the radical left.'"
 
-Output: []
+Output: {{"phrases": []}}
 
 (Empty array - even though "invasion" and "radical left" are manipulative terms, they appear inside quotes. The journalist is reporting what the Governor said, not endorsing it. Readers can judge the speaker's words themselves.)
 
@@ -1164,33 +1173,33 @@ Study these examples carefully. They show common MISTAKES to avoid.
 Example 6 - Medical news (DO NOT OVER-FLAG):
 Input: "NHS bowel cancer tests will be fine-tuned to spot more tumours early as part of a faster diagnosis drive."
 
-WRONG output: [
+WRONG output: {{"phrases": [
   {{"phrase": "bowel cancer", "reason": "urgency_inflation"}},
   {{"phrase": "tests will", "reason": "urgency_inflation"}},
   {{"phrase": "spot more", "reason": "urgency_inflation"}}
-]
+]}}
 
-CORRECT output: []
+CORRECT output: {{"phrases": []}}
 
 Why: This is factual health news. "Bowel cancer" is medical terminology, not emotional language. "Tests will" and "spot more" are neutral verbs describing a program. Nothing here manipulates the reader's emotions.
 
 Example 7 - Statistical reporting (DO NOT OVER-FLAG):
 Input: "The region with the highest cost of living saw prices increase every year, getting worse since 2020."
 
-WRONG output: [
+WRONG output: {{"phrases": [
   {{"phrase": "highest cost", "reason": "urgency_inflation"}},
   {{"phrase": "every year", "reason": "urgency_inflation"}},
   {{"phrase": "getting worse", "reason": "emotional_trigger"}}
-]
+]}}
 
-CORRECT output: []
+CORRECT output: {{"phrases": []}}
 
 Why: These are factual descriptors of data. "Highest" is a superlative describing statistics. "Every year" is a temporal phrase. "Getting worse" describes a trend. None of these are manipulative.
 
 Example 8 - Clean science news:
 Input: "Researchers announced that the new treatment showed a 40% improvement in patient outcomes according to the published study."
 
-CORRECT output: []
+CORRECT output: {{"phrases": []}}
 
 Why: Standard news verbs ("announced", "showed", "according to") are neutral attribution language, not manipulation.
 
@@ -2280,6 +2289,10 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
                     or data.get("data")
                     or []
                 )
+                # If LLM returned a single object with "phrase" key (not wrapped in array)
+                # treat it as a single-element array
+                if not llm_phrases and "phrase" in data:
+                    llm_phrases = [data]
             else:
                 llm_phrases = []
             logger.warning(f"LLM_DEBUG: llm_phrases count: {len(llm_phrases)}, first 3: {llm_phrases[:3]}")
@@ -2348,6 +2361,9 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
                     or data.get("data")
                     or []
                 )
+                # If LLM returned a single object with "phrase" key (not wrapped in array)
+                if not llm_phrases and "phrase" in data:
+                    llm_phrases = [data]
             else:
                 llm_phrases = []
         except json.JSONDecodeError:
@@ -2425,6 +2441,9 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
                     or data.get("data")
                     or []
                 )
+                # If LLM returned a single object with "phrase" key (not wrapped in array)
+                if not llm_phrases and "phrase" in data:
+                    llm_phrases = [data]
             else:
                 llm_phrases = []
         except json.JSONDecodeError:
