@@ -69,10 +69,16 @@ class AlertThresholds(BaseModel):
     brief_story_count_min: int = 10
 
 
+# Code version for deployment verification
+# Increment this when making changes to verify Railway deploys new code
+CODE_VERSION = "2026.01.26.1"
+
+
 class StatusResponse(BaseModel):
     """System status response."""
     status: str = "ok"
     health: str = "unknown"
+    code_version: str = CODE_VERSION
     neutralizer_provider: Optional[str] = None
     neutralizer_model: Optional[str] = None
     neutralizer_error: Optional[str] = None
