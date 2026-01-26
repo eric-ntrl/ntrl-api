@@ -722,6 +722,70 @@ CONSISTENCY CONTRACT (MANDATORY):
   • neutral_headline OR neutral_summary must differ from the original.
 - If no changes are needed, set has_manipulative_content = false."""
 
+# -----------------------------------------------------------------------------
+# Headline System Prompt (for feed outputs - lighter than article system prompt)
+# -----------------------------------------------------------------------------
+
+DEFAULT_HEADLINE_SYSTEM_PROMPT = """You are a neutral news headline writer.
+
+Your job is to SYNTHESIZE article content into clear, factual headlines.
+NOT to filter or remove words - the article body has already been neutralized.
+
+═══════════════════════════════════════════════════════════════════════════════
+CORE PRINCIPLES (Priority Order)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. GRAMMATICAL INTEGRITY (Highest Priority)
+   - Every output MUST be a complete, readable phrase
+   - NEVER leave incomplete sentences or awkward gaps
+   - NEVER output: "Senator Tax Bill" (missing verb)
+   - ALWAYS output: "Senator Proposes Tax Bill" (complete thought)
+
+2. FACTUAL ACCURACY
+   - Preserve who, what, where, when exactly as stated
+   - Keep names, numbers, dates, locations intact
+   - Preserve epistemic markers: "expected to", "plans to", "reportedly"
+
+3. NEUTRAL TONE
+   - Use straightforward language
+   - Avoid sensationalism
+
+═══════════════════════════════════════════════════════════════════════════════
+TONE GUIDANCE (Prefer, Don't Enforce Strictly)
+═══════════════════════════════════════════════════════════════════════════════
+
+When possible, use neutral alternatives:
+- "criticizes" over "slams"
+- "disputes" over "destroys"
+- "addresses" over "blasts"
+- "responds to" over "fires back"
+
+CRITICAL: If you cannot find a neutral synonym that fits the character limit,
+USE THE ORIGINAL WORD. An awkward word is better than a broken sentence.
+
+═══════════════════════════════════════════════════════════════════════════════
+SELF-CHECK BEFORE OUTPUTTING
+═══════════════════════════════════════════════════════════════════════════════
+
+Read each output aloud. If it sounds incomplete or awkward, REWRITE IT.
+
+BAD (incomplete): "and Timothée enjoyed a to Cabo" - missing subject and noun
+GOOD (complete): "Kylie Jenner and Timothée Chalamet Vacation in Cabo"
+
+BAD (incomplete): "The has initiated an 's platform" - missing proper nouns
+GOOD (complete): "European Commission Investigates Elon Musk's Platform"
+
+BAD (incomplete): "the seizure of a of a" - garbled, repeated words
+GOOD (complete): "Authorities Seize Narco Sub Carrying Cocaine"
+
+If your output has:
+- Missing subjects or verbs
+- Dangling prepositions (ending in "to", "of", "a", "the")
+- Repeated words ("of a of a")
+- Fewer than 3 words in a title
+
+Then REWRITE before outputting."""
+
 DEFAULT_USER_PROMPT_TEMPLATE = """Filter this news content. Remove manipulative language, preserve everything else.
 
 ORIGINAL TITLE: {title}
@@ -1891,17 +1955,36 @@ If source says "expected to", your output MUST say "expected to".
 If source says "all", your output MUST say "all".
 
 ═══════════════════════════════════════════════════════════════════════════════
-BANNED LANGUAGE (applies to all three outputs)
+GRAMMAR INTEGRITY CHECK (CRITICAL - READ BEFORE OUTPUTTING)
 ═══════════════════════════════════════════════════════════════════════════════
 
-URGENCY: breaking, developing, just in, emerging, escalating, update, alert
-EMOTIONAL: shocking, stunning, devastating, terrifying, unprecedented, historic,
-           dramatic, catastrophic, dire, heartbreaking, explosive, massive
-CONFLICT THEATER: slams, blasts, destroys, eviscerates, rips, torches
-CLICKBAIT: you won't believe, here's why, everything you need to know
-SELLING: exclusive, insider, secret, revealed, exposed, viral, trending
-JUDGMENT: dangerous, reckless, extreme, radical (unless in attributed quote)
-AMPLIFIERS: game-changer, revolutionary, once-in-a-lifetime, monumental
+Read each output aloud BEFORE submitting. If it sounds incomplete or awkward, REWRITE IT.
+
+NEVER OUTPUT INCOMPLETE PHRASES:
+- "and Timothée enjoyed a to Cabo" ← BROKEN (missing subject + noun)
+- "The has initiated an 's platform" ← BROKEN (missing proper nouns)
+- "the seizure of a of a" ← BROKEN (garbled, repeated words)
+- "Senator Tax Bill" ← BROKEN (missing verb)
+
+ALWAYS OUTPUT COMPLETE PHRASES:
+- "Kylie Jenner and Timothée Chalamet Vacation in Cabo" ← COMPLETE
+- "European Commission Investigates Elon Musk's Platform" ← COMPLETE
+- "Authorities Seize Narco Sub Carrying Cocaine" ← COMPLETE
+- "Senator Proposes Tax Bill" ← COMPLETE
+
+WARNING SIGNS OF GARBLED OUTPUT:
+- Fewer than 3 words in a title
+- Ends with "a", "the", "to", "of", "and"
+- Missing subject (who) or verb (what happened)
+- Repeated word pairs ("of a of a")
+
+If ANY warning sign appears, STOP and REWRITE before outputting.
+
+TONE GUIDANCE (prefer neutral alternatives):
+- "criticizes" over "slams"
+- "disputes" over "destroys"
+- "addresses" over "blasts"
+But if no neutral word fits, USE THE ORIGINAL - never break grammar for neutrality.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ORIGINAL ARTICLE
@@ -2134,6 +2217,25 @@ def get_repair_system_prompt() -> str:
     return get_prompt("repair_system_prompt", DEFAULT_REPAIR_SYSTEM_PROMPT)
 
 
+def get_headline_system_prompt() -> str:
+    """
+    Get the headline system prompt for feed outputs (Call 3: Compress).
+
+    This is a LIGHTER prompt than the article system prompt, optimized for
+    headline synthesis. It prioritizes:
+    1. Grammatical integrity - complete, readable phrases
+    2. Factual accuracy - preserve who, what, where, when
+    3. Neutral tone - straightforward language
+
+    Unlike the article system prompt, this does NOT aggressively ban words,
+    because the article body has already been neutralized. The goal is
+    SYNTHESIS into short headlines, not word-level filtering.
+
+    Retrievable via get_prompt('headline_system_prompt').
+    """
+    return get_prompt("headline_system_prompt", DEFAULT_HEADLINE_SYSTEM_PROMPT)
+
+
 def get_user_prompt_template() -> str:
     """Get the user prompt template."""
     return get_prompt("user_prompt_template", DEFAULT_USER_PROMPT_TEMPLATE)
@@ -2221,6 +2323,68 @@ def build_compression_feed_outputs_prompt(body: str, detail_brief: str) -> str:
     """
     template = get_compression_feed_outputs_prompt()
     return template.format(body=body or "", detail_brief=detail_brief or "")
+
+
+def _validate_feed_outputs(result: dict) -> None:
+    """
+    Validate feed outputs for garbled content and log warnings.
+
+    This function detects common signs of LLM garbling:
+    - Titles/summaries ending with dangling prepositions/articles
+    - Titles with fewer than 3 words (likely incomplete)
+    - Repeated word patterns ("of a of a")
+    - Missing punctuation in summaries
+
+    Logs warnings but does NOT modify the result - this is for monitoring.
+    In future iterations, we may add automatic repair.
+
+    Args:
+        result: dict with feed_title, feed_summary, detail_title, section
+    """
+    issues = []
+
+    feed_title = result.get("feed_title", "")
+    feed_summary = result.get("feed_summary", "")
+    detail_title = result.get("detail_title", "")
+
+    # Check for dangling prepositions/articles (ends with incomplete phrase)
+    dangling_endings = ["a", "an", "the", "to", "of", "in", "on", "at", "for", "with", "and", "or"]
+
+    for field_name, text in [("feed_title", feed_title), ("feed_summary", feed_summary), ("detail_title", detail_title)]:
+        if not text:
+            continue
+
+        # Strip punctuation for checking endings
+        text_stripped = text.rstrip(".,!?:;")
+        words = text_stripped.split()
+
+        if words and words[-1].lower() in dangling_endings:
+            issues.append(f"{field_name} ends with dangling '{words[-1]}': '{text[:50]}...'")
+
+    # Check for minimum word count in titles (< 3 words is suspicious)
+    for field_name, text in [("feed_title", feed_title), ("detail_title", detail_title)]:
+        if text:
+            word_count = len(text.split())
+            if word_count < 3:
+                issues.append(f"{field_name} has only {word_count} word(s): '{text}'")
+
+    # Check for repeated word patterns (e.g., "of a of a")
+    for field_name, text in [("feed_title", feed_title), ("feed_summary", feed_summary), ("detail_title", detail_title)]:
+        if text:
+            words = text.lower().split()
+            for i in range(len(words) - 3):
+                # Look for patterns like "X Y X Y"
+                if words[i] == words[i+2] and words[i+1] == words[i+3]:
+                    issues.append(f"{field_name} has repeated pattern: '{text[:50]}...'")
+                    break
+
+    # Check for incomplete sentences in summary (should have punctuation)
+    if feed_summary and not feed_summary.rstrip().endswith((".", "!", "?", '"', "'")):
+        issues.append(f"feed_summary lacks ending punctuation: '{feed_summary[-30:]}...'")
+
+    # Log warnings for any issues found
+    if issues:
+        logger.warning(f"Garbled feed output detected: {'; '.join(issues)}")
 
 
 def build_user_prompt(title: str, description: Optional[str], body: Optional[str]) -> str:
@@ -3479,7 +3643,8 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             from openai import OpenAI
             client = OpenAI(api_key=self._api_key)
 
-            system_prompt = get_article_system_prompt()
+            # Use lighter headline prompt for feed outputs (not aggressive article prompt)
+            system_prompt = get_headline_system_prompt()
             user_prompt = build_compression_feed_outputs_prompt(body, detail_brief)
 
             response = client.chat.completions.create(
@@ -3493,12 +3658,16 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             )
 
             data = json.loads(response.choices[0].message.content)
-            return {
+            result = {
                 "feed_title": data.get("feed_title", ""),
                 "feed_summary": data.get("feed_summary", ""),
                 "detail_title": data.get("detail_title", ""),
                 "section": data.get("section", "world"),
             }
+
+            # Validate feed outputs for garbled content
+            _validate_feed_outputs(result)
+            return result
 
         except Exception as e:
             logger.error(f"OpenAI feed outputs compression failed: {e}")
@@ -3709,7 +3878,8 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             import google.generativeai as genai
             genai.configure(api_key=self._api_key)
 
-            system_prompt = get_article_system_prompt()
+            # Use lighter headline prompt for feed outputs (not aggressive article prompt)
+            system_prompt = get_headline_system_prompt()
             user_prompt = build_compression_feed_outputs_prompt(body, detail_brief)
 
             model = genai.GenerativeModel(
@@ -3723,12 +3893,16 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
             response = model.generate_content(user_prompt)
             data = json.loads(response.text)
-            return {
+            result = {
                 "feed_title": data.get("feed_title", ""),
                 "feed_summary": data.get("feed_summary", ""),
                 "detail_title": data.get("detail_title", ""),
                 "section": data.get("section", "world"),
             }
+
+            # Validate feed outputs for garbled content
+            _validate_feed_outputs(result)
+            return result
 
         except Exception as e:
             logger.error(f"Gemini feed outputs compression failed: {e}")
@@ -3940,7 +4114,8 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             import anthropic
             client = anthropic.Anthropic(api_key=self._api_key)
 
-            system_prompt = get_article_system_prompt()
+            # Use lighter headline prompt for feed outputs (not aggressive article prompt)
+            system_prompt = get_headline_system_prompt()
             user_prompt = build_compression_feed_outputs_prompt(body, detail_brief)
 
             response = client.messages.create(
@@ -3961,12 +4136,16 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 text = text.split("```")[1].split("```")[0]
 
             data = json.loads(text.strip())
-            return {
+            result = {
                 "feed_title": data.get("feed_title", ""),
                 "feed_summary": data.get("feed_summary", ""),
                 "detail_title": data.get("detail_title", ""),
                 "section": data.get("section", "world"),
             }
+
+            # Validate feed outputs for garbled content
+            _validate_feed_outputs(result)
+            return result
 
         except Exception as e:
             logger.error(f"Anthropic feed outputs compression failed: {e}")
