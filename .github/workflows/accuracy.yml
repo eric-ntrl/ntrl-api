@@ -1,0 +1,52 @@
+name: LLM Accuracy Tests
+
+on:
+  push:
+    paths:
+      - 'app/services/neutralizer.py'
+      - 'tests/test_highlight_accuracy.py'
+      - 'tests/fixtures/**'
+  pull_request:
+    paths:
+      - 'app/services/neutralizer.py'
+      - 'tests/test_highlight_accuracy.py'
+      - 'tests/fixtures/**'
+  schedule:
+    # Run daily at 6am UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  accuracy:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pipenv
+        run: pip install pipenv
+
+      - name: Install dependencies
+        run: pipenv install --dev
+
+      - name: Run LLM accuracy tests
+        run: |
+          pipenv run pytest tests/test_highlight_accuracy.py -m llm -v --tb=short
+        continue-on-error: false
+
+      - name: Upload accuracy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accuracy-report
+          path: tests/fixtures/metrics/
+          retention-days: 30

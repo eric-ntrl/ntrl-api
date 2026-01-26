@@ -733,14 +733,18 @@ class TestHighlightAccuracyWithLLM:
         print(f"  TP={total_tp}, FP={total_fp}, FN={total_fn}")
         print(f"{'='*60}")
 
-        # Target thresholds (adjust as accuracy improves)
-        # Phase 0 (baseline): Just measure, no hard failure
-        # Phase 1: recall >= 20%, precision >= 20%
-        # Phase 2: recall >= 50%, precision >= 50%
-        # Target:  recall >= 75%, precision >= 75%
-        #
-        # Soft assertions - warn but don't fail during initial tuning
-        if recall < 0.20:
-            print(f"  WARNING: Recall {recall:.2%} below Phase 1 target (20%)")
-        if precision < 0.20:
-            print(f"  WARNING: Precision {precision:.2%} below Phase 1 target (20%)")
+        # Enforce 70% thresholds - tests will fail if accuracy drops below this
+        # These thresholds match the LLM-based detection performance we've achieved
+        # and serve as a regression gate for CI
+        assert precision >= 0.70, (
+            f"LLM Precision {precision:.2%} below 70% threshold. "
+            f"TP={total_tp}, FP={total_fp}. Check for prompt regression or model issues."
+        )
+        assert recall >= 0.70, (
+            f"LLM Recall {recall:.2%} below 70% threshold. "
+            f"TP={total_tp}, FN={total_fn}. Check for missed manipulation patterns."
+        )
+        assert f1 >= 0.70, (
+            f"LLM F1 Score {f1:.2%} below 70% threshold. "
+            f"Balance between precision and recall has degraded."
+        )

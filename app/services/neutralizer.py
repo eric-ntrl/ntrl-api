@@ -1087,6 +1087,36 @@ WHAT TO FLAG (only if NOT excluded above)
    FLAG: invasion (for immigration), crisis (when editorializing)
 
 ═══════════════════════════════════════════════════════════════════════════════
+SUBTLE MANIPULATION TO CATCH (when used by journalist, not in quotes)
+═══════════════════════════════════════════════════════════════════════════════
+
+These are more nuanced patterns. Flag ONLY when used by the journalist (not in quotes):
+
+6. LOADED VERBS (instead of neutral attribution)
+   FLAG: "slammed", "blasted", "ripped" (instead of "criticized")
+   FLAG: "admits" (implies guilt vs neutral "said")
+   FLAG: "claims" (implies doubt vs neutral "states" or "says")
+   FLAG: "conceded", "confessed" (implies wrongdoing)
+
+7. URGENCY INFLATION (artificial time pressure)
+   FLAG: "BREAKING", "JUST IN", "DEVELOPING" when story is hours old
+   FLAG: "You need to see this now", "Before it's too late"
+   FLAG: "Act now", "Don't miss out"
+
+8. AGENDA FRAMING (assuming conclusions)
+   FLAG: "the crisis at the border" (assuming crisis, not reporting one)
+   FLAG: "threatens our way of life" (fear without specifics)
+   FLAG: "controversial decision" (when labeling, not reporting controversy)
+   NOTE: "some say", "critics argue" are OK if followed by specific attribution
+
+BUT STILL NEVER FLAG (even if matching above):
+- Factual statistics even if alarming ("500 dead", "record high")
+- Quoted speech (even if manipulative - that's the source, not the journalist)
+- Medical/scientific terminology
+- Proper nouns and place names
+- Direct factual reporting of events
+
+═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: NEVER FLAG QUOTED TEXT
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -3135,13 +3165,10 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
         # Returns None if API call fails, [] if article is clean
         spans = detect_spans_via_llm_openai(body, self._api_key, self._model)
         if spans is None:
-            # LLM API call failed - fall back to pattern-based
-            logger.warning("LLM span detection failed, using pattern-based fallback")
-            mock = MockNeutralizerProvider()
-            mock_result = mock._neutralize_detail_full(body)
-            spans = mock_result.spans
-            # Apply false positive filter to fallback spans too
-            spans = filter_false_positives(spans)
+            # LLM API call failed - return 0 spans (NOT falling back to pattern-based)
+            # Pattern-based has 5% precision (95% false positives) - showing nothing is better
+            logger.error("LLM span detection failed - returning 0 spans (NOT falling back to pattern-based)")
+            spans = []
         else:
             # LLM succeeded - trust its result (even if empty = clean article)
             logger.info(f"LLM span detection succeeded with {len(spans)} spans")
@@ -3369,11 +3396,10 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
         # Returns None if API call fails, [] if article is clean
         spans = detect_spans_via_llm_gemini(body, self._api_key, self._model)
         if spans is None:
-            # LLM API call failed - fall back to pattern-based
-            logger.warning("Gemini LLM span detection failed, using pattern-based fallback")
-            mock = MockNeutralizerProvider()
-            mock_result = mock._neutralize_detail_full(body)
-            spans = mock_result.spans
+            # LLM API call failed - return 0 spans (NOT falling back to pattern-based)
+            # Pattern-based has 5% precision (95% false positives) - showing nothing is better
+            logger.error("Gemini LLM span detection failed - returning 0 spans (NOT falling back to pattern-based)")
+            spans = []
         else:
             # LLM succeeded - trust its result (even if empty = clean article)
             logger.info(f"Gemini LLM span detection succeeded with {len(spans)} spans")
@@ -3602,11 +3628,10 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         # Returns None if API call fails, [] if article is clean
         spans = detect_spans_via_llm_anthropic(body, self._api_key, self._model)
         if spans is None:
-            # LLM API call failed - fall back to pattern-based
-            logger.warning("Anthropic LLM span detection failed, using pattern-based fallback")
-            mock = MockNeutralizerProvider()
-            mock_result = mock._neutralize_detail_full(body)
-            spans = mock_result.spans
+            # LLM API call failed - return 0 spans (NOT falling back to pattern-based)
+            # Pattern-based has 5% precision (95% false positives) - showing nothing is better
+            logger.error("Anthropic LLM span detection failed - returning 0 spans (NOT falling back to pattern-based)")
+            spans = []
         else:
             # LLM succeeded - trust its result (even if empty = clean article)
             logger.info(f"Anthropic LLM span detection succeeded with {len(spans)} spans")
