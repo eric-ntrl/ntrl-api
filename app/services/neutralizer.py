@@ -2259,10 +2259,12 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
 
         # Parse LLM response
         content = response.choices[0].message.content.strip()
+        logger.warning(f"LLM_DEBUG: Raw response (first 500 chars): {content[:500]}")
 
         # Handle JSON response (might be {"phrases": [...]} or just [...])
         try:
             data = json.loads(content)
+            logger.warning(f"LLM_DEBUG: Parsed data type: {type(data).__name__}, keys: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
             if isinstance(data, list):
                 llm_phrases = data
             elif isinstance(data, dict):
@@ -2280,15 +2282,18 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
                 )
             else:
                 llm_phrases = []
+            logger.warning(f"LLM_DEBUG: llm_phrases count: {len(llm_phrases)}, first 3: {llm_phrases[:3]}")
         except json.JSONDecodeError:
             logger.warning(f"LLM span detection returned invalid JSON: {content[:200]}")
             return []
 
         # Convert to TransparencySpans with position matching
         spans = find_phrase_positions(body, llm_phrases)
+        logger.warning(f"LLM_DEBUG: After find_phrase_positions: {len(spans)} spans")
         spans = filter_spans_in_quotes(body, spans)
+        logger.warning(f"LLM_DEBUG: After filter_spans_in_quotes: {len(spans)} spans")
         spans = filter_false_positives(spans)
-        logger.info(f"LLM span detection found {len(spans)} manipulative phrases")
+        logger.warning(f"LLM_DEBUG: After filter_false_positives: {len(spans)} spans")
         return spans
 
     except Exception as e:
