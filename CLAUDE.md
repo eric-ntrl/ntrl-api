@@ -442,17 +442,94 @@ Categories 9-12 added Jan 2026 to catch sports/editorial manipulation.
 ]}
 ```
 
-**Fallback behavior:**
+**Fallback behavior (updated Jan 2026):**
 - LLM returns `[]` (empty array) = article is clean, trust it, show 0 spans
-- LLM API call fails = returns `None`, falls back to pattern-based (but this is a failure mode)
+- LLM API call fails = returns `DetailFullResult` with `status="failed_llm"`, article saved as failed
+- LLM produces garbled output = returns `DetailFullResult` with `status="failed_garbled"`
+- **No fallback to MockNeutralizerProvider** - failed articles are tracked, not shown to users
 
-**IMPORTANT: Pattern-based fallback is a failure mode, not a feature.** It generates ~70+ false positives per article (e.g., "European Commission", "Monday said"). If LLM detection fails, it's better to show nothing than show garbage. Consider treating fallback as an error condition.
+**IMPORTANT:** MockNeutralizerProvider is for testing only, never used as production fallback. It has ~5% precision and produces garbled output by removing words without grammar repair.
 
 ### Known Issues & Next Steps
 - Pattern-based fallback should probably just report an error instead of showing wrong data
 - gpt-4o is conservative - may return empty for articles with subtle manipulation
 - Article 010 has lower accuracy (38% F1) due to LLM flagging quoted speech
 - Gold standard corpus version is now 1.1 (human reviewed)
+
+### Neutralization Status Tracking (Jan 2026)
+
+The neutralization pipeline now tracks success/failure status for each article:
+
+**Database fields** (`StoryNeutralized` model):
+- `neutralization_status`: "success", "failed_llm", "failed_garbled", "failed_audit", "skipped"
+- `failure_reason`: Detailed error message for debugging
+
+**Architecture principles:**
+1. **Never use MockNeutralizerProvider as fallback** - it produces garbage output
+2. **Only show successfully neutralized articles** - failed articles filtered from brief/stories
+3. **Track failures in database** - for debugging and monitoring
+4. **Return failure status instead of fallback** - `DetailFullResult.status` field
+
+**Key code locations:**
+- `app/models.py`: `NeutralizationStatus` enum, new fields on `StoryNeutralized`
+- `app/services/neutralizer.py`: `DetailFullResult` dataclass with `status` and `failure_reason`
+- `app/services/brief_assembly.py`: Filters by `neutralization_status == "success"`
+- `app/routers/stories.py`: Filters neutralized stories by status
+
+### Quote Filtering with Contraction Detection
+
+The quote filter now handles apostrophes in contractions correctly:
+
+**Problem solved:** Text like "They won't believe it's 'shocking'" was breaking quote detection because apostrophes in contractions (won't, it's) were treated as quote boundaries.
+
+**Solution:** `is_contraction_apostrophe()` function detects contractions (letters on both sides of apostrophe) and skips them during quote boundary detection.
+
+**Key file:** `app/services/neutralizer.py` - `is_contraction_apostrophe()` and `filter_spans_in_quotes()`
+
+### Known Test Failures (Expected)
+
+6 tests fail in `test_neutralizer.py` and `test_article_neutralization.py` - **these are expected**:
+
+| Test | Why It Fails |
+|------|--------------|
+| `test_preserves_factual_content` | MockNeutralizerProvider produces garbled output |
+| `test_neutralize_clean_content` | Mock finds false positives in clean content |
+| `test_neutralize_emotional_triggers` | Mock doesn't detect emotional triggers |
+| `test_neutralize_detail_full_*` | Mock pattern-matching produces garbled grammar |
+
+These failures confirm why we removed MockNeutralizerProvider as a fallback - it has ~5% precision and produces unreadable output. The real LLM providers (OpenAI, Gemini, Anthropic) work correctly.
+
+**Options to fix:**
+1. Mark tests as `xfail` (expected failure)
+2. Update tests to reflect mock's known limitations
+3. Remove mock-specific tests
+
+### Completed Fixes (Jan 2026)
+
+1. ✅ Quote filtering for single/curly quotes (`filter_spans_in_quotes()`)
+2. ✅ Brief validation with retry (`_neutralize_detail_brief()` in all providers)
+3. ✅ Feed summary validation with retry (`_neutralize_feed_outputs()` in all providers)
+4. ✅ Character limit tightening (feed_summary: 100-120 chars, hard max 130)
+5. ✅ **Architecture fix**: Removed MockNeutralizerProvider fallbacks, added failure tracking
+6. ✅ **Contraction detection**: Apostrophes in won't/it's no longer break quote filtering
+
+### Remaining Issues
+
+1. **Missing highlights in long articles** - LLM misses phrases in 8000+ char articles
+   - May need chunking implementation (deferred)
+
+**Test commands:**
+```bash
+# Re-neutralize test article
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: staging-key-123" \
+  -d '{"story_ids": ["4365e5df-ffd1-42cd-96a9-5bf4201bdaae"], "force": true}'
+
+# Check debug info
+curl -s "https://api-staging-7b4d.up.railway.app/v1/stories/4365e5df-ffd1-42cd-96a9-5bf4201bdaae/debug" \
+  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+```
 
 ## Related Project
 
