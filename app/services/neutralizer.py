@@ -1362,6 +1362,84 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
     return filtered
 
 
+# Known false positive patterns that LLMs commonly flag incorrectly
+# These are neutral language that should never be highlighted
+FALSE_POSITIVE_PHRASES = {
+    # Medical/scientific terms
+    "bowel cancer", "cancer", "tumor", "tumour", "disease", "diagnosis",
+    "mortality", "treatment", "surgery", "patient", "patients",
+
+    # Neutral news verbs
+    "tests will", "will be", "announced", "reported", "according to",
+    "showed", "revealed", "found", "discovered",
+
+    # Factual descriptors
+    "spot more", "highest", "lowest", "most", "least", "more", "fewer",
+    "increasing", "rising", "falling", "growing", "declining",
+    "getting worse", "getting better", "improved", "improvement",
+
+    # Temporal phrases
+    "every year", "each year", "daily", "weekly", "monthly", "annually",
+    "this week", "last week", "this year", "last year", "recently",
+
+    # Data/statistics language
+    "highest cost", "lowest cost", "most affected", "least affected",
+    "largest increase", "smallest decrease", "record-breaking",
+    "per cent", "percent", "percentage",
+
+    # UI/metadata
+    "share", "save", "minutes ago", "hours ago", "sign up",
+    "newsletter", "subscribe", "read more", "continue reading",
+}
+
+# Patterns that match false positives (case-insensitive partial matches)
+FALSE_POSITIVE_PATTERNS = [
+    "cancer",  # Any type of cancer
+    "tests will",
+    "spot more",
+    "every year",
+    "getting worse",
+    "highest cost",
+    "will be",
+    "according to",
+]
+
+
+def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySpan]:
+    """
+    Remove known false positive spans that LLMs commonly flag incorrectly.
+
+    This is a safety net for when the LLM doesn't follow the prompt instructions
+    to avoid flagging neutral language like medical terms and factual descriptors.
+    """
+    if not spans:
+        return spans
+
+    filtered = []
+    for span in spans:
+        text_lower = span.original_text.lower().strip()
+
+        # Check exact matches
+        if text_lower in FALSE_POSITIVE_PHRASES:
+            continue
+
+        # Check pattern matches
+        is_false_positive = False
+        for pattern in FALSE_POSITIVE_PATTERNS:
+            if pattern in text_lower:
+                is_false_positive = True
+                break
+
+        if not is_false_positive:
+            filtered.append(span)
+
+    filtered_count = len(spans) - len(filtered)
+    if filtered_count > 0:
+        logger.info(f"Filtered out {filtered_count} known false positive spans")
+
+    return filtered
+
+
 def get_synthesis_detail_full_prompt() -> str:
     """
     Get the user prompt template for detail_full synthesis (NEW approach).
@@ -2214,6 +2292,7 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
         # Convert to TransparencySpans with position matching
         spans = find_phrase_positions(body, llm_phrases)
         spans = filter_spans_in_quotes(body, spans)
+        spans = filter_false_positives(spans)
         logger.info(f"LLM span detection found {len(spans)} manipulative phrases")
         return spans
 
@@ -2277,6 +2356,7 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
 
         spans = find_phrase_positions(body, llm_phrases)
         spans = filter_spans_in_quotes(body, spans)
+        spans = filter_false_positives(spans)
         logger.info(f"Gemini span detection found {len(spans)} manipulative phrases")
         return spans
 
@@ -2353,6 +2433,7 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
 
         spans = find_phrase_positions(body, llm_phrases)
         spans = filter_spans_in_quotes(body, spans)
+        spans = filter_false_positives(spans)
         logger.info(f"Anthropic span detection found {len(spans)} manipulative phrases")
         return spans
 
