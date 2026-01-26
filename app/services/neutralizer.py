@@ -1766,6 +1766,87 @@ def build_brief_repair_prompt(brief: str, violations: List[str]) -> str:
     )
 
 
+def validate_feed_summary(summary: str) -> List[str]:
+    """
+    Check if feed_summary contains phrases that should have been neutralized.
+
+    Uses the same banned phrases list as brief validation.
+
+    Args:
+        summary: The generated feed_summary text
+
+    Returns:
+        List of violations found. Empty list if clean.
+    """
+    if not summary:
+        return []
+
+    violations = []
+    summary_lower = summary.lower()
+
+    for phrase in BRIEF_BANNED_PHRASES:
+        if phrase.lower() in summary_lower:
+            violations.append(phrase)
+
+    if violations:
+        logger.warning(f"Feed summary contains un-neutralized phrases: {violations}")
+
+    return violations
+
+
+# Prompt for repairing feed summaries that failed validation
+FEED_SUMMARY_REPAIR_PROMPT = """The following feed summary contains banned language.
+
+VIOLATIONS: {violations}
+ORIGINAL: {summary}
+
+Rewrite in 2 complete sentences, max 120 characters total. Remove all violations.
+Replace "romantic getaway" with "trip", "luxury" with neutral terms, etc.
+Return ONLY the rewritten summary, no explanation."""
+
+
+def build_feed_summary_repair_prompt(summary: str, violations: List[str]) -> str:
+    """Build a prompt to repair a feed_summary with banned phrases."""
+    return FEED_SUMMARY_REPAIR_PROMPT.format(
+        violations=", ".join(f'"{v}"' for v in violations),
+        summary=summary,
+    )
+
+
+def truncate_at_sentence(text: str, max_chars: int = 130) -> str:
+    """
+    Truncate text at last complete sentence within limit.
+
+    Args:
+        text: The text to truncate
+        max_chars: Maximum allowed characters
+
+    Returns:
+        Text truncated at sentence boundary, or word boundary if no sentence found
+    """
+    if len(text) <= max_chars:
+        return text
+
+    truncated = text[:max_chars]
+
+    # Find last sentence boundary
+    for end_char in ['. ', '! ', '? ']:
+        last_pos = truncated.rfind(end_char)
+        if last_pos > 0:
+            return truncated[:last_pos + 1].strip()
+
+    # Check for sentence ending at very end (no space after)
+    if truncated.endswith('.') or truncated.endswith('!') or truncated.endswith('?'):
+        return truncated.strip()
+
+    # Fallback: truncate at word boundary
+    last_space = truncated.rfind(' ')
+    if last_space > 0:
+        return truncated[:last_space].strip()
+
+    return truncated
+
+
 def get_synthesis_detail_full_prompt() -> str:
     """
     Get the user prompt template for detail_full synthesis (NEW approach).
@@ -2027,7 +2108,7 @@ YOUR TASK
 
 Produce three distinct outputs:
 1. feed_title: Short headline (55-70 characters, MAXIMUM 75)
-2. feed_summary: 2-3 sentences continuing from title (140-160 characters, soft max 175)
+2. feed_summary: 2 complete sentences continuing from title (100-120 characters, hard max 130)
 3. detail_title: Precise headline (≤12 words MAXIMUM)
 
 These are NOT variations of the same text. Each serves a different cognitive purpose.
@@ -2060,15 +2141,15 @@ BAD: "Apple Announces New Feature" (drops "expected to" - VIOLATION)
 BAD: "The United States Senate Passes Major Infrastructure Bill with Bipartisan Support After Lengthy Debate" (102 chars - TOO LONG)
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT 2: feed_summary (TARGET 160 CHARACTERS)
+OUTPUT 2: feed_summary (TARGET 120 CHARACTERS)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Purpose: Provide context and details that CONTINUE from the feed_title. Displays inline after title.
 
 CONSTRAINTS:
-- Target 140-160 characters (count EVERY character including spaces and periods)
-- Maximum 175 characters (soft limit - some overflow acceptable)
-- 2-3 complete sentences with meaningful content
+- Target 100-120 characters (count EVERY character including spaces and periods)
+- Maximum 130 characters (HARD limit - will be truncated if exceeded)
+- 2 complete sentences with meaningful content
 - NO ellipses (...) ever
 
 CRITICAL: NON-REDUNDANCY RULE
@@ -2239,14 +2320,14 @@ Respond with JSON containing exactly these four fields:
 
 {{
   "feed_title": "55-70 chars, max 75, NEVER truncated",
-  "feed_summary": "140-160 chars, soft max 175, 2-3 sentences, MUST NOT repeat title",
+  "feed_summary": "100-120 chars, hard max 130, 2 sentences, MUST NOT repeat title",
   "detail_title": "≤12 words, more specific than feed_title",
   "section": "world|us|local|business|technology"
 }}
 
 BEFORE OUTPUTTING - VERIFY (CRITICAL):
 1. feed_title: COUNT EVERY CHARACTER NOW - must be ≤75 (target 55-70)
-2. feed_summary: COUNT EVERY CHARACTER NOW - must be ≤175 (target 140-160)
+2. feed_summary: COUNT EVERY CHARACTER NOW - must be ≤130 (target 100-120)
 3. feed_summary: Does it repeat the title's subject or event? If yes, REWRITE to continue from title instead
 4. detail_title word count: ≤12 words? (count now)
 5. Epistemic markers preserved? (check source for "expected to", "plans to")
@@ -3841,7 +3922,11 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         Uses shared article_system_prompt + compression_feed_outputs_prompt.
         Returns dict with feed_title, feed_summary, detail_title.
+
+        Includes validation and retry for feed_summary banned phrases.
         """
+        MAX_FEED_SUMMARY_RETRIES = 2
+
         if not body and not detail_brief:
             return {
                 "feed_title": "",
@@ -3880,6 +3965,38 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 "detail_title": data.get("detail_title", ""),
                 "section": data.get("section", "world"),
             }
+
+            # Validate and retry feed_summary if it contains banned phrases
+            for attempt in range(MAX_FEED_SUMMARY_RETRIES):
+                violations = validate_feed_summary(result['feed_summary'])
+                if not violations:
+                    break
+
+                logger.warning(
+                    f"Feed summary validation failed (attempt {attempt + 1}/{MAX_FEED_SUMMARY_RETRIES + 1}): {violations}"
+                )
+
+                # Generate repair prompt and retry
+                repair_prompt = build_feed_summary_repair_prompt(result['feed_summary'], violations)
+                repair_response = client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": "You are a neutral news editor. Return only the rewritten text."},
+                        {"role": "user", "content": repair_prompt},
+                    ],
+                    temperature=0.3,
+                )
+                result['feed_summary'] = repair_response.choices[0].message.content.strip()
+
+            # Final validation
+            violations = validate_feed_summary(result['feed_summary'])
+            if violations:
+                logger.error(
+                    f"Feed summary validation failed after {MAX_FEED_SUMMARY_RETRIES + 1} attempts: {violations}"
+                )
+
+            # Apply sentence-boundary truncation as safety net
+            result['feed_summary'] = truncate_at_sentence(result['feed_summary'], 130)
 
             # Validate feed outputs for garbled content
             _validate_feed_outputs(result)
@@ -4104,7 +4221,11 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         Uses shared article_system_prompt + compression_feed_outputs_prompt.
         Returns dict with feed_title, feed_summary, detail_title, section.
+
+        Includes validation and retry for feed_summary banned phrases.
         """
+        MAX_FEED_SUMMARY_RETRIES = 2
+
         if not body and not detail_brief:
             return {
                 "feed_title": "",
@@ -4143,6 +4264,37 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 "detail_title": data.get("detail_title", ""),
                 "section": data.get("section", "world"),
             }
+
+            # Validate and retry feed_summary if it contains banned phrases
+            repair_model = genai.GenerativeModel(
+                self._model,
+                system_instruction="You are a neutral news editor. Return only the rewritten text.",
+                generation_config=genai.GenerationConfig(temperature=0.3),
+            )
+
+            for attempt in range(MAX_FEED_SUMMARY_RETRIES):
+                violations = validate_feed_summary(result['feed_summary'])
+                if not violations:
+                    break
+
+                logger.warning(
+                    f"Feed summary validation failed (attempt {attempt + 1}/{MAX_FEED_SUMMARY_RETRIES + 1}): {violations}"
+                )
+
+                # Generate repair prompt and retry
+                repair_prompt = build_feed_summary_repair_prompt(result['feed_summary'], violations)
+                repair_response = repair_model.generate_content(repair_prompt)
+                result['feed_summary'] = repair_response.text.strip()
+
+            # Final validation
+            violations = validate_feed_summary(result['feed_summary'])
+            if violations:
+                logger.error(
+                    f"Feed summary validation failed after {MAX_FEED_SUMMARY_RETRIES + 1} attempts: {violations}"
+                )
+
+            # Apply sentence-boundary truncation as safety net
+            result['feed_summary'] = truncate_at_sentence(result['feed_summary'], 130)
 
             # Validate feed outputs for garbled content
             _validate_feed_outputs(result)
@@ -4374,7 +4526,11 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         Uses shared article_system_prompt + compression_feed_outputs_prompt.
         Returns dict with feed_title, feed_summary, detail_title, section.
+
+        Includes validation and retry for feed_summary banned phrases.
         """
+        MAX_FEED_SUMMARY_RETRIES = 2
+
         if not body and not detail_brief:
             return {
                 "feed_title": "",
@@ -4420,6 +4576,38 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 "detail_title": data.get("detail_title", ""),
                 "section": data.get("section", "world"),
             }
+
+            # Validate and retry feed_summary if it contains banned phrases
+            for attempt in range(MAX_FEED_SUMMARY_RETRIES):
+                violations = validate_feed_summary(result['feed_summary'])
+                if not violations:
+                    break
+
+                logger.warning(
+                    f"Feed summary validation failed (attempt {attempt + 1}/{MAX_FEED_SUMMARY_RETRIES + 1}): {violations}"
+                )
+
+                # Generate repair prompt and retry
+                repair_prompt = build_feed_summary_repair_prompt(result['feed_summary'], violations)
+                repair_response = client.messages.create(
+                    model=self._model,
+                    max_tokens=256,
+                    system="You are a neutral news editor. Return only the rewritten text.",
+                    messages=[
+                        {"role": "user", "content": repair_prompt},
+                    ],
+                )
+                result['feed_summary'] = repair_response.content[0].text.strip()
+
+            # Final validation
+            violations = validate_feed_summary(result['feed_summary'])
+            if violations:
+                logger.error(
+                    f"Feed summary validation failed after {MAX_FEED_SUMMARY_RETRIES + 1} attempts: {violations}"
+                )
+
+            # Apply sentence-boundary truncation as safety net
+            result['feed_summary'] = truncate_at_sentence(result['feed_summary'], 130)
 
             # Validate feed outputs for garbled content
             _validate_feed_outputs(result)

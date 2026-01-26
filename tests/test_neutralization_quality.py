@@ -344,3 +344,98 @@ class TestBriefValidationRetry:
         # Both should detect violations
         assert len(violations1) > 0
         assert len(violations2) > 0
+
+
+class TestFeedSummaryValidation:
+    """Tests for feed_summary validation functions."""
+
+    def test_validate_feed_summary_catches_violations(self):
+        """Feed summary with banned phrases should return violations."""
+        from app.services.neutralizer import validate_feed_summary
+
+        summary = "The couple enjoyed a romantic getaway in Mexico."
+        violations = validate_feed_summary(summary)
+        assert len(violations) > 0
+        assert any("romantic" in v.lower() for v in violations)
+
+    def test_validate_feed_summary_passes_clean(self):
+        """Clean feed summary should return empty list."""
+        from app.services.neutralizer import validate_feed_summary
+
+        summary = "The couple took a trip to Mexico last week."
+        violations = validate_feed_summary(summary)
+        assert violations == []
+
+    def test_validate_feed_summary_empty_input(self):
+        """Empty summary should return empty violations."""
+        from app.services.neutralizer import validate_feed_summary
+
+        violations = validate_feed_summary("")
+        assert violations == []
+
+    def test_build_feed_summary_repair_prompt(self):
+        """Repair prompt should include violations and original text."""
+        from app.services.neutralizer import build_feed_summary_repair_prompt
+
+        summary = "They had a romantic getaway."
+        violations = ["romantic getaway"]
+        prompt = build_feed_summary_repair_prompt(summary, violations)
+
+        assert "romantic getaway" in prompt
+        assert summary in prompt
+        assert "120 characters" in prompt
+
+
+class TestTruncateAtSentence:
+    """Tests for sentence-boundary truncation."""
+
+    def test_no_truncation_needed(self):
+        """Short text should not be truncated."""
+        from app.services.neutralizer import truncate_at_sentence
+
+        text = "This is a short sentence."
+        result = truncate_at_sentence(text, 130)
+        assert result == text
+
+    def test_truncate_at_period(self):
+        """Should truncate at sentence boundary."""
+        from app.services.neutralizer import truncate_at_sentence
+
+        text = "First sentence. Second sentence. Third sentence that is way too long."
+        result = truncate_at_sentence(text, 50)
+        assert result.endswith(".")
+        assert len(result) <= 50
+
+    def test_truncate_at_exclamation(self):
+        """Should truncate at exclamation mark."""
+        from app.services.neutralizer import truncate_at_sentence
+
+        text = "First sentence! Second sentence. Third sentence."
+        result = truncate_at_sentence(text, 20)
+        assert result == "First sentence!"
+
+    def test_truncate_at_question(self):
+        """Should truncate at question mark."""
+        from app.services.neutralizer import truncate_at_sentence
+
+        text = "Is this true? Yes it is. More details here."
+        result = truncate_at_sentence(text, 20)
+        assert result == "Is this true?"
+
+    def test_fallback_to_word_boundary(self):
+        """Should fall back to word boundary if no sentence found."""
+        from app.services.neutralizer import truncate_at_sentence
+
+        text = "This is one very long sentence without any periods until the end"
+        result = truncate_at_sentence(text, 30)
+        assert len(result) <= 30
+        assert not result.endswith(" ")  # Should not end with space
+
+    def test_exact_limit(self):
+        """Text exactly at limit should not be truncated."""
+        from app.services.neutralizer import truncate_at_sentence
+
+        text = "Exactly 130 characters here." + "x" * 100
+        text = text[:130]
+        result = truncate_at_sentence(text, 130)
+        assert result == text
