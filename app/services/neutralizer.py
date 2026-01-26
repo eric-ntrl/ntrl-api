@@ -2311,7 +2311,7 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
 
     except Exception as e:
         logger.warning(f"LLM_DEBUG: OpenAI span detection FAILED with error: {type(e).__name__}: {e}")
-        return []
+        return None  # Return None on failure (not []) so caller knows to use fallback
 
 
 def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[TransparencySpan]:
@@ -2378,7 +2378,7 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
 
     except Exception as e:
         logger.warning(f"Gemini span detection failed: {e}")
-        return []
+        return None  # Return None on failure so caller knows to use fallback
 
 
 def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[TransparencySpan]:
@@ -2458,7 +2458,7 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
 
     except Exception as e:
         logger.warning(f"Anthropic span detection failed: {e}")
-        return []
+        return None  # Return None on failure so caller knows to use fallback
 
 
 def _correct_span_positions(spans: List[TransparencySpan], original_body: str) -> List[TransparencySpan]:
@@ -3132,16 +3132,19 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             return MockNeutralizerProvider()._neutralize_detail_full(body)
 
         # Get spans via LLM-based detection (context-aware)
-        # Falls back to pattern-based if LLM detection fails
+        # Returns None if API call fails, [] if article is clean
         spans = detect_spans_via_llm_openai(body, self._api_key, self._model)
-        if not spans:
-            # LLM detection failed or returned empty - fall back to pattern-based
-            logger.warning("LLM span detection returned no results, using pattern-based fallback")
+        if spans is None:
+            # LLM API call failed - fall back to pattern-based
+            logger.warning("LLM span detection failed, using pattern-based fallback")
             mock = MockNeutralizerProvider()
             mock_result = mock._neutralize_detail_full(body)
             spans = mock_result.spans
             # Apply false positive filter to fallback spans too
             spans = filter_false_positives(spans)
+        else:
+            # LLM succeeded - trust its result (even if empty = clean article)
+            logger.info(f"LLM span detection succeeded with {len(spans)} spans")
 
         try:
             from openai import OpenAI
@@ -3363,13 +3366,17 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             return MockNeutralizerProvider()._neutralize_detail_full(body)
 
         # Get spans via LLM-based detection (context-aware)
-        # Falls back to pattern-based if LLM detection fails
+        # Returns None if API call fails, [] if article is clean
         spans = detect_spans_via_llm_gemini(body, self._api_key, self._model)
-        if not spans:
-            logger.info("Gemini LLM span detection returned no results, using pattern-based fallback")
+        if spans is None:
+            # LLM API call failed - fall back to pattern-based
+            logger.warning("Gemini LLM span detection failed, using pattern-based fallback")
             mock = MockNeutralizerProvider()
             mock_result = mock._neutralize_detail_full(body)
             spans = mock_result.spans
+        else:
+            # LLM succeeded - trust its result (even if empty = clean article)
+            logger.info(f"Gemini LLM span detection succeeded with {len(spans)} spans")
 
         try:
             import google.generativeai as genai
@@ -3592,13 +3599,17 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             return MockNeutralizerProvider()._neutralize_detail_full(body)
 
         # Get spans via LLM-based detection (context-aware)
-        # Falls back to pattern-based if LLM detection fails
+        # Returns None if API call fails, [] if article is clean
         spans = detect_spans_via_llm_anthropic(body, self._api_key, self._model)
-        if not spans:
-            logger.info("Anthropic LLM span detection returned no results, using pattern-based fallback")
+        if spans is None:
+            # LLM API call failed - fall back to pattern-based
+            logger.warning("Anthropic LLM span detection failed, using pattern-based fallback")
             mock = MockNeutralizerProvider()
             mock_result = mock._neutralize_detail_full(body)
             spans = mock_result.spans
+        else:
+            # LLM succeeded - trust its result (even if empty = clean article)
+            logger.info(f"Anthropic LLM span detection succeeded with {len(spans)} spans")
 
         try:
             import anthropic
