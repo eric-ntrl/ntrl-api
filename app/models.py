@@ -92,6 +92,15 @@ class PipelineStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class NeutralizationStatus(str, Enum):
+    """Status of neutralization processing."""
+    SUCCESS = "success"
+    FAILED_LLM = "failed_llm"           # LLM API error
+    FAILED_AUDIT = "failed_audit"       # Audit verdict FAIL
+    FAILED_GARBLED = "failed_garbled"   # Output was garbled
+    SKIPPED = "skipped"                 # Audit verdict SKIP
+
+
 # -----------------------------------------------------------------------------
 # Source
 # -----------------------------------------------------------------------------
@@ -211,6 +220,10 @@ class StoryNeutralized(Base):
     # Model/prompt tracking
     model_name = Column(String(128), nullable=True)
     prompt_version = Column(String(64), nullable=True)
+
+    # Neutralization status tracking
+    neutralization_status = Column(String(50), default="success", nullable=False)
+    failure_reason = Column(Text, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

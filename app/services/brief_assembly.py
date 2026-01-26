@@ -111,13 +111,14 @@ class BriefAssemblyService:
         - Published after cutoff
         """
         # Query for neutralized, non-duplicate stories
-        # TODO: Add is_active filter once database column is properly populated
+        # Only include successfully neutralized articles (no failed_llm, failed_garbled, etc.)
         results = (
             db.query(models.StoryNeutralized, models.StoryRaw, models.Source)
             .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
             .join(models.Source, models.StoryRaw.source_id == models.Source.id)
             .filter(
                 models.StoryNeutralized.is_current == True,
+                models.StoryNeutralized.neutralization_status == "success",
                 models.StoryRaw.is_duplicate == False,
                 models.StoryRaw.published_at >= cutoff_time,
                 models.StoryRaw.section.isnot(None),

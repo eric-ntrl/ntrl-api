@@ -178,7 +178,10 @@ def list_stories(
         query = query.join(
             models.StoryNeutralized,
             models.StoryRaw.id == models.StoryNeutralized.story_raw_id
-        ).filter(models.StoryNeutralized.is_current == True)
+        ).filter(
+            models.StoryNeutralized.is_current == True,
+            models.StoryNeutralized.neutralization_status == "success",  # Only show successful
+        )
 
     total = query.count()
     stories_raw = (

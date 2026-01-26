@@ -88,6 +88,8 @@ class DetailFullResult:
     """Result from filtering an article body (Call 1: Filter & Track)."""
     detail_full: str
     spans: List[TransparencySpan]
+    status: str = "success"  # success, failed_llm, failed_garbled, failed_audit
+    failure_reason: Optional[str] = None
 
 
 class NeutralizerProvider(ABC):
@@ -1534,6 +1536,38 @@ QUOTE_CHARS_OPEN = set(QUOTE_PAIRS.keys())
 QUOTE_CHARS_CLOSE = set(QUOTE_PAIRS.values())
 
 
+def is_contraction_apostrophe(body: str, pos: int) -> bool:
+    """
+    Check if apostrophe at position is part of a contraction, not a quote boundary.
+
+    Contractions have letters on both sides of the apostrophe, like:
+    - won't, can't, don't (n't pattern)
+    - it's, he's, she's ('s pattern)
+    - they're, we're, you're ('re pattern)
+    - I've, you've, we've ('ve pattern)
+    - I'll, you'll, we'll ('ll pattern)
+    - I'd, you'd, we'd ('d pattern)
+
+    Quote boundaries typically have space or punctuation on at least one side.
+
+    Note: This function intentionally does NOT detect possessives like "James' dog"
+    because they are ambiguous with closing quotes like 'shocking'. Single quotes
+    at word boundaries should be treated as potential quote marks for proper pairing.
+    """
+    if pos <= 0 or pos >= len(body) - 1:
+        return False
+
+    char_before = body[pos - 1]
+    char_after = body[pos + 1]
+
+    # Core rule: letters on both sides = contraction
+    # Example: "won't" -> 'n' + "'" + 't'
+    if char_before.isalpha() and char_after.isalpha():
+        return True
+
+    return False
+
+
 def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[TransparencySpan]:
     """
     Remove spans that fall inside quotation marks.
@@ -1547,6 +1581,10 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
     - Curly double quotes: "..."
     - Straight single quotes: '...'
     - Curly single quotes: '...'
+
+    Distinguishes between apostrophes used as quote marks vs contractions:
+    - Contractions: won't, it's, they're (letters on both sides)
+    - Quotes: 'totally shocking' (space before opening, space after closing)
     """
     if not body or not spans:
         return spans
@@ -1556,6 +1594,10 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
     stack = []  # Track (open_char, start_position)
 
     for i, char in enumerate(body):
+        # Skip apostrophes that are part of contractions (not quote boundaries)
+        if char in ("'", "'") and is_contraction_apostrophe(body, i):
+            continue
+
         if char in QUOTE_CHARS_OPEN:
             # Check if this is an opening quote (not a closing one for the same type)
             # Handle ambiguous chars like " and ' that serve as both open and close
@@ -3548,22 +3590,27 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
         model: Model name to use
 
     Returns:
-        DetailFullResult with synthesized text and pattern-detected spans
+        DetailFullResult with synthesized text (or failure indicator if synthesis fails)
     """
     if not body:
         return DetailFullResult(detail_full="", spans=[])
 
-    # Get spans from mock provider (pattern-based detection on original body)
-    mock = MockNeutralizerProvider()
-    mock_result = mock._neutralize_detail_full(body)
-    spans = mock_result.spans
+    # No API key = failure (don't fall back to mock)
+    if not api_key:
+        logger.error(f"No API key for {provider_name} - cannot synthesize detail_full")
+        return DetailFullResult(
+            detail_full="",
+            spans=[],
+            status="failed_llm",
+            failure_reason=f"No API key configured for {provider_name}"
+        )
 
     # Generate detail_full using synthesis prompt (plain text, not JSON)
     try:
         system_prompt = get_article_system_prompt()
         user_prompt = build_synthesis_detail_full_prompt(body)
 
-        if provider_name == "openai" and api_key:
+        if provider_name == "openai":
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
             response = client.chat.completions.create(
@@ -3576,7 +3623,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
             )
             detail_full = response.choices[0].message.content.strip()
 
-        elif provider_name == "anthropic" and api_key:
+        elif provider_name == "anthropic":
             import anthropic
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
@@ -3587,7 +3634,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
             )
             detail_full = response.content[0].text.strip()
 
-        elif provider_name == "gemini" and api_key:
+        elif provider_name == "gemini":
             import google.generativeai as genai
             genai.configure(api_key=api_key)
             model_obj = genai.GenerativeModel(model or "gemini-2.0-flash")
@@ -3596,31 +3643,35 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
             detail_full = response.text.strip()
 
         else:
-            # No API key - use mock's output as fallback
-            detail_full = mock_result.detail_full
+            logger.error(f"Unknown provider {provider_name} - cannot synthesize detail_full")
+            return DetailFullResult(
+                detail_full="",
+                spans=[],
+                status="failed_llm",
+                failure_reason=f"Unknown provider: {provider_name}"
+            )
 
         # Validate output isn't garbled
         if _detect_garbled_output(body, detail_full):
-            logger.warning(f"Synthesis fallback also produced garbled output, trying mock")
+            logger.error(f"Synthesis fallback produced garbled output for {provider_name}")
+            return DetailFullResult(
+                detail_full="",
+                spans=[],
+                status="failed_garbled",
+                failure_reason="LLM synthesis produced garbled output"
+            )
 
-            # Check if mock is also garbled - use original body as ultimate fallback
-            if _detect_garbled_output(body, mock_result.detail_full):
-                logger.warning("Mock also garbled, using original body as ultimate fallback")
-                return DetailFullResult(detail_full=body, spans=spans)
-
-            detail_full = mock_result.detail_full
-
-        return DetailFullResult(detail_full=detail_full, spans=spans)
+        # Success - return with empty spans (spans detected separately)
+        return DetailFullResult(detail_full=detail_full, spans=[])
 
     except Exception as e:
-        logger.warning(f"Synthesis fallback failed: {e}, trying mock output")
-
-        # Check if mock is also garbled - use original body as ultimate fallback
-        if _detect_garbled_output(body, mock_result.detail_full):
-            logger.warning("Mock also garbled, using original body as ultimate fallback")
-            return DetailFullResult(detail_full=body, spans=mock_result.spans)
-
-        return mock_result
+        logger.error(f"Synthesis fallback failed for {provider_name}: {e}")
+        return DetailFullResult(
+            detail_full="",
+            spans=[],
+            status="failed_llm",
+            failure_reason=f"LLM synthesis exception: {str(e)}"
+        )
 
 
 def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResult:
@@ -3743,10 +3794,13 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
         body: Optional[str],
         repair_instructions: Optional[str] = None,
     ) -> NeutralizationResult:
-        """Neutralize using OpenAI API."""
+        """Neutralize using OpenAI API.
+
+        Raises NeutralizationResponseError if no API key or neutralization fails.
+        """
         if not self._api_key:
-            logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
+            logger.error("No OPENAI_API_KEY set - cannot neutralize")
+            raise NeutralizationResponseError("No OPENAI_API_KEY configured")
 
         try:
             from openai import OpenAI
@@ -3773,9 +3827,11 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             data = json.loads(response.choices[0].message.content)
             return parse_llm_response(data, title, description)
 
+        except NeutralizationResponseError:
+            raise  # Re-raise our own exceptions
         except Exception as e:
             logger.error(f"OpenAI neutralization failed: {e}")
-            return MockNeutralizerProvider().neutralize(title, description, body)
+            raise NeutralizationResponseError(f"OpenAI neutralization failed: {str(e)}")
 
     def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
@@ -3789,7 +3845,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
         Spans are detected via hybrid LLM + position matching:
         1. LLM identifies manipulative phrases with context awareness
         2. Position matcher finds exact character positions in original body
-        3. Falls back to pattern-based detection if LLM fails
+        3. Returns failure status if LLM fails (no mock fallback)
         """
         MAX_RETRIES = 2
 
@@ -3797,8 +3853,13 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             return DetailFullResult(detail_full="", spans=[])
 
         if not self._api_key:
-            logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_detail_full(body)
+            logger.error("No OPENAI_API_KEY set - cannot neutralize")
+            return DetailFullResult(
+                detail_full="",
+                spans=[],
+                status="failed_llm",
+                failure_reason="No OPENAI_API_KEY configured"
+            )
 
         # Get spans via LLM-based detection (context-aware)
         # Returns None if API call fails, [] if article is clean
@@ -3834,21 +3895,18 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
-                logger.warning("OpenAI synthesis produced garbled output, trying mock fallback")
-                mock = MockNeutralizerProvider()
-                mock_result = mock._neutralize_detail_full(body)
-
-                # Check if mock also produced garbled output - use original body as ultimate fallback
-                if _detect_garbled_output(body, mock_result.detail_full):
-                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
-                    return DetailFullResult(detail_full=body, spans=spans)
-
-                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
+                logger.error("OpenAI synthesis produced garbled output")
+                return DetailFullResult(
+                    detail_full="",
+                    spans=spans,
+                    status="failed_garbled",
+                    failure_reason="OpenAI synthesis produced garbled output"
+                )
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
 
         except Exception as e:
-            # API error - retry once, then fall back to mock
+            # API error - retry, then return failure status
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"OpenAI synthesis error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
@@ -3857,16 +3915,13 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 time.sleep(1)
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.warning(f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
-                mock = MockNeutralizerProvider()
-                mock_result = mock._neutralize_detail_full(body)
-
-                # Check if mock also produced garbled output - use original body as ultimate fallback
-                if _detect_garbled_output(body, mock_result.detail_full):
-                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
-                    return DetailFullResult(detail_full=body, spans=spans)
-
-                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
+                logger.error(f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
+                return DetailFullResult(
+                    detail_full="",
+                    spans=spans,
+                    status="failed_llm",
+                    failure_reason=f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}"
+                )
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -3877,6 +3932,8 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         Includes retry logic: if the brief contains banned phrases, retry with
         a repair prompt up to MAX_BRIEF_RETRIES times.
+
+        Raises NeutralizationResponseError if no API key or synthesis fails.
         """
         MAX_BRIEF_RETRIES = 2
 
@@ -3884,8 +3941,8 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             return ""
 
         if not self._api_key:
-            logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+            logger.error("No OPENAI_API_KEY set - cannot synthesize brief")
+            raise NeutralizationResponseError("No OPENAI_API_KEY configured")
 
         try:
             from openai import OpenAI
@@ -3938,7 +3995,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         except Exception as e:
             logger.error(f"OpenAI detail_brief synthesis failed: {e}")
-            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+            raise NeutralizationResponseError(f"OpenAI detail_brief synthesis failed: {str(e)}")
 
     def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
         """
@@ -3960,8 +4017,8 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             }
 
         if not self._api_key:
-            logger.warning("No OPENAI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+            logger.error("No OPENAI_API_KEY set - cannot generate feed outputs")
+            raise NeutralizationResponseError("No OPENAI_API_KEY configured")
 
         try:
             import json
@@ -4028,7 +4085,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         except Exception as e:
             logger.error(f"OpenAI feed outputs compression failed: {e}")
-            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+            raise NeutralizationResponseError(f"OpenAI feed outputs compression failed: {str(e)}")
 
 
 # -----------------------------------------------------------------------------
@@ -4066,10 +4123,13 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
         body: Optional[str],
         repair_instructions: Optional[str] = None,
     ) -> NeutralizationResult:
-        """Neutralize using Google Gemini API."""
+        """Neutralize using Google Gemini API.
+
+        Raises NeutralizationResponseError if no API key or neutralization fails.
+        """
         if not self._api_key:
-            logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
+            logger.error("No GOOGLE_API_KEY or GEMINI_API_KEY set - cannot neutralize")
+            raise NeutralizationResponseError("No GOOGLE_API_KEY or GEMINI_API_KEY configured")
 
         try:
             import google.generativeai as genai
@@ -4098,9 +4158,11 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             data = json.loads(response.text)
             return parse_llm_response(data, title, description)
 
+        except NeutralizationResponseError:
+            raise  # Re-raise our own exceptions
         except Exception as e:
             logger.error(f"Gemini neutralization failed: {e}")
-            return MockNeutralizerProvider().neutralize(title, description, body)
+            raise NeutralizationResponseError(f"Gemini neutralization failed: {str(e)}")
 
     def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
@@ -4108,6 +4170,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         Uses synthesis mode (plain text output) as the primary approach.
         Spans are detected via hybrid LLM + position matching for context awareness.
+        Returns failure status if synthesis fails (no mock fallback).
         """
         MAX_RETRIES = 2
 
@@ -4115,8 +4178,13 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             return DetailFullResult(detail_full="", spans=[])
 
         if not self._api_key:
-            logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_detail_full(body)
+            logger.error("No GOOGLE_API_KEY or GEMINI_API_KEY set - cannot neutralize")
+            return DetailFullResult(
+                detail_full="",
+                spans=[],
+                status="failed_llm",
+                failure_reason="No GOOGLE_API_KEY or GEMINI_API_KEY configured"
+            )
 
         # Get spans via LLM-based detection (context-aware)
         # Returns None if API call fails, [] if article is clean
@@ -4152,21 +4220,18 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
-                logger.warning("Gemini synthesis produced garbled output, trying mock fallback")
-                mock = MockNeutralizerProvider()
-                mock_result = mock._neutralize_detail_full(body)
-
-                # Check if mock also produced garbled output - use original body as ultimate fallback
-                if _detect_garbled_output(body, mock_result.detail_full):
-                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
-                    return DetailFullResult(detail_full=body, spans=spans)
-
-                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
+                logger.error("Gemini synthesis produced garbled output")
+                return DetailFullResult(
+                    detail_full="",
+                    spans=spans,
+                    status="failed_garbled",
+                    failure_reason="Gemini synthesis produced garbled output"
+                )
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
 
         except Exception as e:
-            # API error - retry once, then fall back to mock
+            # API error - retry, then return failure status
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"Gemini synthesis error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
@@ -4175,16 +4240,13 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 time.sleep(1)
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.warning(f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
-                mock = MockNeutralizerProvider()
-                mock_result = mock._neutralize_detail_full(body)
-
-                # Check if mock also produced garbled output - use original body as ultimate fallback
-                if _detect_garbled_output(body, mock_result.detail_full):
-                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
-                    return DetailFullResult(detail_full=body, spans=spans)
-
-                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
+                logger.error(f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
+                return DetailFullResult(
+                    detail_full="",
+                    spans=spans,
+                    status="failed_llm",
+                    failure_reason=f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}"
+                )
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -4195,6 +4257,8 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         Includes retry logic: if the brief contains banned phrases, retry with
         a repair prompt up to MAX_BRIEF_RETRIES times.
+
+        Raises NeutralizationResponseError if no API key or synthesis fails.
         """
         MAX_BRIEF_RETRIES = 2
 
@@ -4202,8 +4266,8 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             return ""
 
         if not self._api_key:
-            logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+            logger.error("No GOOGLE_API_KEY or GEMINI_API_KEY set - cannot synthesize brief")
+            raise NeutralizationResponseError("No GOOGLE_API_KEY or GEMINI_API_KEY configured")
 
         try:
             import google.generativeai as genai
@@ -4249,7 +4313,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         except Exception as e:
             logger.error(f"Gemini detail_brief synthesis failed: {e}")
-            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+            raise NeutralizationResponseError(f"Gemini detail_brief synthesis failed: {str(e)}")
 
     def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
         """
@@ -4259,6 +4323,8 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
         Returns dict with feed_title, feed_summary, detail_title, section.
 
         Includes validation and retry for feed_summary banned phrases.
+
+        Raises NeutralizationResponseError if no API key or compression fails.
         """
         MAX_FEED_SUMMARY_RETRIES = 2
 
@@ -4271,8 +4337,8 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             }
 
         if not self._api_key:
-            logger.warning("No GOOGLE_API_KEY or GEMINI_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+            logger.error("No GOOGLE_API_KEY or GEMINI_API_KEY set - cannot generate feed outputs")
+            raise NeutralizationResponseError("No GOOGLE_API_KEY or GEMINI_API_KEY configured")
 
         try:
             import json
@@ -4338,7 +4404,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         except Exception as e:
             logger.error(f"Gemini feed outputs compression failed: {e}")
-            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+            raise NeutralizationResponseError(f"Gemini feed outputs compression failed: {str(e)}")
 
 
 # -----------------------------------------------------------------------------
@@ -4373,10 +4439,13 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         body: Optional[str],
         repair_instructions: Optional[str] = None,
     ) -> NeutralizationResult:
-        """Neutralize using Anthropic Claude API."""
+        """Neutralize using Anthropic Claude API.
+
+        Raises NeutralizationResponseError if no API key or neutralization fails.
+        """
         if not self._api_key:
-            logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider().neutralize(title, description, body, repair_instructions)
+            logger.error("No ANTHROPIC_API_KEY set - cannot neutralize")
+            raise NeutralizationResponseError("No ANTHROPIC_API_KEY configured")
 
         try:
             import anthropic
@@ -4410,9 +4479,11 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             data = json.loads(text.strip())
             return parse_llm_response(data, title, description)
 
+        except NeutralizationResponseError:
+            raise  # Re-raise our own exceptions
         except Exception as e:
             logger.error(f"Anthropic neutralization failed: {e}")
-            return MockNeutralizerProvider().neutralize(title, description, body)
+            raise NeutralizationResponseError(f"Anthropic neutralization failed: {str(e)}")
 
     def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
@@ -4420,6 +4491,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         Uses synthesis mode (plain text output) as the primary approach.
         Spans are detected via hybrid LLM + position matching for context awareness.
+        Returns failure status if synthesis fails (no mock fallback).
         """
         MAX_RETRIES = 2
 
@@ -4427,8 +4499,13 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             return DetailFullResult(detail_full="", spans=[])
 
         if not self._api_key:
-            logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_detail_full(body)
+            logger.error("No ANTHROPIC_API_KEY set - cannot neutralize")
+            return DetailFullResult(
+                detail_full="",
+                spans=[],
+                status="failed_llm",
+                failure_reason="No ANTHROPIC_API_KEY configured"
+            )
 
         # Get spans via LLM-based detection (context-aware)
         # Returns None if API call fails, [] if article is clean
@@ -4463,21 +4540,18 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
-                logger.warning("Anthropic synthesis produced garbled output, trying mock fallback")
-                mock = MockNeutralizerProvider()
-                mock_result = mock._neutralize_detail_full(body)
-
-                # Check if mock also produced garbled output - use original body as ultimate fallback
-                if _detect_garbled_output(body, mock_result.detail_full):
-                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
-                    return DetailFullResult(detail_full=body, spans=spans)
-
-                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
+                logger.error("Anthropic synthesis produced garbled output")
+                return DetailFullResult(
+                    detail_full="",
+                    spans=spans,
+                    status="failed_garbled",
+                    failure_reason="Anthropic synthesis produced garbled output"
+                )
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
 
         except Exception as e:
-            # API error - retry once, then fall back to mock
+            # API error - retry, then return failure status
             if retry_count < MAX_RETRIES:
                 logger.warning(
                     f"Anthropic synthesis error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
@@ -4486,16 +4560,13 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 time.sleep(1)
                 return self._neutralize_detail_full(body, retry_count + 1)
             else:
-                logger.warning(f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
-                mock = MockNeutralizerProvider()
-                mock_result = mock._neutralize_detail_full(body)
-
-                # Check if mock also produced garbled output - use original body as ultimate fallback
-                if _detect_garbled_output(body, mock_result.detail_full):
-                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
-                    return DetailFullResult(detail_full=body, spans=spans)
-
-                return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
+                logger.error(f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
+                return DetailFullResult(
+                    detail_full="",
+                    spans=spans,
+                    status="failed_llm",
+                    failure_reason=f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}"
+                )
 
     def _neutralize_detail_brief(self, body: str) -> str:
         """
@@ -4506,6 +4577,8 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         Includes retry logic: if the brief contains banned phrases, retry with
         a repair prompt up to MAX_BRIEF_RETRIES times.
+
+        Raises NeutralizationResponseError if no API key or synthesis fails.
         """
         MAX_BRIEF_RETRIES = 2
 
@@ -4513,8 +4586,8 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             return ""
 
         if not self._api_key:
-            logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+            logger.error("No ANTHROPIC_API_KEY set - cannot synthesize brief")
+            raise NeutralizationResponseError("No ANTHROPIC_API_KEY configured")
 
         try:
             import anthropic
@@ -4566,7 +4639,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         except Exception as e:
             logger.error(f"Anthropic detail_brief synthesis failed: {e}")
-            return MockNeutralizerProvider()._neutralize_detail_brief(body)
+            raise NeutralizationResponseError(f"Anthropic detail_brief synthesis failed: {str(e)}")
 
     def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
         """
@@ -4576,6 +4649,8 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         Returns dict with feed_title, feed_summary, detail_title, section.
 
         Includes validation and retry for feed_summary banned phrases.
+
+        Raises NeutralizationResponseError if no API key or compression fails.
         """
         MAX_FEED_SUMMARY_RETRIES = 2
 
@@ -4588,8 +4663,8 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             }
 
         if not self._api_key:
-            logger.warning("No ANTHROPIC_API_KEY set, falling back to mock provider")
-            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+            logger.error("No ANTHROPIC_API_KEY set - cannot generate feed outputs")
+            raise NeutralizationResponseError("No ANTHROPIC_API_KEY configured")
 
         try:
             import json
@@ -4663,7 +4738,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         except Exception as e:
             logger.error(f"Anthropic feed outputs compression failed: {e}")
-            return MockNeutralizerProvider()._neutralize_feed_outputs(body, detail_brief)
+            raise NeutralizationResponseError(f"Anthropic feed outputs compression failed: {str(e)}")
 
 
 # -----------------------------------------------------------------------------
@@ -4862,6 +4937,54 @@ class NeutralizerService:
                 # Call 1: Filter & Track - produces detail_full and spans
                 if body:
                     detail_full_result = self.provider._neutralize_detail_full(body)
+
+                    # Check for failure status (new architecture: no mock fallback)
+                    if detail_full_result.status != "success":
+                        logger.error(
+                            f"Neutralization FAILED for story {story.id}: "
+                            f"status={detail_full_result.status}, "
+                            f"reason={detail_full_result.failure_reason}"
+                        )
+                        # Save failed record to database for tracking
+                        version = 1
+                        if existing:
+                            existing.is_current = False
+                            version = existing.version + 1
+
+                        failed_neutralized = models.StoryNeutralized(
+                            id=uuid.uuid4(),
+                            story_raw_id=story.id,
+                            version=version,
+                            is_current=True,
+                            feed_title="",
+                            feed_summary="",
+                            detail_title="",
+                            detail_brief="",
+                            detail_full="",
+                            disclosure="",
+                            has_manipulative_content=False,
+                            model_name=self.provider.model_name,
+                            prompt_version="v3",
+                            neutralization_status=detail_full_result.status,
+                            failure_reason=detail_full_result.failure_reason,
+                            created_at=datetime.utcnow(),
+                        )
+                        db.add(failed_neutralized)
+                        db.flush()
+
+                        self._log_pipeline(
+                            db,
+                            stage=PipelineStage.NEUTRALIZE,
+                            status=PipelineStatus.FAILED,
+                            story_raw_id=story.id,
+                            started_at=started_at,
+                            error_message=detail_full_result.failure_reason,
+                            metadata={
+                                'failure_status': detail_full_result.status,
+                            },
+                        )
+                        return None
+
                     transparency_spans = detail_full_result.spans
 
                     # V2 pattern-based detection disabled - produces too many false positives
@@ -4989,6 +5112,8 @@ class NeutralizerService:
                 has_manipulative_content=has_manipulative_content,
                 model_name=self.provider.model_name,
                 prompt_version="v3",  # Updated for 3-call pipeline
+                neutralization_status="success",
+                failure_reason=None,
                 created_at=datetime.utcnow(),
             )
             db.add(neutralized)

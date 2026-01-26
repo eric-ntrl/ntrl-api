@@ -513,3 +513,119 @@ class TestQuoteFiltering:
         # should remain outside any quoted region since the apostrophes
         # create balanced pairs around non-content
         assert len(filtered) == 1, "Span should not be filtered by contraction apostrophes"
+
+
+class TestContractionApostropheDetection:
+    """Tests for the is_contraction_apostrophe function."""
+
+    def test_basic_contractions(self):
+        """Test detection of common contractions."""
+        from app.services.neutralizer import is_contraction_apostrophe
+
+        # Common contractions should return True
+        # Position is the index of the apostrophe character
+        assert is_contraction_apostrophe("won't", 3) is True   # w-o-n-'-t -> apostrophe at 3
+        assert is_contraction_apostrophe("can't", 3) is True   # c-a-n-'-t -> apostrophe at 3
+        assert is_contraction_apostrophe("don't", 3) is True   # d-o-n-'-t -> apostrophe at 3
+        assert is_contraction_apostrophe("it's", 2) is True    # i-t-'-s -> apostrophe at 2
+        assert is_contraction_apostrophe("he's", 2) is True    # h-e-'-s -> apostrophe at 2
+        assert is_contraction_apostrophe("they're", 4) is True # t-h-e-y-'-r-e -> apostrophe at 4
+        assert is_contraction_apostrophe("we've", 2) is True   # w-e-'-v-e -> apostrophe at 2
+        assert is_contraction_apostrophe("I'll", 1) is True    # I-'-l-l -> apostrophe at 1
+        assert is_contraction_apostrophe("I'd", 1) is True     # I-'-d -> apostrophe at 1
+
+    def test_quote_boundaries_not_contractions(self):
+        """Test that actual quote boundaries are not detected as contractions."""
+        from app.services.neutralizer import is_contraction_apostrophe
+
+        # Opening quotes (space before)
+        text = "He said 'hello'"
+        pos = text.index("'")  # First apostrophe
+        assert is_contraction_apostrophe(text, pos) is False, "Opening quote should not be contraction"
+
+        # Closing quotes (space after)
+        text = "He said 'hello' today"
+        pos = text.rindex("'")  # Last apostrophe
+        # This is tricky - it has a letter before and space after
+        # Our implementation treats this as a possessive (which is correct)
+
+    def test_possessives(self):
+        """Test possessives - standard possessives are contractions, but trailing ones are not."""
+        from app.services.neutralizer import is_contraction_apostrophe
+
+        # Standard possessive (John's) - letter before, letter after = contraction
+        assert is_contraction_apostrophe("John's book", 4) is True
+
+        # Possessive after name ending in s (James' dog)
+        # This is NOT detected as contraction because it's ambiguous with closing quotes
+        # "James' dog" has letter before and space after - could be possessive or closing quote
+        text = "James' dog"
+        pos = text.index("'")
+        assert is_contraction_apostrophe(text, pos) is False, "Trailing possessive is ambiguous with closing quote"
+
+    def test_edge_cases(self):
+        """Test edge cases for apostrophe detection."""
+        from app.services.neutralizer import is_contraction_apostrophe
+
+        # Start of string
+        text = "'hello"
+        assert is_contraction_apostrophe(text, 0) is False
+
+        # End of string
+        text = "hello'"
+        assert is_contraction_apostrophe(text, 5) is False
+
+        # Two-character string
+        text = "a'"
+        assert is_contraction_apostrophe(text, 1) is False
+
+    def test_sentence_with_multiple_contractions(self):
+        """Test a sentence with multiple contractions and quotes."""
+        from app.services.neutralizer import filter_spans_in_quotes
+
+        body = "They won't believe it's 'shocking' that she can't do it."
+        # "shocking" is inside single quotes and should be filtered
+        start = body.index("shocking")
+        end = start + len("shocking")
+
+        from app.services.neutralizer import TransparencySpan
+        from app.models import SpanAction, SpanReason
+
+        spans = [TransparencySpan(
+            field="body",
+            start_char=start,
+            end_char=end,
+            original_text="shocking",
+            action=SpanAction.REMOVED,
+            reason=SpanReason.EMOTIONAL_TRIGGER,
+            replacement_text=None,
+        )]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        # "shocking" is inside actual quotes (not contractions), so should be filtered
+        assert len(filtered) == 0, "Span inside actual quotes should be filtered"
+
+    def test_contractions_dont_break_quote_detection(self):
+        """Test that contractions don't interfere with actual quote detection."""
+        from app.services.neutralizer import filter_spans_in_quotes, TransparencySpan
+        from app.models import SpanAction, SpanReason
+
+        # Article with contractions and a quoted phrase
+        body = "Officials say they won't comment on 'devastating' news that can't be confirmed."
+
+        start = body.index("devastating")
+        end = start + len("devastating")
+
+        spans = [TransparencySpan(
+            field="body",
+            start_char=start,
+            end_char=end,
+            original_text="devastating",
+            action=SpanAction.REMOVED,
+            reason=SpanReason.EMOTIONAL_TRIGGER,
+            replacement_text=None,
+        )]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        # "devastating" is inside single quotes (not contractions)
+        assert len(filtered) == 0, "Span inside quotes should be filtered even with contractions nearby"

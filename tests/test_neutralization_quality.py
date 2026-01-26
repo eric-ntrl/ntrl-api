@@ -497,3 +497,62 @@ class TestGarbledOutputDetection:
         result = _detect_garbled_output(original, broken)
         # Should detect broken grammar patterns (>5 matches)
         assert result is True
+
+
+class TestDetailFullResultStatus:
+    """Tests for DetailFullResult status handling."""
+
+    def test_detail_full_result_default_status(self):
+        """Default status should be 'success'."""
+        from app.services.neutralizer import DetailFullResult
+
+        result = DetailFullResult(detail_full="Test", spans=[])
+        assert result.status == "success"
+        assert result.failure_reason is None
+
+    def test_detail_full_result_failure_status(self):
+        """Failure status should be properly set."""
+        from app.services.neutralizer import DetailFullResult
+
+        result = DetailFullResult(
+            detail_full="",
+            spans=[],
+            status="failed_llm",
+            failure_reason="API error"
+        )
+        assert result.status == "failed_llm"
+        assert result.failure_reason == "API error"
+
+    def test_detail_full_result_garbled_status(self):
+        """Garbled status should be properly set."""
+        from app.services.neutralizer import DetailFullResult
+
+        result = DetailFullResult(
+            detail_full="",
+            spans=[],
+            status="failed_garbled",
+            failure_reason="Output was garbled"
+        )
+        assert result.status == "failed_garbled"
+        assert result.failure_reason == "Output was garbled"
+
+
+class TestNeutralizationStatusEnum:
+    """Tests for NeutralizationStatus enum."""
+
+    def test_enum_values(self):
+        """Test that all expected status values exist."""
+        from app.models import NeutralizationStatus
+
+        assert NeutralizationStatus.SUCCESS.value == "success"
+        assert NeutralizationStatus.FAILED_LLM.value == "failed_llm"
+        assert NeutralizationStatus.FAILED_AUDIT.value == "failed_audit"
+        assert NeutralizationStatus.FAILED_GARBLED.value == "failed_garbled"
+        assert NeutralizationStatus.SKIPPED.value == "skipped"
+
+    def test_enum_string_comparison(self):
+        """Test that enum values can be compared with strings."""
+        from app.models import NeutralizationStatus
+
+        assert NeutralizationStatus.SUCCESS == "success"
+        assert NeutralizationStatus.FAILED_LLM == "failed_llm"
