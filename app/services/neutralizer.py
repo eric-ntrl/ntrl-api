@@ -3757,20 +3757,23 @@ class NeutralizerService:
                     detail_full_result = self.provider._neutralize_detail_full(body)
                     transparency_spans = detail_full_result.spans
 
-                    # CRITICAL FIX: Enhance LLM spans with V2 ntrl-scan detection
-                    # LLMs are unreliable at tracking spans - they often return empty arrays
-                    # V2 ntrl-scan uses regex + spaCy for precise detection
-                    try:
-                        enhanced_spans = _enhance_spans_with_v2_scan(body, transparency_spans)
-                        if len(enhanced_spans) != len(transparency_spans):
-                            logger.info(
-                                f"Story {story.id}: V2 scan enhanced spans "
-                                f"({len(transparency_spans)} LLM → {len(enhanced_spans)} total)"
-                            )
-                        transparency_spans = enhanced_spans
-                    except Exception as e:
-                        logger.warning(f"V2 scan enhancement failed for story {story.id}: {e}")
-                        # Continue with LLM spans only
+                    # V2 pattern-based detection disabled - produces too many false positives
+                    # (256+ spans per article vs ~20-50 from LLM). The regex/spaCy patterns
+                    # flag neutral news language like "Sunday", "protesters", "intensive".
+                    # LLM detection is contextually aware and sufficient.
+                    # See: https://github.com/anthropics/claude-code/issues/XXX
+                    #
+                    # try:
+                    #     enhanced_spans = _enhance_spans_with_v2_scan(body, transparency_spans)
+                    #     if len(enhanced_spans) != len(transparency_spans):
+                    #         logger.info(
+                    #             f"Story {story.id}: V2 scan enhanced spans "
+                    #             f"({len(transparency_spans)} LLM → {len(enhanced_spans)} total)"
+                    #         )
+                    #     transparency_spans = enhanced_spans
+                    # except Exception as e:
+                    #     logger.warning(f"V2 scan enhancement failed for story {story.id}: {e}")
+                    #     # Continue with LLM spans only
                 else:
                     detail_full_result = DetailFullResult(detail_full="", spans=[])
                     transparency_spans = []
@@ -3963,20 +3966,22 @@ class NeutralizerService:
                     detail_full_result = self.provider._neutralize_detail_full(body)
                     transparency_spans = detail_full_result.spans
 
-                    # CRITICAL FIX: Enhance LLM spans with V2 ntrl-scan detection
-                    # LLMs are unreliable at tracking spans - they often return empty arrays
-                    # V2 ntrl-scan uses regex + spaCy for precise detection
-                    try:
-                        enhanced_spans = _enhance_spans_with_v2_scan(body, transparency_spans)
-                        if len(enhanced_spans) != len(transparency_spans):
-                            logger.info(
-                                f"Story {story_id}: V2 scan enhanced spans "
-                                f"({len(transparency_spans)} LLM → {len(enhanced_spans)} total)"
-                            )
-                        transparency_spans = enhanced_spans
-                    except Exception as e:
-                        logger.warning(f"V2 scan enhancement failed for story {story_id}: {e}")
-                        # Continue with LLM spans only
+                    # V2 pattern-based detection disabled - produces too many false positives
+                    # (256+ spans per article vs ~20-50 from LLM). The regex/spaCy patterns
+                    # flag neutral news language like "Sunday", "protesters", "intensive".
+                    # LLM detection is contextually aware and sufficient.
+                    #
+                    # try:
+                    #     enhanced_spans = _enhance_spans_with_v2_scan(body, transparency_spans)
+                    #     if len(enhanced_spans) != len(transparency_spans):
+                    #         logger.info(
+                    #             f"Story {story_id}: V2 scan enhanced spans "
+                    #             f"({len(transparency_spans)} LLM → {len(enhanced_spans)} total)"
+                    #         )
+                    #     transparency_spans = enhanced_spans
+                    # except Exception as e:
+                    #     logger.warning(f"V2 scan enhancement failed for story {story_id}: {e}")
+                    #     # Continue with LLM spans only
                 else:
                     detail_full_result = DetailFullResult(detail_full="", spans=[])
                     transparency_spans = []
