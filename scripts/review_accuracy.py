@@ -7,10 +7,17 @@ This script allows human reviewers to:
 2. Grade each span: [C]orrect / [I]ncorrect / [P]artial / [S]kip
 3. Record reasons for incorrect grades
 4. Save results to tests/fixtures/reviews/
+5. Update gold standard based on LLM predictions
 
 Usage:
-    # Review specific article
+    # Review specific article (pattern-based mock provider)
     python scripts/review_accuracy.py --article 001
+
+    # Review with LLM provider
+    python scripts/review_accuracy.py --article 001 --provider openai
+
+    # Update gold standard from LLM predictions
+    python scripts/review_accuracy.py --update-gold 001 --provider openai
 
     # Generate aggregate report
     python scripts/review_accuracy.py --generate-report
@@ -31,7 +38,13 @@ from typing import List, Optional
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.services.neutralizer import MockNeutralizerProvider, TransparencySpan
+from app.services.neutralizer import (
+    MockNeutralizerProvider,
+    TransparencySpan,
+    detect_spans_via_llm_openai,
+    detect_spans_via_llm_anthropic,
+    detect_spans_via_llm_gemini,
+)
 from app.models import SpanReason
 
 # ANSI color codes for terminal output
@@ -88,6 +101,59 @@ def load_article(article_id: str) -> dict:
         raise FileNotFoundError(f"Article not found: {path}")
     with open(path) as f:
         return json.load(f)
+
+
+def load_gold_standard(article_id: str) -> dict:
+    """Load gold standard spans for an article."""
+    path = GOLD_STANDARD_DIR / f"article_{article_id}_spans.json"
+    if not path.exists():
+        return {"article_id": article_id, "expected_spans": []}
+    with open(path) as f:
+        return json.load(f)
+
+
+def save_gold_standard(article_id: str, data: dict):
+    """Save gold standard spans for an article."""
+    path = GOLD_STANDARD_DIR / f"article_{article_id}_spans.json"
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"{Colors.GREEN}Saved gold standard: {path}{Colors.RESET}")
+
+
+def get_llm_spans(body: str, provider: str) -> List[TransparencySpan]:
+    """
+    Get spans using an LLM provider.
+
+    Args:
+        body: Article body text
+        provider: Provider name (openai, anthropic, gemini)
+
+    Returns:
+        List of TransparencySpan objects
+    """
+    if provider == "openai":
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not set")
+        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        return detect_spans_via_llm_openai(body, api_key, model)
+
+    elif provider == "anthropic":
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+        model = os.environ.get("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
+        return detect_spans_via_llm_anthropic(body, api_key, model)
+
+    elif provider == "gemini":
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY not set")
+        model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+        return detect_spans_via_llm_gemini(body, api_key, model)
+
+    else:
+        raise ValueError(f"Unknown provider: {provider}. Use: openai, anthropic, gemini")
 
 
 def load_existing_review(article_id: str) -> Optional[ArticleReview]:
@@ -239,8 +305,14 @@ def get_grade_for_span(span_index: int, span: TransparencySpan) -> SpanGrade:
     )
 
 
-def review_article(article_id: str, reviewer_name: str = "anonymous"):
-    """Run interactive review for an article."""
+def review_article(article_id: str, reviewer_name: str = "anonymous", provider_name: Optional[str] = None):
+    """Run interactive review for an article.
+
+    Args:
+        article_id: Article ID to review
+        reviewer_name: Name of the reviewer
+        provider_name: LLM provider to use (openai, anthropic, gemini), or None for mock
+    """
     # Load article
     try:
         article = load_article(article_id)
@@ -254,8 +326,18 @@ def review_article(article_id: str, reviewer_name: str = "anonymous"):
         print(f"{Colors.RED}Article has no body text.{Colors.RESET}")
         return
 
-    provider = MockNeutralizerProvider()
-    spans = provider._find_spans(body, "body")
+    if provider_name:
+        # Use LLM provider
+        print(f"{Colors.CYAN}Using LLM provider: {provider_name}{Colors.RESET}")
+        try:
+            spans = get_llm_spans(body, provider_name)
+        except ValueError as e:
+            print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+            return
+    else:
+        # Use pattern-based mock provider
+        provider = MockNeutralizerProvider()
+        spans = provider._find_spans(body, "body")
 
     # Display article with highlights
     display_article_with_highlights(article, spans)
@@ -420,6 +502,163 @@ def list_articles():
     print("Legend: [R]=Reviewed, [ ]=Not reviewed, [M]=Has manipulation, [C]=Clean")
 
 
+def update_gold_from_llm(article_id: str, provider_name: str):
+    """
+    Update gold standard from LLM predictions with human review.
+
+    This workflow:
+    1. Runs LLM detection on the article
+    2. Loads existing gold standard
+    3. Shows diff between current gold and LLM predictions
+    4. Allows human to approve/reject each change
+    5. Saves updated gold standard
+
+    Args:
+        article_id: Article ID to update
+        provider_name: LLM provider to use
+    """
+    # Load article
+    try:
+        article = load_article(article_id)
+    except FileNotFoundError as e:
+        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        return
+
+    body = article.get("original_body", "")
+    if not body:
+        print(f"{Colors.RED}Article has no body text.{Colors.RESET}")
+        return
+
+    # Get LLM predictions
+    print(f"\n{Colors.CYAN}Running LLM detection with {provider_name}...{Colors.RESET}")
+    try:
+        llm_spans = get_llm_spans(body, provider_name)
+    except ValueError as e:
+        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        return
+
+    print(f"LLM detected {len(llm_spans)} spans")
+
+    # Load existing gold standard
+    gold_data = load_gold_standard(article_id)
+    existing_spans = gold_data.get("expected_spans", [])
+
+    print(f"Existing gold standard has {len(existing_spans)} spans")
+
+    # Display article with LLM highlights
+    display_article_with_highlights(article, llm_spans)
+
+    # Show comparison
+    print(f"\n{Colors.CYAN}COMPARISON: LLM vs Gold Standard{Colors.RESET}")
+    print("-" * 60)
+
+    # Convert existing spans to a lookup by text
+    existing_by_text = {s.get("text", "").lower(): s for s in existing_spans}
+
+    new_spans = []
+    for i, llm_span in enumerate(llm_spans):
+        text_lower = llm_span.original_text.lower()
+        if text_lower in existing_by_text:
+            print(f"  [{i}] {Colors.GREEN}[MATCH]{Colors.RESET} \"{llm_span.original_text}\" - already in gold standard")
+        else:
+            print(f"  [{i}] {Colors.YELLOW}[NEW]{Colors.RESET} \"{llm_span.original_text}\" ({llm_span.reason.value})")
+            new_spans.append(llm_span)
+
+    # Check for spans in gold standard but not detected by LLM
+    llm_texts = {s.original_text.lower() for s in llm_spans}
+    missed = []
+    for existing in existing_spans:
+        if existing.get("text", "").lower() not in llm_texts:
+            missed.append(existing)
+            print(f"  {Colors.RED}[MISSED]{Colors.RESET} \"{existing.get('text', '')}\" - in gold but not detected by LLM")
+
+    if not new_spans and not missed:
+        print(f"\n{Colors.GREEN}LLM and gold standard match perfectly!{Colors.RESET}")
+        return
+
+    # Ask user to review new spans
+    print(f"\n{Colors.CYAN}REVIEW NEW SPANS{Colors.RESET}")
+    print("For each new span detected by LLM, decide whether to add to gold standard:")
+    print("  [Y]es - Add to gold standard")
+    print("  [N]o  - Reject (false positive)")
+    print("  [S]kip - Skip this span")
+    print()
+
+    approved_new = []
+    for span in new_spans:
+        while True:
+            response = input(
+                f"  Add \"{span.original_text}\" ({span.reason.value})? [Y/N/S]: "
+            ).strip().upper()
+            if response in ("Y", "N", "S"):
+                break
+            print("  Please enter Y, N, or S")
+
+        if response == "Y":
+            approved_new.append({
+                "span_id": f"{article_id}-{len(existing_spans) + len(approved_new) + 1:03d}",
+                "start_char": span.start_char,
+                "end_char": span.end_char,
+                "text": span.original_text,
+                "reason": span.reason.value,
+                "action": span.action.value if hasattr(span.action, 'value') else str(span.action),
+                "confidence": "medium",
+            })
+
+    # Ask about missed spans
+    if missed:
+        print(f"\n{Colors.CYAN}REVIEW MISSED SPANS{Colors.RESET}")
+        print("The following spans are in gold standard but not detected by LLM.")
+        print("  [K]eep - Keep in gold standard")
+        print("  [R]emove - Remove from gold standard (was incorrect)")
+        print()
+
+        keep_missed = []
+        for span in missed:
+            while True:
+                response = input(
+                    f"  Keep \"{span.get('text', '')}\" ({span.get('reason', '')})? [K/R]: "
+                ).strip().upper()
+                if response in ("K", "R"):
+                    break
+                print("  Please enter K or R")
+
+            if response == "K":
+                keep_missed.append(span)
+
+        # Update existing spans to only include those not missed or explicitly kept
+        remaining = [s for s in existing_spans if s not in missed] + keep_missed
+    else:
+        remaining = existing_spans
+
+    # Build updated gold standard
+    updated_spans = remaining + approved_new
+
+    # Sort by start_char
+    updated_spans.sort(key=lambda s: s.get("start_char", 0))
+
+    # Renumber span IDs
+    for i, span in enumerate(updated_spans):
+        span["span_id"] = f"{article_id}-{i + 1:03d}"
+
+    # Preview changes
+    print(f"\n{Colors.CYAN}UPDATED GOLD STANDARD PREVIEW{Colors.RESET}")
+    print("-" * 60)
+    print(f"  Previous spans: {len(existing_spans)}")
+    print(f"  Updated spans:  {len(updated_spans)}")
+    print(f"  New spans added: {len(approved_new)}")
+    print(f"  Spans removed: {len(existing_spans) - len(remaining) + len(missed) - len([s for s in missed if s in remaining])}")
+
+    # Confirm save
+    confirm = input(f"\n  Save updated gold standard? [Y/N]: ").strip().upper()
+    if confirm == "Y":
+        gold_data["expected_spans"] = updated_spans
+        gold_data["notes"] = gold_data.get("notes", "") + f" Updated from {provider_name} LLM on {datetime.now().isoformat()[:10]}."
+        save_gold_standard(article_id, gold_data)
+    else:
+        print(f"{Colors.YELLOW}Changes discarded.{Colors.RESET}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Human Review CLI for NtrlView Highlight Accuracy"
@@ -432,6 +671,16 @@ def main():
         "--reviewer", "-r",
         default=os.environ.get("USER", "anonymous"),
         help="Reviewer name"
+    )
+    parser.add_argument(
+        "--provider", "-p",
+        choices=["openai", "anthropic", "gemini"],
+        help="LLM provider for span detection (requires API key env var)"
+    )
+    parser.add_argument(
+        "--update-gold", "-u",
+        metavar="ARTICLE_ID",
+        help="Update gold standard from LLM predictions (e.g., --update-gold 003)"
     )
     parser.add_argument(
         "--generate-report", "-g",
@@ -450,8 +699,14 @@ def main():
         generate_report()
     elif args.list:
         list_articles()
+    elif args.update_gold:
+        if not args.provider:
+            print(f"{Colors.RED}Error: --update-gold requires --provider{Colors.RESET}")
+            print("Example: python scripts/review_accuracy.py --update-gold 003 --provider openai")
+            sys.exit(1)
+        update_gold_from_llm(args.update_gold, args.provider)
     elif args.article:
-        review_article(args.article, args.reviewer)
+        review_article(args.article, args.reviewer, args.provider)
     else:
         parser.print_help()
 

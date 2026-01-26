@@ -15,6 +15,14 @@ os.environ.setdefault("TESTING", "1")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
 
+def pytest_configure(config):
+    """Register custom markers."""
+    config.addinivalue_line(
+        "markers",
+        "llm: tests requiring LLM API calls (deselect with '-m \"not llm\"')"
+    )
+
+
 # Metrics collection for highlight accuracy tests
 _accuracy_test_results = {
     "total_tp": 0,

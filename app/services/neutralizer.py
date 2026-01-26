@@ -1024,73 +1024,95 @@ The output should be similar in length to the input (full-length, not summarized
 # Span Detection Prompt (NEW: LLM-based context-aware detection)
 # -----------------------------------------------------------------------------
 
-DEFAULT_SPAN_DETECTION_PROMPT = """Analyze this article and identify ALL manipulative language.
+DEFAULT_SPAN_DETECTION_PROMPT = """You are a media literacy expert. Your job is to identify sensational, emotional, and manipulative language in news articles that readers should be aware of.
+
+BE AGGRESSIVE - news articles commonly contain manipulative language. Flag anything that:
+- Creates artificial urgency or panic
+- Uses emotional words instead of neutral alternatives
+- Tries to persuade rather than inform
+- Uses hyperbole or exaggeration
 
 ═══════════════════════════════════════════════════════════════════════════════
-YOUR TASK
+CATEGORIES TO FLAG
 ═══════════════════════════════════════════════════════════════════════════════
 
-Identify manipulative phrases that distort reader perception through:
-- Urgency inflation (BREAKING, JUST IN, developing)
-- Emotional triggers (slams, blasts, devastating, shocking)
-- Clickbait language (you won't believe, shocking revelation)
-- Agenda signaling (radical, extremist, dangerous)
-- Rhetorical manipulation (some say, critics say without attribution)
-- Selling language (exclusive, viral, trending)
+1. URGENCY INFLATION - Creates false sense of immediacy
+   FLAG: BREAKING, JUST IN, developing, scrambling, racing, urgent, crisis
+
+2. EMOTIONAL TRIGGERS - Manipulates feelings instead of informing
+   FLAG: shocking, devastating, heartbreaking, stunning, dramatic, dire, tragic
+   FLAG: slams, blasts, rips, destroys, crushes (when meaning "criticizes")
+   FLAG: mind-blowing, incredible, unbelievable, jaw-dropping
+
+3. CLICKBAIT - Teases to get clicks
+   FLAG: You won't believe, Here's what happened, The truth about
+   FLAG: Stay tuned, What you need to know, This changes everything
+
+4. SELLING/HYPE - Promotes rather than reports
+   FLAG: revolutionary, game-changer, groundbreaking, unprecedented
+   FLAG: undisputed leader, viral, exclusive, must-see
+
+5. AGENDA SIGNALING - Politically loaded framing
+   FLAG: radical left, radical right, extremist, dangerous (as political label)
+   FLAG: invasion (for immigration), crisis (when editorializing)
 
 ═══════════════════════════════════════════════════════════════════════════════
-CONTEXT-AWARE DETECTION RULES
+WHEN NOT TO FLAG
 ═══════════════════════════════════════════════════════════════════════════════
 
-IMPORTANT: Consider context before flagging.
-
-1. LITERAL vs FIGURATIVE usage:
-   - "slams" as criticism → FLAG (emotional trigger)
-   - "car slams into wall" → DO NOT FLAG (literal usage)
-   - "blasts" as criticism → FLAG (emotional trigger)
-   - "bomb blasts" → DO NOT FLAG (literal usage)
-
-2. QUOTED vs AUTHOR language:
-   - Author writes "shocking revelation" → FLAG (author's manipulation)
-   - Quote: "This is shocking," said Smith → DO NOT FLAG (quoted speech)
-   - Paraphrase with emotional language → FLAG (author chose those words)
-
-3. JUSTIFIED vs INFLATED urgency:
-   - "BREAKING" on routine news → FLAG (urgency inflation)
-   - "Breaking news" on actual developing story → STILL FLAG (remove regardless)
-   - "Emergency declared" when factual → DO NOT FLAG (factual statement)
-
-4. FACTUAL vs EDITORIAL adjectives:
-   - "dangerous situation" (author's judgment) → FLAG if not factually dangerous
-   - "dangerous chemicals" (factual) → DO NOT FLAG
-   - "radical proposal" (judgment) → FLAG
-   - "radical surgery" (medical term) → DO NOT FLAG
+- Direct quotes from sources (inside quotation marks)
+- Literal/physical meanings: "car slams into wall", "bomb blast", "radical surgery"
+- Technical terms: "catastrophic failure" in engineering context
 
 ═══════════════════════════════════════════════════════════════════════════════
-OUTPUT FORMAT
+OUTPUT FORMAT - JSON ARRAY
 ═══════════════════════════════════════════════════════════════════════════════
 
-Return a JSON array of manipulative phrases found. For each phrase:
-- phrase: The EXACT text as it appears in the article (copy-paste precision)
-- reason: One of: clickbait, urgency_inflation, emotional_trigger, selling, agenda_signaling, rhetorical_framing
-- action: One of: remove (delete entirely), replace (substitute), softened (flag but keep)
-- replacement: If action is "replace", provide the neutral replacement text
+Return a JSON array. For each phrase found:
+- phrase: EXACT text from article
+- reason: clickbait | urgency_inflation | emotional_trigger | selling | agenda_signaling | rhetorical_framing
+- action: remove | replace | softened
+- replacement: neutral text if action is "replace", else null
 
-Return ONLY the JSON array, no other text.
+═══════════════════════════════════════════════════════════════════════════════
+EXAMPLES
+═══════════════════════════════════════════════════════════════════════════════
 
-If the article contains NO manipulative language, return an empty array: []
+Example 1 - Heavy manipulation:
+Input: "BREAKING NEWS - In a shocking turn of events, world leaders are scrambling as the dramatic announcement could have devastating consequences."
 
-EXAMPLES:
-
-Input: "BREAKING: Senator slams critics in devastating speech"
 Output: [
-  {{"phrase": "BREAKING:", "reason": "urgency_inflation", "action": "remove", "replacement": null}},
-  {{"phrase": "slams", "reason": "emotional_trigger", "action": "replace", "replacement": "criticizes"}},
+  {{"phrase": "BREAKING NEWS", "reason": "urgency_inflation", "action": "remove", "replacement": null}},
+  {{"phrase": "shocking", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
+  {{"phrase": "scrambling", "reason": "emotional_trigger", "action": "replace", "replacement": "responding"}},
+  {{"phrase": "dramatic", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
   {{"phrase": "devastating", "reason": "emotional_trigger", "action": "remove", "replacement": null}}
 ]
 
-Input: "The car slammed into the wall, causing significant damage."
+Example 2 - Tech hype article:
+Input: "Apple's mind-blowing new feature is a game-changer that will revolutionize the industry."
+
+Output: [
+  {{"phrase": "mind-blowing", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
+  {{"phrase": "game-changer", "reason": "selling", "action": "remove", "replacement": null}},
+  {{"phrase": "revolutionize", "reason": "selling", "action": "replace", "replacement": "change"}}
+]
+
+Example 3 - Clean article (no manipulation):
+Input: "The Federal Reserve announced it would hold interest rates steady at 5.25%, citing stable inflation data."
+
 Output: []
+
+Example 4 - Disaster coverage with emotional framing:
+Input: "In scenes of utter devastation that will break your heart, families desperately flee as catastrophic floods ravage the region."
+
+Output: [
+  {{"phrase": "utter devastation", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
+  {{"phrase": "will break your heart", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
+  {{"phrase": "desperately", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
+  {{"phrase": "catastrophic", "reason": "emotional_trigger", "action": "remove", "replacement": null}},
+  {{"phrase": "ravage", "reason": "emotional_trigger", "action": "replace", "replacement": "affect"}}
+]
 
 ═══════════════════════════════════════════════════════════════════════════════
 ARTICLE TO ANALYZE
@@ -1102,7 +1124,7 @@ ARTICLE TO ANALYZE
 RESPONSE
 ═══════════════════════════════════════════════════════════════════════════════
 
-Return ONLY a JSON array of manipulative phrases (or empty array if none found):"""
+Return ONLY a JSON array (or empty array [] if no manipulation found):"""
 
 
 def get_span_detection_prompt() -> str:
@@ -2032,8 +2054,18 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
             if isinstance(data, list):
                 llm_phrases = data
             elif isinstance(data, dict):
-                # Try common keys
-                llm_phrases = data.get("phrases", data.get("spans", data.get("manipulative_phrases", [])))
+                # Try common keys that LLMs use to wrap the array
+                llm_phrases = (
+                    data.get("phrases")
+                    or data.get("spans")
+                    or data.get("manipulative_phrases")
+                    or data.get("response")
+                    or data.get("output")
+                    or data.get("results")
+                    or data.get("items")
+                    or data.get("data")
+                    or []
+                )
             else:
                 llm_phrases = []
         except json.JSONDecodeError:
@@ -2085,7 +2117,18 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
             if isinstance(data, list):
                 llm_phrases = data
             elif isinstance(data, dict):
-                llm_phrases = data.get("phrases", data.get("spans", data.get("manipulative_phrases", [])))
+                # Try common keys that LLMs use to wrap the array
+                llm_phrases = (
+                    data.get("phrases")
+                    or data.get("spans")
+                    or data.get("manipulative_phrases")
+                    or data.get("response")
+                    or data.get("output")
+                    or data.get("results")
+                    or data.get("items")
+                    or data.get("data")
+                    or []
+                )
             else:
                 llm_phrases = []
         except json.JSONDecodeError:
@@ -2149,7 +2192,18 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
             if isinstance(data, list):
                 llm_phrases = data
             elif isinstance(data, dict):
-                llm_phrases = data.get("phrases", data.get("spans", data.get("manipulative_phrases", [])))
+                # Try common keys that LLMs use to wrap the array
+                llm_phrases = (
+                    data.get("phrases")
+                    or data.get("spans")
+                    or data.get("manipulative_phrases")
+                    or data.get("response")
+                    or data.get("output")
+                    or data.get("results")
+                    or data.get("items")
+                    or data.get("data")
+                    or []
+                )
             else:
                 llm_phrases = []
         except json.JSONDecodeError:

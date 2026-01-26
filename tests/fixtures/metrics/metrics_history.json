@@ -39,6 +39,182 @@
       "false_negatives": 23,
       "articles_tested": 10,
       "test_passed": true
+    },
+    {
+      "date": "2026-01-25T23:27:46.704597",
+      "precision": 0.0348,
+      "recall": 0.5517,
+      "f1": 0.0654,
+      "true_positives": 16,
+      "false_positives": 444,
+      "false_negatives": 13,
+      "articles_tested": 10,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-25T23:28:39.144244",
+      "precision": 0.0348,
+      "recall": 0.5517,
+      "f1": 0.0654,
+      "true_positives": 16,
+      "false_positives": 444,
+      "false_negatives": 13,
+      "articles_tested": 10,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:04:44.664310",
+      "precision": 0.5,
+      "recall": 0.2414,
+      "f1": 0.3256,
+      "true_positives": 7,
+      "false_positives": 7,
+      "false_negatives": 22,
+      "articles_tested": 4,
+      "test_passed": false
+    },
+    {
+      "date": "2026-01-26T00:06:25.940699",
+      "precision": 0.375,
+      "recall": 0.1034,
+      "f1": 0.1622,
+      "true_positives": 3,
+      "false_positives": 5,
+      "false_negatives": 26,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:07:38.756278",
+      "precision": 0.5,
+      "recall": 0.1724,
+      "f1": 0.2564,
+      "true_positives": 5,
+      "false_positives": 5,
+      "false_negatives": 24,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:18:44.583296",
+      "precision": 1.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 29,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:20:43.769468",
+      "precision": 1.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 29,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:22:26.039679",
+      "precision": 0.5263,
+      "recall": 0.3448,
+      "f1": 0.4167,
+      "true_positives": 10,
+      "false_positives": 9,
+      "false_negatives": 19,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:23:39.007281",
+      "precision": 0.55,
+      "recall": 0.3793,
+      "f1": 0.449,
+      "true_positives": 11,
+      "false_positives": 9,
+      "false_negatives": 18,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:25:29.510788",
+      "precision": 0.5263,
+      "recall": 0.6897,
+      "f1": 0.597,
+      "true_positives": 20,
+      "false_positives": 18,
+      "false_negatives": 9,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:39:58.839087",
+      "precision": 0.4681,
+      "recall": 0.7586,
+      "f1": 0.5789,
+      "true_positives": 22,
+      "false_positives": 25,
+      "false_negatives": 7,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:43:29.515947",
+      "precision": 0.6341,
+      "recall": 0.6842,
+      "f1": 0.6582,
+      "true_positives": 26,
+      "false_positives": 15,
+      "false_negatives": 12,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:45:14.853887",
+      "precision": 0.7895,
+      "recall": 0.7895,
+      "f1": 0.7895,
+      "true_positives": 30,
+      "false_positives": 8,
+      "false_negatives": 8,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:47:08.603371",
+      "precision": 0.6522,
+      "recall": 0.7692,
+      "f1": 0.7059,
+      "true_positives": 30,
+      "false_positives": 16,
+      "false_negatives": 9,
+      "articles_tested": 4,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:47:24.644209",
+      "precision": 0.0587,
+      "recall": 0.6923,
+      "f1": 0.1082,
+      "true_positives": 27,
+      "false_positives": 433,
+      "false_negatives": 12,
+      "articles_tested": 10,
+      "test_passed": true
+    },
+    {
+      "date": "2026-01-26T00:49:20.153247",
+      "precision": 0.1185,
+      "recall": 0.7564,
+      "f1": 0.2049,
+      "true_positives": 59,
+      "false_positives": 439,
+      "false_negatives": 19,
+      "articles_tested": 14,
+      "test_passed": true
     }
   ]
 }
