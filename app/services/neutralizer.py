@@ -1362,46 +1362,36 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
     return filtered
 
 
-# Known false positive patterns that LLMs commonly flag incorrectly
-# These are neutral language that should never be highlighted
+# Known false positive EXACT phrases that LLMs commonly flag incorrectly
+# Only include multi-word phrases - single words are too likely to have legitimate uses
 FALSE_POSITIVE_PHRASES = {
-    # Medical/scientific terms
-    "bowel cancer", "cancer", "tumor", "tumour", "disease", "diagnosis",
-    "mortality", "treatment", "surgery", "patient", "patients",
+    # Medical terms (multi-word)
+    "bowel cancer", "breast cancer", "lung cancer", "skin cancer",
+    "prostate cancer", "colon cancer", "cancer treatment", "cancer diagnosis",
+    "cancer research", "cancer patient", "cancer patients", "cancer tests",
 
-    # Neutral news verbs
-    "tests will", "will be", "announced", "reported", "according to",
-    "showed", "revealed", "found", "discovered",
+    # Neutral news verb phrases
+    "tests will", "will be", "according to", "reported that",
 
-    # Factual descriptors
-    "spot more", "highest", "lowest", "most", "least", "more", "fewer",
-    "increasing", "rising", "falling", "growing", "declining",
-    "getting worse", "getting better", "improved", "improvement",
+    # Factual descriptors (multi-word)
+    "spot more", "getting worse", "getting better",
 
     # Temporal phrases
-    "every year", "each year", "daily", "weekly", "monthly", "annually",
-    "this week", "last week", "this year", "last year", "recently",
+    "every year", "each year", "this week", "last week", "this year", "last year",
 
-    # Data/statistics language
+    # Data/statistics (multi-word)
     "highest cost", "lowest cost", "most affected", "least affected",
-    "largest increase", "smallest decrease", "record-breaking",
-    "per cent", "percent", "percentage",
 
-    # UI/metadata
-    "share", "save", "minutes ago", "hours ago", "sign up",
-    "newsletter", "subscribe", "read more", "continue reading",
+    # UI/metadata (multi-word)
+    "minutes ago", "hours ago", "sign up", "read more", "continue reading",
+    "health newsletter", "email address",
 }
 
 # Patterns that match false positives (case-insensitive partial matches)
+# Be SPECIFIC to avoid filtering legitimate manipulative language
 FALSE_POSITIVE_PATTERNS = [
-    "cancer",  # Any type of cancer
-    "tests will",
-    "spot more",
-    "every year",
-    "getting worse",
-    "highest cost",
-    "will be",
-    "according to",
+    # Don't use broad patterns like "cancer" - too aggressive
+    # Only add very specific false positives here
 ]
 
 
@@ -3122,10 +3112,12 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
         spans = detect_spans_via_llm_openai(body, self._api_key, self._model)
         if not spans:
             # LLM detection failed or returned empty - fall back to pattern-based
-            logger.info("LLM span detection returned no results, using pattern-based fallback")
+            logger.warning("LLM span detection returned no results, using pattern-based fallback")
             mock = MockNeutralizerProvider()
             mock_result = mock._neutralize_detail_full(body)
             spans = mock_result.spans
+            # Apply false positive filter to fallback spans too
+            spans = filter_false_positives(spans)
 
         try:
             from openai import OpenAI
