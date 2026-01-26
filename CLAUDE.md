@@ -356,16 +356,36 @@ python scripts/review_accuracy.py --article 003 --provider openai
 - Removed incorrectly flagged spans inside quotes
 
 ### LLM Span Detection Architecture
-1. `DEFAULT_SPAN_DETECTION_PROMPT` in `neutralizer.py` - Aggressive prompt with few-shot examples
-2. `detect_spans_via_llm_openai/gemini/anthropic()` - Provider-specific API calls
-3. `find_phrase_positions()` - Maps LLM phrases to character positions
-4. `compute_jaccard_overlap()` - Handles both partial overlap and phrase containment
-5. JSON parsing handles varied response formats: `phrases`, `spans`, `response`, `output`, etc.
+
+**How it works:**
+1. LLM analyzes article and returns `{"phrases": [...]}` with manipulative phrases
+2. `find_phrase_positions()` maps phrase text to character positions in original body
+3. `filter_spans_in_quotes()` removes phrases inside quoted speech
+4. `filter_false_positives()` removes known false positive phrases
+5. Result: spans with accurate positions for highlighting in UI
+
+**Key files:**
+- `neutralizer.py`: `DEFAULT_SPAN_DETECTION_PROMPT` - Conservative prompt with "NEVER FLAG" guidance
+- `neutralizer.py`: `detect_spans_via_llm_openai/gemini/anthropic()` - Provider-specific API calls
+- `neutralizer.py`: `filter_false_positives()` - Removes known false positives like "bowel cancer"
+
+**JSON format (required by OpenAI json_object mode):**
+```json
+{"phrases": [
+  {"phrase": "SHOCKING", "reason": "emotional_trigger", "action": "remove", "replacement": null}
+]}
+```
+
+**Fallback behavior:**
+- LLM returns `[]` (empty array) = article is clean, trust it, show 0 spans
+- LLM API call fails = returns `None`, falls back to pattern-based (but this is a failure mode)
+
+**IMPORTANT: Pattern-based fallback is a failure mode, not a feature.** It generates ~70+ false positives per article (e.g., "European Commission", "Monday said"). If LLM detection fails, it's better to show nothing than show garbage. Consider treating fallback as an error condition.
 
 ### Known Issues & Next Steps
+- Pattern-based fallback should probably just report an error instead of showing wrong data
+- gpt-4o is conservative - may return empty for articles with subtle manipulation
 - Article 010 has lower accuracy (38% F1) due to LLM flagging quoted speech
-- Consider adding explicit quote detection to filter out quoted text before LLM analysis
-- gpt-4o returns fewer spans than gpt-4o-mini (more conservative)
 - Gold standard corpus version is now 1.1 (human reviewed)
 
 ## Related Project

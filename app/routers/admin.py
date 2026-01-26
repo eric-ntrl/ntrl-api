@@ -71,7 +71,7 @@ class AlertThresholds(BaseModel):
 
 # Code version for deployment verification
 # Increment this when making changes to verify Railway deploys new code
-CODE_VERSION = "2026.01.26.7"
+CODE_VERSION = "2026.01.26.8"
 
 
 class StatusResponse(BaseModel):
