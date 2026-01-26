@@ -1064,6 +1064,17 @@ WHEN NOT TO FLAG
 - Literal/physical meanings: "car slams into wall", "bomb blast", "radical surgery"
 - Technical terms: "catastrophic failure" in engineering context
 
+NEVER FLAG THESE (even if they seem intense):
+
+- FACTUAL DATA: "highest", "lowest", "most", "record-breaking" when citing statistics
+- TEMPORAL PHRASES: "every year", "daily", "this week", "recently"
+- MEDICAL/SCIENTIFIC TERMS: "cancer", "disease", "tumor", "mortality", "diagnosis"
+- STANDARD NEWS VERBS: "tests will", "announced", "reported", "according to"
+- DESCRIPTIVE FACTS: "getting worse", "increasing", "rising", "spot more" when describing data/trends
+- PROPER NOUNS: Names of people, places, organizations
+- UI/METADATA: "Share", "Save", "minutes ago", newsletter signup text
+- NEUTRAL COMPARISONS: "highest cost", "most affected", "largest increase"
+
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: NEVER FLAG QUOTED TEXT
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1132,6 +1143,60 @@ Input: "Governor Abbott said 'this is an invasion caused by the radical left.'"
 Output: []
 
 (Empty array - even though "invasion" and "radical left" are manipulative terms, they appear inside quotes. The journalist is reporting what the Governor said, not endorsing it. Readers can judge the speaker's words themselves.)
+
+═══════════════════════════════════════════════════════════════════════════════
+FALSE POSITIVE EXAMPLES - WHAT NOT TO FLAG
+═══════════════════════════════════════════════════════════════════════════════
+
+Study these examples carefully. They show common MISTAKES to avoid.
+
+Example 6 - Medical news (DO NOT OVER-FLAG):
+Input: "NHS bowel cancer tests will be fine-tuned to spot more tumours early as part of a faster diagnosis drive."
+
+WRONG output: [
+  {{"phrase": "bowel cancer", "reason": "urgency_inflation"}},
+  {{"phrase": "tests will", "reason": "urgency_inflation"}},
+  {{"phrase": "spot more", "reason": "urgency_inflation"}}
+]
+
+CORRECT output: []
+
+Why: This is factual health news. "Bowel cancer" is medical terminology, not emotional language. "Tests will" and "spot more" are neutral verbs describing a program. Nothing here manipulates the reader's emotions.
+
+Example 7 - Statistical reporting (DO NOT OVER-FLAG):
+Input: "The region with the highest cost of living saw prices increase every year, getting worse since 2020."
+
+WRONG output: [
+  {{"phrase": "highest cost", "reason": "urgency_inflation"}},
+  {{"phrase": "every year", "reason": "urgency_inflation"}},
+  {{"phrase": "getting worse", "reason": "emotional_trigger"}}
+]
+
+CORRECT output: []
+
+Why: These are factual descriptors of data. "Highest" is a superlative describing statistics. "Every year" is a temporal phrase. "Getting worse" describes a trend. None of these are manipulative.
+
+Example 8 - Clean science news:
+Input: "Researchers announced that the new treatment showed a 40% improvement in patient outcomes according to the published study."
+
+CORRECT output: []
+
+Why: Standard news verbs ("announced", "showed", "according to") are neutral attribution language, not manipulation.
+
+═══════════════════════════════════════════════════════════════════════════════
+CALIBRATION - BE CONSERVATIVE
+═══════════════════════════════════════════════════════════════════════════════
+
+Not every article contains manipulation. Many news articles are straightforward reporting.
+
+ASK YOURSELF before flagging each phrase:
+- Is this ACTIVELY trying to manipulate the reader's emotions?
+- Would a neutral rewrite actually change the meaning?
+- Or is this just... normal news writing?
+
+When in doubt, DO NOT FLAG. False negatives (missing manipulation) are better than false positives (highlighting neutral language) because excessive highlights make the feature unusable.
+
+The goal is PRECISION, not recall. Flag ONLY clear manipulation.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ARTICLE TO ANALYZE
