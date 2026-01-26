@@ -1024,6 +1024,14 @@ The output should be similar in length to the input (full-length, not summarized
 # Span Detection Prompt (NEW: LLM-based context-aware detection)
 # -----------------------------------------------------------------------------
 
+# Minimal system prompt for span detection - defers to detailed user prompt
+# This replaces get_article_system_prompt() to avoid conflicting aggressive rules
+SPAN_DETECTION_SYSTEM_PROMPT = """You are a precision analyzer identifying manipulative language in news articles.
+
+CRITICAL: Follow the detailed instructions in the user message EXACTLY.
+The user message contains all rules, examples, and calibration guidance.
+Prioritize PRECISION over RECALL - when in doubt, do NOT flag."""
+
 DEFAULT_SPAN_DETECTION_PROMPT = """You are a media literacy expert. Your job is to identify sensational, emotional, and manipulative language in news articles that readers should be aware of.
 
 BE PRECISE - flag only genuinely manipulative language. Flag anything that:
@@ -2160,13 +2168,13 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
 
-        system_prompt = get_article_system_prompt()
+        # Use minimal system prompt to let the detailed user prompt control detection
         user_prompt = build_span_detection_prompt(body)
 
         response = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,  # Lower temp for more consistent detection
@@ -2225,12 +2233,12 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
         import google.generativeai as genai
         genai.configure(api_key=api_key)
 
-        system_prompt = get_article_system_prompt()
+        # Use minimal system prompt to let the detailed user prompt control detection
         user_prompt = build_span_detection_prompt(body)
 
         gemini_model = genai.GenerativeModel(
             model_name=model,
-            system_instruction=system_prompt,
+            system_instruction=SPAN_DETECTION_SYSTEM_PROMPT,
             generation_config={
                 "temperature": 0.2,
                 "response_mime_type": "application/json",
@@ -2288,13 +2296,13 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        system_prompt = get_article_system_prompt()
+        # Use minimal system prompt to let the detailed user prompt control detection
         user_prompt = build_span_detection_prompt(body)
 
         response = client.messages.create(
             model=model,
             max_tokens=4096,
-            system=system_prompt,
+            system=SPAN_DETECTION_SYSTEM_PROMPT,
             messages=[
                 {"role": "user", "content": user_prompt},
             ],
