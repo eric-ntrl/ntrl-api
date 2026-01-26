@@ -1412,15 +1412,19 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
     This is a safety net for when the LLM doesn't follow the prompt instructions
     to avoid flagging neutral language like medical terms and factual descriptors.
     """
+    logger.info(f"filter_false_positives called with {len(spans)} spans")
+
     if not spans:
         return spans
 
     filtered = []
+    removed_texts = []
     for span in spans:
         text_lower = span.original_text.lower().strip()
 
         # Check exact matches
         if text_lower in FALSE_POSITIVE_PHRASES:
+            removed_texts.append(span.original_text)
             continue
 
         # Check pattern matches
@@ -1428,6 +1432,7 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
         for pattern in FALSE_POSITIVE_PATTERNS:
             if pattern in text_lower:
                 is_false_positive = True
+                removed_texts.append(span.original_text)
                 break
 
         if not is_false_positive:
@@ -1435,7 +1440,7 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
 
     filtered_count = len(spans) - len(filtered)
     if filtered_count > 0:
-        logger.info(f"Filtered out {filtered_count} known false positive spans")
+        logger.info(f"Filtered out {filtered_count} false positives: {removed_texts[:5]}")
 
     return filtered
 
