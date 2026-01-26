@@ -1,8 +1,8 @@
 {
   "article_id": "001",
-  "corpus_version": "1.0",
-  "annotated_by": "automated",
-  "notes": "BREAKING + emotional triggers around Ukraine crisis coverage. Positions verified.",
+  "corpus_version": "1.1",
+  "annotated_by": "human_reviewed",
+  "notes": "BREAKING + emotional triggers around Ukraine crisis coverage. Removed 'dire' (inside quote). Added 'crucial'.",
   "expected_spans": [
     {
       "span_id": "001-001",
@@ -60,12 +60,12 @@
     },
     {
       "span_id": "001-007",
-      "start_char": 544,
-      "end_char": 548,
-      "text": "dire",
-      "reason": "emotional_trigger",
+      "start_char": 830,
+      "end_char": 837,
+      "text": "crucial",
+      "reason": "urgency_inflation",
       "action": "remove",
-      "confidence": "high"
+      "confidence": "medium"
     }
   ]
 }

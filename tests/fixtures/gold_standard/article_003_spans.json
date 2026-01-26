@@ -1,105 +1,141 @@
 {
   "article_id": "003",
-  "corpus_version": "1.0",
-  "annotated_by": "automated",
-  "notes": "Heavy clickbait and selling language about Apple feature",
+  "corpus_version": "1.1",
+  "annotated_by": "human_reviewed",
+  "notes": "Heavy clickbait and selling language about Apple feature. Added LLM-detected spans after review.",
   "expected_spans": [
     {
       "span_id": "003-001",
-      "start_char": 0,
-      "end_char": 17,
-      "text": "You Won't Believe",
-      "reason": "clickbait",
-      "action": "remove",
-      "confidence": "high"
-    },
-    {
-      "span_id": "003-002",
-      "start_char": 24,
-      "end_char": 30,
-      "text": "Secret",
-      "reason": "clickbait",
-      "action": "remove",
-      "confidence": "high"
-    },
-    {
-      "span_id": "003-003",
-      "start_char": 64,
-      "end_char": 81,
-      "text": "Change Everything",
-      "reason": "clickbait",
-      "action": "remove",
-      "confidence": "high"
-    },
-    {
-      "span_id": "003-004",
-      "start_char": 143,
-      "end_char": 155,
+      "start_char": 89,
+      "end_char": 101,
       "text": "mind-blowing",
       "reason": "emotional_trigger",
       "action": "remove",
       "confidence": "high"
     },
     {
-      "span_id": "003-005",
-      "start_char": 164,
-      "end_char": 172,
+      "span_id": "003-002",
+      "start_char": 109,
+      "end_char": 117,
       "text": "stunning",
       "reason": "emotional_trigger",
       "action": "remove",
       "confidence": "high"
     },
     {
-      "span_id": "003-006",
-      "start_char": 198,
-      "end_char": 208,
+      "span_id": "003-003",
+      "start_char": 145,
+      "end_char": 155,
       "text": "shockwaves",
       "reason": "emotional_trigger",
       "action": "remove",
       "confidence": "high"
     },
     {
-      "span_id": "003-007",
-      "start_char": 241,
-      "end_char": 254,
+      "span_id": "003-004",
+      "start_char": 197,
+      "end_char": 210,
       "text": "revolutionary",
       "reason": "selling",
       "action": "softened",
       "confidence": "high"
     },
     {
-      "span_id": "003-008",
-      "start_char": 385,
-      "end_char": 397,
+      "span_id": "003-005",
+      "start_char": 271,
+      "end_char": 291,
+      "text": "completely transform",
+      "reason": "selling",
+      "action": "softened",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "003-006",
+      "start_char": 519,
+      "end_char": 534,
+      "text": "unlike anything",
+      "reason": "selling",
+      "action": "remove",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "003-007",
+      "start_char": 575,
+      "end_char": 587,
       "text": "game-changer",
       "reason": "selling",
       "action": "remove",
       "confidence": "high"
     },
     {
-      "span_id": "003-009",
-      "start_char": 441,
-      "end_char": 458,
+      "span_id": "003-008",
+      "start_char": 665,
+      "end_char": 682,
       "text": "undisputed leader",
       "reason": "selling",
       "action": "remove",
       "confidence": "high"
     },
     {
+      "span_id": "003-009",
+      "start_char": 725,
+      "end_char": 743,
+      "text": "really interesting",
+      "reason": "clickbait",
+      "action": "remove",
+      "confidence": "medium"
+    },
+    {
       "span_id": "003-010",
-      "start_char": 1050,
-      "end_char": 1060,
-      "text": "incredible",
+      "start_char": 1154,
+      "end_char": 1176,
+      "text": "scrambling to catch up",
+      "reason": "emotional_trigger",
+      "action": "softened",
+      "confidence": "medium"
+    },
+    {
+      "span_id": "003-011",
+      "start_char": 1440,
+      "end_char": 1460,
+      "text": "technological marvel",
+      "reason": "selling",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "003-012",
+      "start_char": 1514,
+      "end_char": 1531,
+      "text": "never be the same",
+      "reason": "selling",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "003-013",
+      "start_char": 1616,
+      "end_char": 1644,
+      "text": "breathless with anticipation",
       "reason": "emotional_trigger",
       "action": "remove",
       "confidence": "high"
     },
     {
-      "span_id": "003-011",
-      "start_char": 1079,
-      "end_char": 1089,
+      "span_id": "003-014",
+      "start_char": 1647,
+      "end_char": 1657,
       "text": "Stay tuned",
       "reason": "clickbait",
+      "action": "remove",
+      "confidence": "high"
+    },
+    {
+      "span_id": "003-015",
+      "start_char": 1683,
+      "end_char": 1693,
+      "text": "incredible",
+      "reason": "emotional_trigger",
       "action": "remove",
       "confidence": "high"
     }

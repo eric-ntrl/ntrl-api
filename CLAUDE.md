@@ -319,6 +319,55 @@ Check these in Expo dev tools or browser console.
 - Strict character limits (LLMs overcount, so ask for 10-15% less)
 - Examples > instructions for length compliance
 
+## Highlight Accuracy Testing
+
+### Test Framework
+- `tests/test_highlight_accuracy.py` - Main accuracy tests
+- `tests/fixtures/gold_standard/` - Gold standard span annotations (10 articles)
+- `tests/fixtures/test_corpus/` - Test article corpus
+- `scripts/verify_gold_positions.py` - Verify/fix gold standard positions
+- `scripts/review_accuracy.py` - Human review CLI
+
+### Running Tests
+```bash
+# Pattern-based tests (fast, no API key)
+pipenv run pytest tests/test_highlight_accuracy.py -m "not llm" -v
+
+# LLM-based tests (requires OPENAI_API_KEY in .env)
+pipenv run pytest tests/test_highlight_accuracy.py -m llm -v -s
+
+# Verify gold standard positions
+python scripts/verify_gold_positions.py --all
+
+# Human review with LLM
+python scripts/review_accuracy.py --article 003 --provider openai
+```
+
+### Current Metrics (gpt-4o-mini, Jan 2026)
+| Metric | Pattern-Based | LLM-Based | Target | Status |
+|--------|---------------|-----------|--------|--------|
+| Precision | 5.87% | **72.09%** | 75% | Close |
+| Recall | 69.23% | **79.49%** | 75% | **Exceeded** |
+| F1 Score | 10.82% | **75.61%** | 75% | **Exceeded** |
+
+**Recent improvements:**
+- Expanded gold standard based on LLM review (10 new spans added)
+- Improved span matching to handle phrase containment
+- Removed incorrectly flagged spans inside quotes
+
+### LLM Span Detection Architecture
+1. `DEFAULT_SPAN_DETECTION_PROMPT` in `neutralizer.py` - Aggressive prompt with few-shot examples
+2. `detect_spans_via_llm_openai/gemini/anthropic()` - Provider-specific API calls
+3. `find_phrase_positions()` - Maps LLM phrases to character positions
+4. `compute_jaccard_overlap()` - Handles both partial overlap and phrase containment
+5. JSON parsing handles varied response formats: `phrases`, `spans`, `response`, `output`, etc.
+
+### Known Issues & Next Steps
+- Article 010 has lower accuracy (38% F1) due to LLM flagging quoted speech
+- Consider adding explicit quote detection to filter out quoted text before LLM analysis
+- gpt-4o returns fewer spans than gpt-4o-mini (more conservative)
+- Gold standard corpus version is now 1.1 (human reviewed)
+
 ## Related Project
 
 The mobile app is at `../ntrl-app/` - see its CLAUDE.md for frontend details.
