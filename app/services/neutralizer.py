@@ -2310,7 +2310,7 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
         return spans
 
     except Exception as e:
-        logger.warning(f"LLM span detection failed: {e}")
+        logger.warning(f"LLM_DEBUG: OpenAI span detection FAILED with error: {type(e).__name__}: {e}")
         return []
 
 
