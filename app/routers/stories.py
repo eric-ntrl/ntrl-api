@@ -15,7 +15,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models
-from app.schemas.stories import StoryDetail, StoryTransparency, TransparencySpanResponse, StoryDebug
+from app.schemas.stories import (
+    StoryDetail,
+    StoryTransparency,
+    TransparencySpanResponse,
+    StoryDebug,
+    SpanDetectionDebug,
+    PipelineTrace,
+    LLMPhraseItem,
+)
 from app.storage.factory import get_storage_provider
 
 logger = logging.getLogger(__name__)
@@ -420,4 +428,108 @@ def get_story_debug(
         has_manipulative_content=neutralized.has_manipulative_content,
         detail_full_readable=is_readable,
         issues=issues,
+    )
+
+
+@router.get("/{story_id}/debug/spans", response_model=SpanDetectionDebug)
+def get_story_debug_spans(
+    story_id: str,
+    db: Session = Depends(get_db),
+) -> SpanDetectionDebug:
+    """
+    Debug span detection for a story.
+
+    Runs the span detection pipeline fresh and returns full diagnostics:
+    - Raw LLM response
+    - All phrases the LLM returned
+    - What was filtered at each pipeline stage
+    - Final spans
+
+    This endpoint re-runs detection on the original body, so it may return
+    different results than stored spans if the prompt or model has changed.
+    """
+    import os
+    from app.services.neutralizer import detect_spans_debug_openai
+
+    neutralized, story_raw, source = _get_story_or_404(db, story_id)
+
+    # Get original body from storage
+    original_body = _get_body_from_storage(story_raw)
+    if not original_body:
+        return SpanDetectionDebug(
+            story_id=str(neutralized.id),
+            original_body_preview=None,
+            original_body_length=0,
+            llm_raw_response=None,
+            llm_phrases_count=0,
+            llm_phrases=[],
+            pipeline_trace=PipelineTrace(),
+            final_span_count=0,
+            final_spans=[],
+            model_used=None,
+        )
+
+    # Get OpenAI API key
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        return SpanDetectionDebug(
+            story_id=str(neutralized.id),
+            original_body_preview=original_body[:500] if original_body else None,
+            original_body_length=len(original_body),
+            llm_raw_response=None,
+            llm_phrases_count=0,
+            llm_phrases=[],
+            pipeline_trace=PipelineTrace(),
+            final_span_count=0,
+            final_spans=[],
+            model_used=None,
+        )
+
+    # Run debug detection
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+    debug_result = detect_spans_debug_openai(original_body, api_key, model)
+
+    # Convert to response schema
+    llm_phrases_items = [
+        LLMPhraseItem(
+            phrase=p.get("phrase", ""),
+            reason=p.get("reason"),
+            action=p.get("action"),
+            replacement=p.get("replacement"),
+        )
+        for p in debug_result.llm_phrases
+    ]
+
+    pipeline_trace = PipelineTrace(
+        after_position_matching=len(debug_result.spans_after_position),
+        after_quote_filter=len(debug_result.spans_after_quotes),
+        after_false_positive_filter=len(debug_result.spans_final),
+        phrases_filtered_by_quotes=debug_result.filtered_by_quotes,
+        phrases_filtered_as_false_positives=debug_result.filtered_as_false_positives,
+        phrases_not_found_in_text=debug_result.not_found_in_text,
+    )
+
+    final_spans = [
+        TransparencySpanResponse(
+            start_char=span.start_char,
+            end_char=span.end_char,
+            original_text=span.original_text,
+            action=span.action.value if hasattr(span.action, 'value') else str(span.action),
+            reason=span.reason.value if hasattr(span.reason, 'value') else str(span.reason),
+            replacement_text=span.replacement_text,
+        )
+        for span in debug_result.spans_final
+    ]
+
+    return SpanDetectionDebug(
+        story_id=str(neutralized.id),
+        original_body_preview=original_body[:500] if original_body else None,
+        original_body_length=len(original_body),
+        llm_raw_response=debug_result.llm_raw_response,
+        llm_phrases_count=len(debug_result.llm_phrases),
+        llm_phrases=llm_phrases_items,
+        pipeline_trace=pipeline_trace,
+        final_span_count=len(debug_result.spans_final),
+        final_spans=final_spans,
+        model_used=model,
     )

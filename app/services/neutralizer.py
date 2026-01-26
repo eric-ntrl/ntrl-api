@@ -1109,6 +1109,36 @@ These are more nuanced patterns. Flag ONLY when used by the journalist (not in q
    FLAG: "controversial decision" (when labeling, not reporting controversy)
    NOTE: "some say", "critics argue" are OK if followed by specific attribution
 
+9. SPORTS/EVENT HYPE - Inflated descriptors in sports/entertainment coverage
+   FLAG: brilliant, stunning, magnificent, phenomenal, sensational
+   FLAG: massive, blockbuster, mega, epic, colossal
+   FLAG: beautiful, gorgeous (describing events/matches, not people in quotes)
+   NOTE: OK when quoting someone; flag when journalist writes it editorially
+   REPLACE: "brilliant form" → "form", "blockbuster year" → "year"
+   REPLACE: "beautiful unification clash" → "unification fight"
+
+10. LOADED PERSONAL DESCRIPTORS - Editorial judgments about people's appearance
+    FLAG: handsome, beautiful, attractive, gorgeous (describing news subjects)
+    FLAG: unfriendly, hostile, menacing, intimidating (describing appearance)
+    FLAG: dangerous (as character judgment, not actual physical danger)
+    NOTE: These inject opinion into news coverage
+    ACTION: remove entirely, or replace with factual descriptor
+
+11. HYPERBOLIC ADJECTIVES - Generic intensifiers that inflate importance
+    FLAG: punishing, brutal, devastating, crushing (when not describing literal events)
+    FLAG: incredible, unbelievable, extraordinary, remarkable
+    FLAG: soaked in blood, drenched in (sensational imagery)
+    FLAG: "of the year", "of a generation", "of the century" (superlative inflation)
+    REPLACE: "punishing defeat" → "defeat", "incredible performance" → "performance"
+
+12. LOADED IDIOMS - Sensational/violent metaphors for ordinary events
+    FLAG: "came under fire" (should be "faced criticism")
+    FLAG: "in the crosshairs" (should be "under investigation" or "being scrutinized")
+    FLAG: "in hot water" (should be "facing scrutiny")
+    FLAG: "took aim at" (should be "criticized")
+    FLAG: "on the warpath" (should be "strongly opposing")
+    NOTE: These military/violent idioms sensationalize ordinary disagreements
+
 BUT STILL NEVER FLAG (even if matching above):
 - Factual statistics even if alarming ("500 dead", "record high")
 - Quoted speech (even if manipulative - that's the source, not the journalist)
@@ -1193,6 +1223,39 @@ Input: "Governor Abbott said 'this is an invasion caused by the radical left.'"
 Output: {{"phrases": []}}
 
 (Empty array - even though "invasion" and "radical left" are manipulative terms, they appear inside quotes. The journalist is reporting what the Governor said, not endorsing it. Readers can judge the speaker's words themselves.)
+
+Example 9a - Sports/editorial hype (FLAG these):
+Input: "Josh Kelly's brilliant form and handsome face will make for a beautiful unification clash in what promises to be a blockbuster year."
+
+Output: {{"phrases": [
+  {{"phrase": "brilliant form", "reason": "rhetorical_framing", "action": "replace", "replacement": "form"}},
+  {{"phrase": "handsome", "reason": "rhetorical_framing", "action": "remove", "replacement": null}},
+  {{"phrase": "beautiful unification clash", "reason": "selling", "action": "replace", "replacement": "unification fight"}},
+  {{"phrase": "blockbuster year", "reason": "selling", "action": "replace", "replacement": "year"}}
+]}}
+
+Why: These are editorial opinions from the journalist, not facts. "Brilliant" and "handsome" are subjective judgments. "Beautiful clash" and "blockbuster year" are promotional hype.
+
+Example 9b - Boxing article with loaded descriptors:
+Input: "The unfriendly-faced boxer delivered a punishing defeat, leaving his opponent soaked in blood after a massive night of boxing."
+
+Output: {{"phrases": [
+  {{"phrase": "unfriendly-faced", "reason": "rhetorical_framing", "action": "remove", "replacement": null}},
+  {{"phrase": "punishing defeat", "reason": "rhetorical_framing", "action": "replace", "replacement": "defeat"}},
+  {{"phrase": "soaked in blood", "reason": "emotional_trigger", "action": "replace", "replacement": "bloodied"}},
+  {{"phrase": "massive night", "reason": "selling", "action": "replace", "replacement": "night"}}
+]}}
+
+Example 9c - Loaded idioms (FLAG these):
+Input: "The senator came under fire and found himself in the crosshairs of critics who took aim at his policy."
+
+Output: {{"phrases": [
+  {{"phrase": "came under fire", "reason": "rhetorical_framing", "action": "replace", "replacement": "faced criticism"}},
+  {{"phrase": "in the crosshairs", "reason": "rhetorical_framing", "action": "replace", "replacement": "scrutinized by"}},
+  {{"phrase": "took aim at", "reason": "rhetorical_framing", "action": "replace", "replacement": "criticized"}}
+]}}
+
+Why: These military metaphors sensationalize ordinary political disagreement.
 
 ═══════════════════════════════════════════════════════════════════════════════
 FALSE POSITIVE EXAMPLES - WHAT NOT TO FLAG
@@ -2342,6 +2405,143 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
     except Exception as e:
         logger.warning(f"LLM_DEBUG: OpenAI span detection FAILED with error: {type(e).__name__}: {e}")
         return None  # Return None on failure (not []) so caller knows to use fallback
+
+
+@dataclass
+class SpanDetectionDebugResult:
+    """Debug result from span detection showing intermediate pipeline stages."""
+    llm_raw_response: Optional[str]
+    llm_phrases: List[Dict[str, Any]]
+    spans_after_position: List[TransparencySpan]
+    spans_after_quotes: List[TransparencySpan]
+    spans_final: List[TransparencySpan]
+    filtered_by_quotes: List[str]
+    filtered_as_false_positives: List[str]
+    not_found_in_text: List[str]
+    error: Optional[str] = None
+
+
+def detect_spans_debug_openai(body: str, api_key: str, model: str) -> SpanDetectionDebugResult:
+    """
+    Debug version of detect_spans_via_llm_openai that returns intermediate results.
+
+    Returns full trace of what the LLM returned and what happened at each filtering stage.
+    """
+    if not body or not api_key:
+        return SpanDetectionDebugResult(
+            llm_raw_response=None,
+            llm_phrases=[],
+            spans_after_position=[],
+            spans_after_quotes=[],
+            spans_final=[],
+            filtered_by_quotes=[],
+            filtered_as_false_positives=[],
+            not_found_in_text=[],
+            error="Missing body or API key"
+        )
+
+    try:
+        import json
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        user_prompt = build_span_detection_prompt(body)
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
+
+        content = response.choices[0].message.content.strip()
+        llm_raw_response = content
+
+        # Parse LLM response
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                llm_phrases = data
+            elif isinstance(data, dict):
+                llm_phrases = (
+                    data.get("phrases")
+                    or data.get("spans")
+                    or data.get("manipulative_phrases")
+                    or data.get("response")
+                    or data.get("output")
+                    or data.get("results")
+                    or data.get("items")
+                    or data.get("data")
+                    or []
+                )
+                if not llm_phrases and "phrase" in data:
+                    llm_phrases = [data]
+            else:
+                llm_phrases = []
+        except json.JSONDecodeError as e:
+            return SpanDetectionDebugResult(
+                llm_raw_response=llm_raw_response,
+                llm_phrases=[],
+                spans_after_position=[],
+                spans_after_quotes=[],
+                spans_final=[],
+                filtered_by_quotes=[],
+                filtered_as_false_positives=[],
+                not_found_in_text=[],
+                error=f"JSON parse error: {e}"
+            )
+
+        # Track phrases not found in text
+        not_found_in_text = []
+        body_lower = body.lower()
+        for phrase_data in llm_phrases:
+            phrase = phrase_data.get("phrase", "")
+            if phrase and phrase.lower() not in body_lower and phrase not in body:
+                not_found_in_text.append(phrase)
+
+        # Position matching
+        spans_after_position = find_phrase_positions(body, llm_phrases)
+
+        # Quote filtering - track what's filtered
+        spans_after_quotes = filter_spans_in_quotes(body, spans_after_position)
+        filtered_by_quotes = [
+            s.original_text for s in spans_after_position
+            if s not in spans_after_quotes
+        ]
+
+        # False positive filtering - track what's filtered
+        spans_final = filter_false_positives(spans_after_quotes)
+        filtered_as_false_positives = [
+            s.original_text for s in spans_after_quotes
+            if s not in spans_final
+        ]
+
+        return SpanDetectionDebugResult(
+            llm_raw_response=llm_raw_response,
+            llm_phrases=llm_phrases,
+            spans_after_position=spans_after_position,
+            spans_after_quotes=spans_after_quotes,
+            spans_final=spans_final,
+            filtered_by_quotes=filtered_by_quotes,
+            filtered_as_false_positives=filtered_as_false_positives,
+            not_found_in_text=not_found_in_text,
+        )
+
+    except Exception as e:
+        return SpanDetectionDebugResult(
+            llm_raw_response=None,
+            llm_phrases=[],
+            spans_after_position=[],
+            spans_after_quotes=[],
+            spans_final=[],
+            filtered_by_quotes=[],
+            filtered_as_false_positives=[],
+            not_found_in_text=[],
+            error=f"{type(e).__name__}: {e}"
+        )
 
 
 def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[TransparencySpan]:

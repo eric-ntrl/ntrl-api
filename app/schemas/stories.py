@@ -123,3 +123,54 @@ class StoryDebug(BaseModel):
     # Quality indicators
     detail_full_readable: bool = Field(True, description="Basic readability check for detail_full")
     issues: List[str] = Field(default_factory=list, description="Detected issues")
+
+
+class PipelineTraceItem(BaseModel):
+    """Phrase filtered out at some pipeline stage."""
+    phrase: str = Field(..., description="The phrase text")
+    reason: Optional[str] = Field(None, description="Why it was filtered")
+
+
+class PipelineTrace(BaseModel):
+    """Trace of what happened to phrases through the filtering pipeline."""
+    after_position_matching: int = Field(0, description="Span count after position matching")
+    after_quote_filter: int = Field(0, description="Span count after quote filter")
+    after_false_positive_filter: int = Field(0, description="Final span count")
+    phrases_filtered_by_quotes: List[str] = Field(default_factory=list, description="Phrases removed by quote filter")
+    phrases_filtered_as_false_positives: List[str] = Field(default_factory=list, description="Phrases removed as FPs")
+    phrases_not_found_in_text: List[str] = Field(default_factory=list, description="Phrases LLM returned but not found in body")
+
+
+class LLMPhraseItem(BaseModel):
+    """A phrase returned by the LLM."""
+    phrase: str
+    reason: Optional[str] = None
+    action: Optional[str] = None
+    replacement: Optional[str] = None
+
+
+class SpanDetectionDebug(BaseModel):
+    """
+    Debug view for span detection pipeline.
+    GET /v1/stories/{id}/debug/spans
+
+    Shows the full LLM response and what happened at each filtering stage.
+    """
+    story_id: str = Field(..., description="Story ID (UUID)")
+    original_body_preview: Optional[str] = Field(None, description="First 500 chars of original body")
+    original_body_length: int = Field(0, description="Total length of original body")
+
+    # LLM response
+    llm_raw_response: Optional[str] = Field(None, description="Raw JSON response from LLM")
+    llm_phrases_count: int = Field(0, description="Number of phrases LLM returned")
+    llm_phrases: List[LLMPhraseItem] = Field(default_factory=list, description="All phrases from LLM")
+
+    # Pipeline trace
+    pipeline_trace: PipelineTrace = Field(default_factory=PipelineTrace, description="Filtering pipeline trace")
+
+    # Final result
+    final_span_count: int = Field(0, description="Final number of spans after all filtering")
+    final_spans: List[TransparencySpanResponse] = Field(default_factory=list, description="Final spans")
+
+    # Metadata
+    model_used: Optional[str] = Field(None, description="Model used for span detection")
