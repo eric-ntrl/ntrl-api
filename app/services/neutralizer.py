@@ -1412,7 +1412,7 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
     This is a safety net for when the LLM doesn't follow the prompt instructions
     to avoid flagging neutral language like medical terms and factual descriptors.
     """
-    logger.info(f"filter_false_positives called with {len(spans)} spans")
+    logger.warning(f"FILTER_DEBUG: filter_false_positives called with {len(spans)} spans")
 
     if not spans:
         return spans
@@ -1440,7 +1440,7 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
 
     filtered_count = len(spans) - len(filtered)
     if filtered_count > 0:
-        logger.info(f"Filtered out {filtered_count} false positives: {removed_texts[:5]}")
+        logger.warning(f"FILTER_DEBUG: Filtered out {filtered_count} false positives: {removed_texts[:5]}")
 
     return filtered
 
