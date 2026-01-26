@@ -3601,13 +3601,25 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
 
         # Validate output isn't garbled
         if _detect_garbled_output(body, detail_full):
-            logger.warning(f"Synthesis fallback also produced garbled output, using mock")
+            logger.warning(f"Synthesis fallback also produced garbled output, trying mock")
+
+            # Check if mock is also garbled - use original body as ultimate fallback
+            if _detect_garbled_output(body, mock_result.detail_full):
+                logger.warning("Mock also garbled, using original body as ultimate fallback")
+                return DetailFullResult(detail_full=body, spans=spans)
+
             detail_full = mock_result.detail_full
 
         return DetailFullResult(detail_full=detail_full, spans=spans)
 
     except Exception as e:
-        logger.warning(f"Synthesis fallback failed: {e}, using mock output")
+        logger.warning(f"Synthesis fallback failed: {e}, trying mock output")
+
+        # Check if mock is also garbled - use original body as ultimate fallback
+        if _detect_garbled_output(body, mock_result.detail_full):
+            logger.warning("Mock also garbled, using original body as ultimate fallback")
+            return DetailFullResult(detail_full=body, spans=mock_result.spans)
+
         return mock_result
 
 
@@ -3822,9 +3834,15 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
-                logger.warning("OpenAI synthesis produced garbled output, using mock")
+                logger.warning("OpenAI synthesis produced garbled output, trying mock fallback")
                 mock = MockNeutralizerProvider()
                 mock_result = mock._neutralize_detail_full(body)
+
+                # Check if mock also produced garbled output - use original body as ultimate fallback
+                if _detect_garbled_output(body, mock_result.detail_full):
+                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
+                    return DetailFullResult(detail_full=body, spans=spans)
+
                 return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
@@ -3842,6 +3860,12 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 logger.warning(f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
                 mock = MockNeutralizerProvider()
                 mock_result = mock._neutralize_detail_full(body)
+
+                # Check if mock also produced garbled output - use original body as ultimate fallback
+                if _detect_garbled_output(body, mock_result.detail_full):
+                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
+                    return DetailFullResult(detail_full=body, spans=spans)
+
                 return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
     def _neutralize_detail_brief(self, body: str) -> str:
@@ -4128,9 +4152,15 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
-                logger.warning("Gemini synthesis produced garbled output, using mock")
+                logger.warning("Gemini synthesis produced garbled output, trying mock fallback")
                 mock = MockNeutralizerProvider()
                 mock_result = mock._neutralize_detail_full(body)
+
+                # Check if mock also produced garbled output - use original body as ultimate fallback
+                if _detect_garbled_output(body, mock_result.detail_full):
+                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
+                    return DetailFullResult(detail_full=body, spans=spans)
+
                 return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
@@ -4148,6 +4178,12 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 logger.warning(f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
                 mock = MockNeutralizerProvider()
                 mock_result = mock._neutralize_detail_full(body)
+
+                # Check if mock also produced garbled output - use original body as ultimate fallback
+                if _detect_garbled_output(body, mock_result.detail_full):
+                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
+                    return DetailFullResult(detail_full=body, spans=spans)
+
                 return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
     def _neutralize_detail_brief(self, body: str) -> str:
@@ -4427,9 +4463,15 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
             # Validate output isn't garbled
             if _detect_garbled_output(body, detail_full):
-                logger.warning("Anthropic synthesis produced garbled output, using mock")
+                logger.warning("Anthropic synthesis produced garbled output, trying mock fallback")
                 mock = MockNeutralizerProvider()
                 mock_result = mock._neutralize_detail_full(body)
+
+                # Check if mock also produced garbled output - use original body as ultimate fallback
+                if _detect_garbled_output(body, mock_result.detail_full):
+                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
+                    return DetailFullResult(detail_full=body, spans=spans)
+
                 return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
@@ -4447,6 +4489,12 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 logger.warning(f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {e}. Using mock.")
                 mock = MockNeutralizerProvider()
                 mock_result = mock._neutralize_detail_full(body)
+
+                # Check if mock also produced garbled output - use original body as ultimate fallback
+                if _detect_garbled_output(body, mock_result.detail_full):
+                    logger.warning("Mock fallback also garbled, using original body as ultimate fallback")
+                    return DetailFullResult(detail_full=body, spans=spans)
+
                 return DetailFullResult(detail_full=mock_result.detail_full, spans=spans)
 
     def _neutralize_detail_brief(self, body: str) -> str:

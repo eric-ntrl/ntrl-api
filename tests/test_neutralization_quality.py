@@ -439,3 +439,61 @@ class TestTruncateAtSentence:
         text = text[:130]
         result = truncate_at_sentence(text, 130)
         assert result == text
+
+
+class TestGarbledOutputDetection:
+    """Tests for garbled output detection function."""
+
+    def test_detect_garbled_short_output(self):
+        """Output less than 60% of original should be flagged as garbled."""
+        from app.services.neutralizer import _detect_garbled_output
+
+        original = "This is a long original article with many words " * 20
+        short_output = "Short output"
+
+        assert _detect_garbled_output(original, short_output) is True
+
+    def test_detect_garbled_normal_output(self):
+        """Output around same length should not be flagged."""
+        from app.services.neutralizer import _detect_garbled_output
+
+        original = "This is a normal article about news events."
+        filtered = "This is a normal article about news events."
+
+        assert _detect_garbled_output(original, filtered) is False
+
+    def test_detect_garbled_acceptable_compression(self):
+        """Output that's 70% of original should not be flagged."""
+        from app.services.neutralizer import _detect_garbled_output
+
+        original = "This is a long original article." * 10  # 330 chars
+        filtered = "This is a filtered article." * 8  # 224 chars (67%)
+
+        # 67% should pass (threshold is 60%)
+        assert _detect_garbled_output(original, filtered) is False
+
+    def test_detect_garbled_empty_inputs(self):
+        """Empty inputs should not be flagged as garbled."""
+        from app.services.neutralizer import _detect_garbled_output
+
+        assert _detect_garbled_output("", "") is False
+        assert _detect_garbled_output("original", "") is False
+        assert _detect_garbled_output("", "filtered") is False
+
+    def test_detect_garbled_broken_grammar(self):
+        """Many broken grammar patterns should be flagged."""
+        from app.services.neutralizer import _detect_garbled_output
+
+        original = "Normal article text." * 20
+        # Create text with proper broken patterns that match the regex
+        # Pattern r'\. [A-Z][a-z]* [,\.\!\?]' matches ". The ," or ". She ."
+        broken = (
+            "Start here. The , end here. She . more text. He . "
+            "another line. They . still more. It , at the end. We . "
+        )
+        # Pad to make it long enough to not trigger length check
+        broken = broken + ("Normal text. " * 50)
+
+        result = _detect_garbled_output(original, broken)
+        # Should detect broken grammar patterns (>5 matches)
+        assert result is True
