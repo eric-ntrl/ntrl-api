@@ -18,6 +18,7 @@ from app.services.neutralizer import (
     MockNeutralizerProvider,
     TransparencySpan,
     find_phrase_positions,
+    filter_spans_in_quotes,
 )
 from app.models import SpanAction, SpanReason
 
@@ -363,3 +364,152 @@ class TestPunctuationHandling:
 
         original_texts = [s.original_text.lower() for s in spans]
         assert "mind-blowing" in original_texts or "jaw-dropping" in original_texts
+
+
+class TestQuoteFiltering:
+    """Tests for filtering spans inside various quote types."""
+
+    def _make_span(self, start: int, end: int, text: str) -> TransparencySpan:
+        """Helper to create test spans."""
+        return TransparencySpan(
+            field="body",
+            start_char=start,
+            end_char=end,
+            original_text=text,
+            action=SpanAction.REMOVED,
+            reason=SpanReason.EMOTIONAL_TRIGGER,
+            replacement_text=None,
+        )
+
+    def test_filter_straight_double_quotes(self):
+        """Test filtering spans inside straight double quotes."""
+        body = 'The source said "totally into each other" about them.'
+        # "totally into each other" is at positions 16-39
+        spans = [self._make_span(17, 39, "totally into each other")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 0, "Span inside double quotes should be filtered"
+
+    def test_filter_straight_single_quotes(self):
+        """Test filtering spans inside straight single quotes."""
+        body = "The source said 'totally into each other' about them."
+        # 'totally into each other' is at positions 17-39
+        spans = [self._make_span(17, 39, "totally into each other")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 0, "Span inside single quotes should be filtered"
+
+    def test_filter_curly_double_quotes(self):
+        """Test filtering spans inside curly double quotes."""
+        body = 'She described it as "romantic and intimate" to reporters.'
+        # Position of "romantic and intimate" inside curly quotes
+        start = body.index("romantic")
+        end = body.index("intimate") + len("intimate")
+        spans = [self._make_span(start, end, "romantic and intimate")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 0, "Span inside curly double quotes should be filtered"
+
+    def test_filter_curly_single_quotes(self):
+        """Test filtering spans inside curly single quotes."""
+        body = "He called it 'absolutely devastating' in his speech."
+        # Position of "absolutely devastating" inside curly single quotes
+        start = body.index("absolutely")
+        end = body.index("devastating") + len("devastating")
+        spans = [self._make_span(start, end, "absolutely devastating")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 0, "Span inside curly single quotes should be filtered"
+
+    def test_preserve_spans_outside_quotes(self):
+        """Test that spans outside quotes are preserved."""
+        body = 'The shocking news came as "no surprise" to officials.'
+        # "shocking" is at position 4-12, outside quotes
+        spans = [self._make_span(4, 12, "shocking")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 1, "Span outside quotes should be preserved"
+        assert filtered[0].original_text == "shocking"
+
+    def test_mixed_quote_types(self):
+        """Test handling of mixed quote types in same text."""
+        body = '''The "shocking" news and 'devastating' impact were discussed.'''
+        # Both "shocking" and "devastating" are in quotes (different types)
+        spans = [
+            self._make_span(5, 13, "shocking"),
+            self._make_span(25, 36, "devastating"),
+        ]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 0, "Both spans inside quotes should be filtered"
+
+    def test_partial_overlap_not_filtered(self):
+        """Test that spans partially overlapping quotes are preserved."""
+        body = 'The shocking "news" was reported.'
+        # "shocking" starts outside quotes, doesn't overlap
+        spans = [self._make_span(4, 12, "shocking")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 1, "Span outside quotes should be preserved"
+
+    def test_empty_body_returns_spans(self):
+        """Test that empty body returns original spans."""
+        spans = [self._make_span(0, 8, "shocking")]
+
+        filtered = filter_spans_in_quotes("", spans)
+        assert filtered == spans
+
+    def test_empty_spans_returns_empty(self):
+        """Test that empty spans list returns empty."""
+        body = 'The "shocking" news.'
+
+        filtered = filter_spans_in_quotes(body, [])
+        assert filtered == []
+
+    def test_no_quotes_returns_all_spans(self):
+        """Test that text without quotes returns all spans."""
+        body = "The shocking news was devastating for everyone."
+        spans = [
+            self._make_span(4, 12, "shocking"),
+            self._make_span(22, 33, "devastating"),
+        ]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 2, "All spans should be preserved when no quotes"
+
+    def test_nested_quotes_inner_filtered(self):
+        """Test handling of nested quotes."""
+        body = '''He said "she called it 'romantic' and left" yesterday.'''
+        # 'romantic' is nested inside outer quotes
+        # Both should be filtered since 'romantic' is inside quotes
+        start = body.index("romantic")
+        end = start + len("romantic")
+        spans = [self._make_span(start, end, "romantic")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        # The span is inside the outer double quotes, so should be filtered
+        assert len(filtered) == 0, "Span in nested quotes should be filtered"
+
+    def test_real_world_kylie_example(self):
+        """Test with real-world example from Kylie article."""
+        body = "Sources say they were 'totally into each other' during the vacation."
+        start = body.index("totally into each other")
+        end = start + len("totally into each other")
+        spans = [self._make_span(start, end, "totally into each other")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        assert len(filtered) == 0, "Quote from Kylie article should be filtered"
+
+    def test_apostrophe_in_contractions_not_quote(self):
+        """Test that apostrophes in contractions don't create false quote boundaries."""
+        body = "They won't believe it's shocking news today."
+        # "shocking" should not be filtered despite apostrophes in contractions
+        start = body.index("shocking")
+        end = start + len("shocking")
+        spans = [self._make_span(start, end, "shocking")]
+
+        filtered = filter_spans_in_quotes(body, spans)
+        # The apostrophes in won't and it's should toggle, but "shocking"
+        # should remain outside any quoted region since the apostrophes
+        # create balanced pairs around non-content
+        assert len(filtered) == 1, "Span should not be filtered by contraction apostrophes"

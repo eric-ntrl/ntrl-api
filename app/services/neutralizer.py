@@ -1519,6 +1519,21 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
     return non_overlapping
 
 
+# Quote character pairs for matching (opening -> closing)
+QUOTE_PAIRS = {
+    '"': '"',   # Straight double quote
+    '"': '"',   # Curly double quotes (open -> close)
+    "'": "'",   # Straight single quote
+    "'": "'",   # Curly single quotes (open -> close)
+}
+
+# All characters that can open a quote
+QUOTE_CHARS_OPEN = set(QUOTE_PAIRS.keys())
+
+# All characters that can close a quote
+QUOTE_CHARS_CLOSE = set(QUOTE_PAIRS.values())
+
+
 def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[TransparencySpan]:
     """
     Remove spans that fall inside quotation marks.
@@ -1526,22 +1541,44 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
     This is a post-filter to catch any manipulative language that the LLM
     flagged inside quoted speech. Quotes preserve attribution - readers
     can judge the speaker's words themselves.
+
+    Handles multiple quote types:
+    - Straight double quotes: "..."
+    - Curly double quotes: "..."
+    - Straight single quotes: '...'
+    - Curly single quotes: '...'
     """
     if not body or not spans:
         return spans
 
-    # Find all quote boundaries
+    # Find all quote boundaries using a stack for nested quotes
     quote_ranges = []
-    in_quote = False
-    quote_start = 0
+    stack = []  # Track (open_char, start_position)
+
     for i, char in enumerate(body):
-        if char == '"':
-            if in_quote:
-                quote_ranges.append((quote_start, i + 1))
-                in_quote = False
+        if char in QUOTE_CHARS_OPEN:
+            # Check if this is an opening quote (not a closing one for the same type)
+            # Handle ambiguous chars like " and ' that serve as both open and close
+            if char in ('"', "'"):
+                # Ambiguous quote - toggle behavior
+                if stack and stack[-1][0] == char:
+                    # Same quote type on stack, treat as closing
+                    open_char, start = stack.pop()
+                    quote_ranges.append((start, i + 1))
+                else:
+                    # New quote opening
+                    stack.append((char, i))
             else:
-                quote_start = i
-                in_quote = True
+                # Unambiguous opening quote (curly open quotes)
+                stack.append((char, i))
+        elif char in QUOTE_CHARS_CLOSE and char not in QUOTE_CHARS_OPEN:
+            # Unambiguous closing quote (curly close quotes)
+            if stack:
+                open_char, start = stack[-1]
+                expected_close = QUOTE_PAIRS.get(open_char)
+                if expected_close == char:
+                    stack.pop()
+                    quote_ranges.append((start, i + 1))
 
     if not quote_ranges:
         return spans
@@ -1550,7 +1587,7 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
     filtered = []
     for span in spans:
         inside_quote = any(
-            start <= span.start_char < end or start < span.end_char <= end
+            start <= span.start_char and span.end_char <= end
             for start, end in quote_ranges
         )
         if not inside_quote:
@@ -1688,6 +1725,45 @@ def validate_brief_neutralization(brief: str) -> List[str]:
         logger.warning(f"Brief contains un-neutralized phrases: {violations}")
 
     return violations
+
+
+# Prompt for repairing briefs that failed validation
+BRIEF_REPAIR_PROMPT = """The following brief contains banned language that must be removed.
+
+VIOLATIONS FOUND: {violations}
+
+Original brief:
+{brief}
+
+Rewrite this brief removing ALL the violations listed above. Replace:
+- "romantic getaway" → "trip" or "vacation"
+- "luxury boat" / "luxurious" → "boat" or neutral equivalent
+- "relaxed and affectionate" → "spent time together"
+- "romantic" / "intimate" / "tender" → remove or use neutral equivalents
+- "cozied up" → "sat together" or similar
+- "showed off" / "flaunted" → "wore" or "had"
+- "celebrity hotspot" → "restaurant"
+- "power couple" → "the couple" or just their names
+- Other loaded entertainment language → neutral equivalents
+
+Return ONLY the rewritten brief, no explanation or commentary."""
+
+
+def build_brief_repair_prompt(brief: str, violations: List[str]) -> str:
+    """
+    Build a prompt to repair a brief that contains banned phrases.
+
+    Args:
+        brief: The original brief text with violations
+        violations: List of banned phrases found in the brief
+
+    Returns:
+        A repair prompt asking the LLM to remove violations
+    """
+    return BRIEF_REPAIR_PROMPT.format(
+        violations=", ".join(f'"{v}"' for v in violations),
+        brief=brief,
+    )
 
 
 def get_synthesis_detail_full_prompt() -> str:
@@ -3693,7 +3769,12 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         Uses shared article_system_prompt + synthesis_detail_brief_prompt.
         Returns plain text (3-5 paragraphs, no headers or bullets).
+
+        Includes retry logic: if the brief contains banned phrases, retry with
+        a repair prompt up to MAX_BRIEF_RETRIES times.
         """
+        MAX_BRIEF_RETRIES = 2
+
         if not body:
             return ""
 
@@ -3718,9 +3799,36 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 # Note: No JSON response format - we want plain text
             )
 
-            # Return plain text response with validation
             brief = response.choices[0].message.content.strip()
-            validate_brief_neutralization(brief)  # Log warnings for violations
+
+            # Validate and retry if violations found
+            for attempt in range(MAX_BRIEF_RETRIES):
+                violations = validate_brief_neutralization(brief)
+                if not violations:
+                    return brief
+
+                logger.warning(
+                    f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}"
+                )
+
+                # Generate repair prompt and retry
+                repair_prompt = build_brief_repair_prompt(brief, violations)
+                repair_response = client.chat.completions.create(
+                    model=self._model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": repair_prompt},
+                    ],
+                    temperature=0.3,
+                )
+                brief = repair_response.choices[0].message.content.strip()
+
+            # Final validation after all retries
+            violations = validate_brief_neutralization(brief)
+            if violations:
+                logger.error(
+                    f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}"
+                )
             return brief
 
         except Exception as e:
@@ -3931,7 +4039,12 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         Uses shared article_system_prompt + synthesis_detail_brief_prompt.
         Returns plain text (3-5 paragraphs, no headers or bullets).
+
+        Includes retry logic: if the brief contains banned phrases, retry with
+        a repair prompt up to MAX_BRIEF_RETRIES times.
         """
+        MAX_BRIEF_RETRIES = 2
+
         if not body:
             return ""
 
@@ -3957,7 +4070,28 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
             response = model.generate_content(user_prompt)
             brief = response.text.strip()
-            validate_brief_neutralization(brief)  # Log warnings for violations
+
+            # Validate and retry if violations found
+            for attempt in range(MAX_BRIEF_RETRIES):
+                violations = validate_brief_neutralization(brief)
+                if not violations:
+                    return brief
+
+                logger.warning(
+                    f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}"
+                )
+
+                # Generate repair prompt and retry
+                repair_prompt = build_brief_repair_prompt(brief, violations)
+                repair_response = model.generate_content(repair_prompt)
+                brief = repair_response.text.strip()
+
+            # Final validation after all retries
+            violations = validate_brief_neutralization(brief)
+            if violations:
+                logger.error(
+                    f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}"
+                )
             return brief
 
         except Exception as e:
@@ -4169,7 +4303,12 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         Uses shared article_system_prompt + synthesis_detail_brief_prompt.
         Returns plain text (3-5 paragraphs, no headers or bullets).
+
+        Includes retry logic: if the brief contains banned phrases, retry with
+        a repair prompt up to MAX_BRIEF_RETRIES times.
         """
+        MAX_BRIEF_RETRIES = 2
+
         if not body:
             return ""
 
@@ -4193,9 +4332,36 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 ],
             )
 
-            # Return plain text response with validation
             brief = response.content[0].text.strip()
-            validate_brief_neutralization(brief)  # Log warnings for violations
+
+            # Validate and retry if violations found
+            for attempt in range(MAX_BRIEF_RETRIES):
+                violations = validate_brief_neutralization(brief)
+                if not violations:
+                    return brief
+
+                logger.warning(
+                    f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}"
+                )
+
+                # Generate repair prompt and retry
+                repair_prompt = build_brief_repair_prompt(brief, violations)
+                repair_response = client.messages.create(
+                    model=self._model,
+                    max_tokens=2048,
+                    system=system_prompt,
+                    messages=[
+                        {"role": "user", "content": repair_prompt},
+                    ],
+                )
+                brief = repair_response.content[0].text.strip()
+
+            # Final validation after all retries
+            violations = validate_brief_neutralization(brief)
+            if violations:
+                logger.error(
+                    f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}"
+                )
             return brief
 
         except Exception as e:

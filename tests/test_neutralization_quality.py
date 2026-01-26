@@ -269,3 +269,78 @@ class TestIntegrationWithExistingTests:
         """Entertainment fixture should have category='entertainment' for filtering."""
         data = load_entertainment_article()
         assert data.get("category") == "entertainment"
+
+
+class TestBriefRepairPrompt:
+    """Tests for the brief repair prompt functionality."""
+
+    def test_build_brief_repair_prompt_includes_violations(self):
+        """Repair prompt should include all violations."""
+        from app.services.neutralizer import build_brief_repair_prompt
+
+        brief = "They enjoyed a romantic getaway at a luxury yacht."
+        violations = ["romantic getaway", "luxury yacht"]
+
+        prompt = build_brief_repair_prompt(brief, violations)
+
+        assert "romantic getaway" in prompt
+        assert "luxury yacht" in prompt
+        assert brief in prompt
+
+    def test_build_brief_repair_prompt_format(self):
+        """Repair prompt should have correct format."""
+        from app.services.neutralizer import build_brief_repair_prompt
+
+        brief = "The couple cozied up at the restaurant."
+        violations = ["cozied up"]
+
+        prompt = build_brief_repair_prompt(brief, violations)
+
+        assert "VIOLATIONS FOUND:" in prompt
+        assert "Original brief:" in prompt
+        assert "Rewrite this brief" in prompt
+
+    def test_repair_prompt_has_replacement_guidance(self):
+        """Repair prompt should include guidance for replacements."""
+        from app.services.neutralizer import BRIEF_REPAIR_PROMPT
+
+        # Check that the prompt includes replacement suggestions
+        assert '"romantic getaway"' in BRIEF_REPAIR_PROMPT or "romantic getaway" in BRIEF_REPAIR_PROMPT
+        assert "trip" in BRIEF_REPAIR_PROMPT or "vacation" in BRIEF_REPAIR_PROMPT
+        assert "boat" in BRIEF_REPAIR_PROMPT  # luxury boat -> boat
+
+
+class TestBriefValidationRetry:
+    """Tests for brief validation retry logic structure."""
+
+    def test_validate_brief_returns_list(self):
+        """Validation should return a list of violations."""
+        violations = validate_brief_neutralization("A romantic getaway.")
+        assert isinstance(violations, list)
+        assert len(violations) > 0
+
+    def test_validate_clean_brief_returns_empty(self):
+        """Clean brief should return empty violations list."""
+        violations = validate_brief_neutralization("They went on a trip to Mexico.")
+        assert violations == []
+
+    def test_multiple_violations_detected(self):
+        """Multiple violations in one brief should all be detected."""
+        brief = "They had a romantic getaway, cozied up at a luxurious boat."
+        violations = validate_brief_neutralization(brief)
+
+        # Should detect multiple issues
+        assert len(violations) >= 2
+
+        # Should include specific banned phrases
+        violation_lower = [v.lower() for v in violations]
+        assert any("romantic" in v for v in violation_lower)
+
+    def test_case_insensitive_detection(self):
+        """Validation should be case-insensitive."""
+        violations1 = validate_brief_neutralization("A Romantic Getaway.")
+        violations2 = validate_brief_neutralization("a romantic getaway.")
+
+        # Both should detect violations
+        assert len(violations1) > 0
+        assert len(violations2) > 0
