@@ -162,6 +162,51 @@ Returns diagnostic info for troubleshooting content display:
 - `span_count`: Number of transparency spans
 - `spans_sample`: First 3 spans for inspection
 
+### Span Detection Debug Endpoint (`/v1/stories/{id}/debug/spans`)
+Runs span detection fresh and returns full pipeline trace:
+```bash
+curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug/spans" \
+  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+```
+
+Returns:
+- `llm_raw_response`: Raw JSON from LLM
+- `llm_phrases_count`: Number of phrases LLM returned
+- `llm_phrases`: All phrases with reason/action/replacement
+- `pipeline_trace`:
+  - `after_position_matching`: Count after finding positions in text
+  - `after_quote_filter`: Count after removing quoted speech
+  - `after_false_positive_filter`: Final count
+  - `phrases_not_found_in_text`: LLM hallucinations
+  - `phrases_filtered_by_quotes`: Removed by quote filter
+  - `phrases_filtered_as_false_positives`: Removed by FP filter
+- `final_spans`: Final spans with positions
+
+Use this to debug why phrases aren't being detected or are being filtered out.
+
+### Cost-Efficient Testing (IMPORTANT)
+To minimize API costs during development:
+
+1. **Use `story_ids` parameter** - Only re-neutralize specific articles:
+```bash
+curl -X POST ".../v1/neutralize/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: staging-key-123" \
+  -d '{"story_ids": ["id1", "id2", "id3"], "force": true}'
+```
+
+2. **Test via debug endpoint first** - `/debug/spans` runs detection without saving to DB
+
+3. **Pick 5-10 representative articles** per prompt change, not hundreds
+
+4. **Target high-manipulation sources** - The Sun/Daily Mail have more manipulation than BBC/Reuters
+
+5. **Use test script**:
+```bash
+python scripts/test_span_detection.py --article-id <uuid>  # Single article
+python scripts/test_span_detection.py --limit 5           # Multiple from brief
+```
+
 ## Project Structure
 
 ```
@@ -327,6 +372,7 @@ Check these in Expo dev tools or browser console.
 - `tests/fixtures/test_corpus/` - Test article corpus
 - `scripts/verify_gold_positions.py` - Verify/fix gold standard positions
 - `scripts/review_accuracy.py` - Human review CLI
+- `scripts/test_span_detection.py` - Test span detection against staging API
 
 ### Running Tests
 ```bash
@@ -368,6 +414,26 @@ python scripts/review_accuracy.py --article 003 --provider openai
 - `neutralizer.py`: `DEFAULT_SPAN_DETECTION_PROMPT` - Conservative prompt with "NEVER FLAG" guidance
 - `neutralizer.py`: `detect_spans_via_llm_openai/gemini/anthropic()` - Provider-specific API calls
 - `neutralizer.py`: `filter_false_positives()` - Removes known false positives like "bowel cancer"
+- `neutralizer.py`: `detect_spans_debug_openai()` - Debug version returning pipeline trace
+
+**Manipulation Taxonomy (12 categories in prompt):**
+
+| # | Category | Examples |
+|---|----------|----------|
+| 1 | URGENCY INFLATION | BREAKING, JUST IN, scrambling |
+| 2 | EMOTIONAL TRIGGERS | shocking, devastating, slams |
+| 3 | CLICKBAIT | You won't believe, Here's what happened |
+| 4 | SELLING/HYPE | revolutionary, game-changer |
+| 5 | AGENDA SIGNALING | radical left, extremist |
+| 6 | LOADED VERBS | slammed, blasted, admits, claims |
+| 7 | URGENCY INFLATION (subtle) | Act now, Before it's too late |
+| 8 | AGENDA FRAMING | "the crisis at the border" |
+| 9 | **SPORTS/EVENT HYPE** | brilliant, blockbuster, massive, beautiful (events) |
+| 10 | **LOADED PERSONAL DESCRIPTORS** | handsome, unfriendly face, menacing |
+| 11 | **HYPERBOLIC ADJECTIVES** | punishing, soaked in blood, "of the year" |
+| 12 | **LOADED IDIOMS** | came under fire, in the crosshairs, took aim at |
+
+Categories 9-12 added Jan 2026 to catch sports/editorial manipulation.
 
 **JSON format (required by OpenAI json_object mode):**
 ```json
