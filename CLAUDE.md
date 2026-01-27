@@ -704,6 +704,9 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 17. ✅ **Category-specific highlights**: Frontend uses different colors per manipulation type
 18. ✅ **editorial_voice mapping fix**: `_parse_span_reason()` now maps `"editorial_voice"` → `SpanReason.EDITORIAL_VOICE` (was falling back to `RHETORICAL_FRAMING`)
 19. ✅ **Paragraph deduplication**: `_deduplicate_paragraphs()` in `ingestion.py` removes duplicate paragraphs from extracted article bodies (fixes duplicate highlights from captions/pull quotes)
+20. ✅ **Article classification pipeline**: LLM-powered CLASSIFY stage (gpt-4o-mini → gemini fallback → keyword fallback) classifies articles into 20 domains → 10 feed categories
+21. ✅ **10-category brief assembly**: Brief groups by `feed_category` (10 categories) instead of `section` (5). Fixed order: World, U.S., Local, Business, Technology, Science, Health, Environment, Sports, Culture
+22. ✅ **Classification pipeline monitoring**: `CLASSIFY_FALLBACK_RATE_HIGH` alert fires if keyword fallback exceeds 1%
 
 ### Current State (Jan 27 2026)
 
@@ -711,6 +714,13 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - Railway auto-deploys from `main` on push (build ~1m30s, deploy ~20s)
 - Note: `code_version` in `/v1/status` is not auto-bumped per deploy; check Railway dashboard for deploy status
 - All 4 highlight colors verified in UI (emotional=blue, urgency=rose, editorial=lavender, default=gold)
+- Full 4-stage pipeline running: INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE
+
+**Classification results (Jan 27 2026):**
+- ✅ 200+ articles classified via LLM, 0 keyword fallbacks, 0 failures (100% LLM success rate)
+- ✅ Brief rebuilt with 9 populated categories (Environment empty — awaits relevant RSS content)
+- ✅ Full pipeline run verified: 42 ingested → 25 classified → 95 neutralized → 250 stories in brief
+- ✅ Classification adds ~53s for 25 articles to pipeline run
 
 **Verification results:**
 - ✅ Local E2E tests pass (27 passed, 2 xfailed)
@@ -719,6 +729,8 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - ✅ Highlight legend shows all 4 categories, collapses/expands correctly
 - ✅ Badge hides when highlight toggle is off
 - ✅ Paragraph deduplication deployed (takes effect on next ingestion run)
+- ✅ 10-category feed verified in ntrl-app (section headers render correctly)
+- ✅ Topic selection filtering verified (deselect → sections disappear, re-enable → sections return)
 
 ### Remaining Issues
 
