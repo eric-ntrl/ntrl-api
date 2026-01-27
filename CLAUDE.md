@@ -620,6 +620,44 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 16. ✅ **Tabloid examples**: Added Katie Price-style examples to prompt
 17. ✅ **Category-specific highlights**: Frontend uses different colors per manipulation type
 
+### Current State (Jan 2026)
+
+**Code pushed but awaiting Railway deploy:**
+- Commits pushed to both `ntrl-api` and `ntrl-app` repos
+- Railway staging may not have auto-deployed yet (check version via `/v1/status`)
+- Version should update from `2026.01.26.8` after deploy
+
+**Verification status:**
+- ✅ Local E2E tests pass (27 passed, 2 xfailed)
+- ✅ Debug endpoint fresh detection works (Katie Price: 9 spans detected)
+- ⏳ Production re-neutralization pending Railway deploy
+- ⏳ Frontend highlight colors pending app rebuild
+
+**After Railway deploys, run:**
+```bash
+# 1. Verify new code version
+curl -s "https://api-staging-7b4d.up.railway.app/v1/status" | jq '.code_version'
+
+# 2. Re-neutralize test articles with new prompt
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: staging-key-123" \
+  -d '{"limit": 20, "force": true}'
+
+# 3. Rebuild brief
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
+  -H "X-API-Key: staging-key-123"
+
+# 4. Verify Katie Price article has spans
+curl -s "https://api-staging-7b4d.up.railway.app/v1/stories/{katie-price-id}/transparency" \
+  -H "X-API-Key: staging-key-123" | jq '.spans | length'
+```
+
+**Test articles to verify:**
+- Katie Price (tabloid): Should have 5+ spans (shockwaves, whirlwind romance, etc.)
+- Tom Homan (editorial): Should have spans for "Border Czar", editorial voice if present
+- Harry Styles: Already has 10 spans
+
 ### Remaining Issues
 
 1. **Missing highlights in long articles** - LLM misses phrases in 8000+ char articles
