@@ -88,6 +88,7 @@ During development/testing, follow these resource-conservation rules:
 
 ### Limits
 - **Ingestion**: Max 25 articles per run
+- **Classification**: 200 articles per pipeline run (covers all ingested articles)
 - **Neutralization**: Max 25 articles per run
 - **Articles in UI**: Only show articles from last 24 hours
 
@@ -125,11 +126,11 @@ The scheduled pipeline should run on Railway (NOT locally). Set up in Railway da
    - **Schedule**: `0 */4 * * *` (every 4 hours)
    - **Endpoint**: `POST /v1/pipeline/scheduled-run`
    - **Headers**: `X-API-Key: staging-key-123`, `Content-Type: application/json`
-   - **Body**: `{}` (uses defaults: limit 25, cleanup enabled)
+   - **Body**: `{}` (uses defaults: classify_limit=200, cleanup enabled)
 
 The `scheduled-run` endpoint automatically:
 - Ingests up to 25 new articles
-- Classifies pending articles (LLM → domain + feed_category)
+- Classifies up to 200 pending articles (LLM → domain + feed_category)
 - Neutralizes up to 25 pending articles
 - Rebuilds the brief (grouped by 10 feed categories)
 - Hides articles older than 24 hours
@@ -321,7 +322,7 @@ StoryRaw (from INGEST) → fetch body from S3 (first 2000 chars)
 
 ### Brief Assembly
 
-Brief groups stories by `feed_category` (10 categories) in fixed order: World, U.S., Local, Business, Technology, Science, Health, Environment, Sports, Culture. Articles without `feed_category` fall back to the legacy `section` field.
+Brief groups stories by `feed_category` (10 categories) in fixed order: World, U.S., Local, Business, Technology, Science, Health, Environment, Sports, Culture. Articles without `feed_category` are **skipped** (they'll appear after the next classify run). The legacy `section` fallback was removed in Jan 2026 because the `SectionClassifier` only knew 5 sections and defaulted unknown articles to "world", causing sports/culture articles to be misclassified.
 
 ### Monitoring
 
@@ -721,6 +722,12 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
     - **Hardening (P1)**: Rate limiting (slowapi), response caching (TTLCache), error response sanitization, dependency pinning, `neutralizer.py` refactored into module directory
     - **Quality (P2)**: Centralized config (`app/config.py`), constants (`app/constants.py`), DB indexes migration, lazy-loaded spaCy models, parallel S3 downloads in classification, frontend error boundaries, `__DEV__` debug log guards, model docstrings, `StoryRow` NamedTuple
     - **Documentation (P3)**: Backend API docstrings, backend test coverage (brief_assembly, domain_mapper, enhanced_keyword_classifier), frontend test coverage (api, storageService, secureStorage), frontend JSDoc, consolidated date formatting utils
+24. ✅ **Alembic multiple heads fix** (Jan 2026): Linearized migration chain — `add_neutralization_status_index` (`c7f3a1b2d4e5`) now descends from `007_add_classification` instead of `b29c9075587e`, which had two children causing `alembic upgrade head` to fail with "Multiple head revisions" and crash-looping the API container
+25. ✅ **S3 download timeout** (Jan 2026): `_get_body_from_storage()` in `stories.py` uses `ThreadPoolExecutor` with 8s timeout to prevent transparency endpoint from hanging on slow S3 reads
+26. ✅ **S3 client tuning** (Jan 2026): Reduced boto3 retries 3→2, `read_timeout` 30→15s in `s3_provider.py`
+27. ✅ **requirements.txt** (Jan 2026): Generated from `Pipfile.lock` as Docker build safety net
+28. ✅ **Frontend transparency resilience** (Jan 2026): `api.ts` reduces transparency retries 3→1, adds 10s body parse timeout via `Promise.race`
+29. ✅ **Classify limit fix** (Jan 2026): Pipeline endpoints (`/pipeline/run`, `/pipeline/scheduled-run`) now use configurable `classify_limit` (default 200) instead of hardcoded 25. Prevents sports/culture articles from being misclassified as "world" due to unclassified articles falling back to legacy `SectionClassifier`. Brief assembly skips unclassified articles instead of misrouting them.
 
 ### Current State (Jan 27 2026)
 
@@ -729,12 +736,13 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - Note: `code_version` in `/v1/status` is not auto-bumped per deploy; check Railway dashboard for deploy status
 - All 4 highlight colors verified in UI (emotional=blue, urgency=rose, editorial=lavender, default=gold)
 - Full 4-stage pipeline running: INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE
+- API healthy after Alembic multiple-heads fix (was crash-looping)
 
 **Classification results (Jan 27 2026):**
 - ✅ 200+ articles classified via LLM, 0 keyword fallbacks, 0 failures (100% LLM success rate)
 - ✅ Brief rebuilt with 9 populated categories (Environment empty — awaits relevant RSS content)
-- ✅ Full pipeline run verified: 42 ingested → 25 classified → 95 neutralized → 250 stories in brief
-- ✅ Classification adds ~53s for 25 articles to pipeline run
+- ✅ Full pipeline run verified: 42 ingested → 200 classify_limit → 95 neutralized → 250 stories in brief
+- ✅ Classification adds ~53s for 25 articles to pipeline run (classify_limit now 200, covers all ingested)
 
 **Verification results:**
 - ✅ Local E2E tests pass (27 passed, 2 xfailed)
@@ -745,6 +753,14 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - ✅ Paragraph deduplication deployed (takes effect on next ingestion run)
 - ✅ 10-category feed verified in ntrl-app (section headers render correctly)
 - ✅ Topic selection filtering verified (deselect → sections disappear, re-enable → sections return)
+- ✅ Alembic migration chain linearized, API container no longer crash-loops
+- ✅ Transparency endpoint resilient to slow S3 (8s timeout + reduced retries)
+- ✅ Frontend ntrl-view won't hang indefinitely (1 retry + 10s body parse timeout)
+- ✅ Classify limit raised to 200 in pipeline endpoints (was hardcoded 25)
+- ✅ Legacy section fallback removed from brief assembly
+- ✅ Sports section populated (Travis Kelce, Vanderbilt QB, etc.)
+- ✅ Culture section populated (King Charles, American Idol, etc.)
+- ✅ 23/23 brief assembly unit tests passing
 
 ### Remaining Issues
 
@@ -755,6 +771,19 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
    - Removes exact-duplicate paragraphs (>50 chars) caused by image captions, pull quotes, sidebar summaries
    - Existing articles in S3 are NOT retroactively fixed; only new ingestions benefit
    - To fix existing articles, re-ingest them
+
+3. ~~**Alembic multiple heads crash**~~ **FIXED** - Two migrations (`007_add_classification`, `c7f3a1b2d4e5`) both descended from `b29c9075587e`. Fixed by linearizing: `b29c9075587e → 007_add_classification → c7f3a1b2d4e5`
+
+### Migration Chain (Alembic)
+
+Linear chain (must remain single-head):
+```
+4b0a5b86cbe8 → 001 → 002 → 003 → 004 → 005 → 006
+→ 48b2882dfa37 → 4eb5c6286d76 → 53b582a6786a → b29c9075587e
+→ 007_add_classification → c7f3a1b2d4e5
+```
+
+**When adding new migrations:** Always set `down_revision` to the current single head. Run `alembic heads` to verify only one head exists before committing.
 
 ### Important: Database Spans vs Fresh Detection
 
