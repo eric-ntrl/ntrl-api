@@ -452,6 +452,7 @@ class PipelineStageResult(BaseModel):
 class PipelineRunRequest(BaseModel):
     """Request to run full pipeline."""
     max_items_per_source: int = Field(20, ge=1, le=100, description="Max items to ingest per source")
+    classify_limit: int = Field(200, ge=1, le=500, description="Max stories to classify")
     neutralize_limit: int = Field(100, ge=1, le=500, description="Max stories to neutralize")
     max_workers: int = Field(5, ge=1, le=10, description="Parallel workers for neutralization")
     cutoff_hours: int = Field(24, ge=1, le=72, description="Hours to look back for brief")
@@ -514,7 +515,7 @@ def run_pipeline(
         from app.services.llm_classifier import LLMClassifier
         classify_started = datetime.utcnow()
         classifier = LLMClassifier()
-        classify_result = classifier.classify_pending(db, limit=25)
+        classify_result = classifier.classify_pending(db, limit=request.classify_limit)
         classify_finished = datetime.utcnow()
         classify_duration = int((classify_finished - classify_started).total_seconds() * 1000)
         stages.append(PipelineStageResult(
@@ -633,6 +634,7 @@ class ScheduledRunRequest(BaseModel):
     # DEVELOPMENT MODE: Using low limits to conserve resources
     # Before production: increase max_items_per_source to 50+, neutralize_limit to 100+
     max_items_per_source: int = Field(25, ge=1, le=100, description="Max items to ingest per source")
+    classify_limit: int = Field(200, ge=1, le=500, description="Max stories to classify")
     neutralize_limit: int = Field(25, ge=1, le=500, description="Max stories to neutralize")
     max_workers: int = Field(5, ge=1, le=10, description="Parallel workers for neutralization")
     cutoff_hours: int = Field(24, ge=1, le=72, description="Hours to look back for brief")
@@ -724,7 +726,7 @@ def run_scheduled_pipeline(
     try:
         from app.services.llm_classifier import LLMClassifier
         classifier = LLMClassifier()
-        classify_result = classifier.classify_pending(db, limit=25)
+        classify_result = classifier.classify_pending(db, limit=request.classify_limit)
         classify_total = classify_result.total
         classify_success = classify_result.success
         classify_llm = classify_result.llm

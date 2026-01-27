@@ -118,9 +118,6 @@ class BriefAssemblyService:
         - Has current neutralization (status=success)
         - Published after cutoff
         - Has been classified (feed_category is not null)
-
-        Falls back to legacy section for articles that haven't been
-        classified yet (maps the 5 old sections to feed categories).
         """
         # Query for neutralized, non-duplicate stories
         results = (
@@ -142,12 +139,8 @@ class BriefAssemblyService:
         for neutralized, story_raw, source in results:
             cat_value = story_raw.feed_category
             if cat_value is None:
-                # Not yet classified — fall back to legacy section mapping
-                section_val = story_raw.section
-                if section_val is None:
-                    continue
-                # Legacy sections map 1:1 to feed categories for the original 5
-                cat_value = section_val
+                # Skip unclassified articles — they'll appear after next classify run
+                continue
 
             try:
                 category = FeedCategory(cat_value)
