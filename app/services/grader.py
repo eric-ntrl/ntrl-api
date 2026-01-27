@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -308,15 +309,10 @@ def grade(
 
 # Default spec path relative to this file
 _DEFAULT_SPEC_PATH = Path(__file__).parent.parent / "data" / "grader_spec_v1.json"
-_cached_spec: Optional[Dict[str, Any]] = None
-
-
+@lru_cache(maxsize=1)
 def get_default_spec() -> Dict[str, Any]:
     """Load and cache the default grader spec."""
-    global _cached_spec
-    if _cached_spec is None:
-        _cached_spec = load_spec(_DEFAULT_SPEC_PATH)
-    return _cached_spec
+    return load_spec(_DEFAULT_SPEC_PATH)
 
 
 def grade_article(

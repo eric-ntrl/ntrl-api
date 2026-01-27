@@ -14,6 +14,7 @@ Key features:
 
 import re
 import time
+from functools import lru_cache
 from typing import Optional
 
 from app.taxonomy import (
@@ -202,13 +203,7 @@ class LexicalDetector:
         return [original for _, original in self._compiled_patterns[type_id]]
 
 
-# Singleton instance for reuse
-_detector_instance: Optional[LexicalDetector] = None
-
-
+@lru_cache(maxsize=1)
 def get_lexical_detector() -> LexicalDetector:
     """Get or create the singleton lexical detector instance."""
-    global _detector_instance
-    if _detector_instance is None:
-        _detector_instance = LexicalDetector()
-    return _detector_instance
+    return LexicalDetector()

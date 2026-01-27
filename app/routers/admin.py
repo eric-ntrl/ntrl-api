@@ -11,13 +11,17 @@ POST /v1/reset - Reset all article data (testing only, disabled in production)
 GET  /v1/status - Get system status, config, and pipeline health metrics
 """
 
+import logging
 import os
+import secrets
 from datetime import datetime
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+
+admin_logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.schemas.admin import (
@@ -102,6 +106,7 @@ class StatusResponse(BaseModel):
 @router.get("/status", response_model=StatusResponse)
 def get_status(
     db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
 ) -> StatusResponse:
     """
     Get system status, LLM configuration, and pipeline health metrics.
@@ -217,6 +222,7 @@ def get_status(
 @router.post("/grade", response_model=GradeResponse)
 def grade_text(
     request: GradeRequest,
+    _: None = Depends(require_admin_key),
 ) -> GradeResponse:
     """
     Grade neutralized text against canon rules.
@@ -243,14 +249,16 @@ def grade_text(
 def require_admin_key(
     x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
 ) -> None:
-    """Validate admin API key."""
+    """Validate admin API key. Fails closed if ADMIN_API_KEY is not set."""
     expected_key = os.getenv("ADMIN_API_KEY")
 
-    # Allow no auth in development if key not set
     if not expected_key:
-        return
+        raise HTTPException(
+            status_code=500,
+            detail="Server misconfiguration: admin authentication not configured",
+        )
 
-    if not x_api_key or x_api_key != expected_key:
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
         raise HTTPException(
             status_code=401,
             detail="Invalid or missing API key",
@@ -370,7 +378,9 @@ def run_neutralize(
             max_workers=request.max_workers,
         )
     except NeutralizerConfigError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import logging
+        logging.getLogger(__name__).error(f"Neutralizer config error: {e}")
+        raise HTTPException(status_code=500, detail="Neutralizer configuration error")
 
     return NeutralizeRunResponse(
         status=result['status'],
@@ -404,6 +414,10 @@ def run_brief(
         cutoff_hours=request.cutoff_hours,
         force=request.force,
     )
+
+    # Invalidate brief cache after assembly
+    from app.routers.brief import invalidate_brief_cache
+    invalidate_brief_cache()
 
     return BriefRunResponse(
         status=result['status'],
@@ -747,11 +761,9 @@ def run_scheduled_pipeline(
     except Exception as e:
         errors.append(f"Brief failed: {e}")
 
-    # Stage 4: Cleanup old articles (disabled for now)
-    # TODO: Re-enable once is_active column is properly populated in database
-    # The brief assembly already filters by published_at >= cutoff_time (24h)
-    # so old articles won't appear in the UI anyway
-    cleanup_hidden_count = 0
+    # Cleanup: Not needed — brief_assembly filters by published_at >= cutoff_time (24h),
+    # so stale articles are excluded from the UI without explicit deactivation.
+    # If retention-based cleanup is needed later, implement as a separate periodic job.
 
     finished_at = datetime.utcnow()
     duration_ms = int((finished_at - started_at).total_seconds() * 1000)
@@ -1233,9 +1245,11 @@ def reset_all_data(
         db.commit()
     except Exception as e:
         db.rollback()
+        import logging
+        logging.getLogger(__name__).error(f"Database reset failed: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Database reset failed: {str(e)}",
+            detail="Database reset failed",
         )
 
     # Delete all objects from storage

@@ -34,10 +34,8 @@ from app.storage.base import ContentType
 
 logger = logging.getLogger(__name__)
 
-# SSL context for fetching feeds
+# SSL context for fetching feeds — use default verification
 SSL_CONTEXT = ssl.create_default_context()
-SSL_CONTEXT.check_hostname = False
-SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 
 class IngestionService:

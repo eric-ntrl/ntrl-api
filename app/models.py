@@ -173,7 +173,20 @@ class NeutralizationStatus(str, Enum):
 # -----------------------------------------------------------------------------
 
 class Source(Base):
-    """RSS feed sources - fixed set for POC."""
+    """
+    RSS feed sources tracked by the NTRL pipeline.
+
+    Each Source represents a single RSS feed URL (e.g., AP Top News, Reuters World)
+    from which articles are periodically ingested. Sources are a fixed set during
+    the POC phase and are toggled via the is_active flag rather than added or removed
+    at runtime.
+
+    Created manually (seed data) before any pipeline run.
+
+    Relationships:
+        stories -> StoryRaw: One-to-many. Every ingested article references the
+            Source it was pulled from.
+    """
     __tablename__ = "sources"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -195,14 +208,28 @@ class Source(Base):
 
 class StoryRaw(Base):
     """
-    Raw articles - metadata stored in Postgres, body content in S3.
+    Ingested articles from RSS feeds -- the single source of truth for each story.
+
+    A StoryRaw row is created during the INGEST pipeline stage whenever a new RSS
+    entry is discovered. Article metadata (title, description, URL) is stored in
+    Postgres while the full article body is scraped and stored in S3 as plain text.
+    The body in S3 is the canonical text that all downstream stages operate on:
+    CLASSIFY reads it to assign domain/feed_category, and NEUTRALIZE reads it to
+    produce every user-facing output (feed title, summary, detail brief, detail
+    full, and transparency spans).
 
     Storage strategy:
-    - Title/description stored in Postgres (used for display/dedupe)
-    - Full body content stored in S3 (compressed)
-    - Postgres stores only S3 references for body
-    - Raw content may expire per retention policy
-    - Metadata, summaries, and transparency spans persist
+        - Title/description stored in Postgres (used for display and dedupe).
+        - Full body content stored in S3 (compressed).
+        - Postgres stores only S3 references for the body.
+        - Raw content may expire per retention policy; metadata persists.
+
+    Relationships:
+        source -> Source: Many-to-one. The RSS feed this article came from.
+        neutralized -> StoryNeutralized: One-to-many (versioned). Each
+            neutralization pass produces a new StoryNeutralized row.
+        duplicate_of -> StoryRaw: Self-referential. Points to the canonical
+            article when this row is flagged as a duplicate during DEDUPE.
     """
     __tablename__ = "stories_raw"
 
@@ -275,7 +302,32 @@ class StoryRaw(Base):
 # -----------------------------------------------------------------------------
 
 class StoryNeutralized(Base):
-    """Neutralized article outputs, versioned separately from raw."""
+    """
+    Neutralized version of an article, produced during the NEUTRALIZE pipeline stage.
+
+    For each StoryRaw, the neutralizer reads the original body from S3 and asks
+    an LLM to produce several outputs: a short feed title and summary (for list
+    views), a detail title and multi-paragraph brief (for the article detail
+    screen), and a filtered full-length article (detail_full). Each output is
+    derived solely from the original body -- RSS titles and descriptions are never
+    used for generation.
+
+    Rows are versioned per story so that re-neutralization (e.g., after a prompt
+    change) creates a new version while preserving earlier results. Only the row
+    with is_current=True is served to clients.
+
+    The neutralization_status field tracks whether the LLM call succeeded,
+    failed, or produced garbled output. Only rows with status "success" appear
+    in briefs and story listings.
+
+    Relationships:
+        story_raw -> StoryRaw: Many-to-one. The original article this was
+            derived from.
+        spans -> TransparencySpan: One-to-many. UI-oriented spans highlighting
+            manipulative phrases removed or softened during neutralization.
+        manipulation_spans -> ManipulationSpan: One-to-many. Taxonomy-bound
+            spans from the NTRL-SCAN structural/lexical analysis pipeline.
+    """
     __tablename__ = "stories_neutralized"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -322,6 +374,7 @@ class StoryNeutralized(Base):
     __table_args__ = (
         UniqueConstraint("story_raw_id", "version", name="uq_story_version"),
         Index("ix_stories_neutralized_is_current", "is_current"),
+        Index("ix_stories_neutralized_status", "neutralization_status"),
     )
 
 
@@ -330,7 +383,38 @@ class StoryNeutralized(Base):
 # -----------------------------------------------------------------------------
 
 class TransparencySpan(Base):
-    """What was removed/changed and why - for transparency view."""
+    """
+    A span highlighting a manipulative phrase in the original article text,
+    intended for display in the ntrl-view UI.
+
+    TransparencySpans are created during the NEUTRALIZE pipeline stage. After the
+    LLM produces the neutralized outputs, a separate span-detection pass
+    identifies manipulative phrases in the original body and records what action
+    was taken (removed, replaced, or softened) and why (clickbait, emotional
+    trigger, urgency inflation, etc.). The frontend uses these spans to render
+    colour-coded highlights over the original text so readers can see exactly
+    what was changed.
+
+    Each span stores character offsets (start_char, end_char) into the original
+    text of a specific field (title, description, or body). Offsets always
+    reference the original article text, never the neutralized output.
+
+    Distinction from ManipulationSpan:
+        TransparencySpan is the UI-facing model. It uses a simple action/reason
+        taxonomy (SpanAction and SpanReason enums) and is optimised for rendering
+        highlights in the ntrl-view. It is produced by the LLM span-detection
+        prompt during the NEUTRALIZE stage.
+
+        ManipulationSpan (see below) is the analysis-facing model from the
+        NTRL-SCAN pipeline. It carries a richer taxonomy (type_id from
+        taxonomy.py with 115 manipulation types), severity scoring, detector
+        provenance, and exemption metadata. The two models may coexist for the
+        same article.
+
+    Relationships:
+        story_neutralized -> StoryNeutralized: Many-to-one. The neutralized
+            version these spans annotate.
+    """
     __tablename__ = "transparency_spans"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -362,12 +446,33 @@ class TransparencySpan(Base):
 
 class ManipulationSpan(Base):
     """
-    Enhanced manipulation span with full taxonomy support (NTRL Filter v2).
+    A detected manipulation span from the NTRL-SCAN pipeline's structural and
+    lexical analysis (NTRL Filter v2).
 
-    Each span represents a detected manipulation instance in the original article,
-    with precise location, taxonomy binding, scoring, and action taken.
+    Unlike TransparencySpan, which is a lightweight UI model created during the
+    NEUTRALIZE stage, ManipulationSpan captures the full analytical output of
+    the NTRL-SCAN pipeline. Each row binds to one or more entries in the 115-type
+    manipulation taxonomy (app/taxonomy.py) via type_id_primary and
+    type_ids_secondary, and includes severity scoring (raw and segment-weighted),
+    detection confidence, the action taken (remove/replace/rewrite/annotate/
+    preserve), and provenance metadata (which detector found it, which guardrail
+    exemptions applied, which rewrite template was used).
 
-    This model powers both detection (ntrl-scan) and transparency (ntrl-view).
+    Spans reference character offsets (span_start, span_end) within a named
+    segment of the original article (title, deck, lede, body, or caption).
+    Offsets always point into the original text, not the neutralized output.
+
+    Distinction from TransparencySpan:
+        TransparencySpan is created by the LLM span-detection prompt during
+        NEUTRALIZE and is designed for simple UI highlighting with a small
+        action/reason enum. ManipulationSpan is created by the NTRL-SCAN
+        pipeline's multi-detector analysis (lexical, structural, semantic) and
+        carries richer taxonomy, scoring, and audit fields. Both may coexist
+        for the same neutralized article.
+
+    Relationships:
+        story_neutralized -> StoryNeutralized: Many-to-one. The neutralized
+            version this span annotates.
     """
     __tablename__ = "manipulation_spans"
 
@@ -425,7 +530,27 @@ class ManipulationSpan(Base):
 # -----------------------------------------------------------------------------
 
 class DailyBrief(Base):
-    """Snapshot of assembled daily briefs - deterministic."""
+    """
+    An assembled daily news brief -- a deterministic snapshot of top stories.
+
+    A DailyBrief is created during the BRIEF_ASSEMBLE pipeline stage. It groups
+    successfully neutralized stories by feed_category (10 user-facing categories:
+    World, U.S., Local, Business, Technology, Science, Health, Environment,
+    Sports, Culture) in a fixed display order. Only articles with
+    neutralization_status "success" are included.
+
+    Briefs are versioned per date so that rebuilding the brief (e.g., after new
+    articles arrive) creates a new version while preserving the previous snapshot.
+    The is_current flag marks the latest version for a given date; older versions
+    remain in the database for audit.
+
+    If no stories are available for a given run, the brief is marked as empty
+    (is_empty=True) with a human-readable empty_reason.
+
+    Relationships:
+        items -> DailyBriefItem: One-to-many. The ordered list of stories in
+            this brief, each carrying denormalized display fields for fast reads.
+    """
     __tablename__ = "daily_briefs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -497,7 +622,28 @@ class DailyBriefItem(Base):
 # -----------------------------------------------------------------------------
 
 class PipelineLog(Base):
-    """Audit trail for pipeline steps with enhanced observability."""
+    """
+    Audit log entry for a single pipeline stage execution.
+
+    A PipelineLog row is written at the start and end of each pipeline stage
+    (INGEST, NORMALIZE, DEDUPE, CLASSIFY, NEUTRALIZE, BRIEF_ASSEMBLE). It
+    records timing, success/failure status, optional error details, and a
+    trace_id that correlates all stages within a single pipeline run.
+
+    For per-article observability, the entry_url and entry_url_hash fields
+    allow tracing a specific RSS entry across pipeline stages without requiring
+    a StoryRaw row (useful when ingestion itself fails before a row is created).
+
+    Structured failure reasons (failure_reason) use a fixed vocabulary so that
+    alerting rules can fire on specific error classes rather than parsing free-
+    text error messages.
+
+    Relationships:
+        story_raw_id -> StoryRaw: Optional FK. Present when the log entry
+            pertains to a specific article (e.g., neutralization of one story).
+        brief_id -> DailyBrief: Optional FK. Present when the log entry
+            pertains to a brief assembly run.
+    """
     __tablename__ = "pipeline_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -13,6 +13,7 @@ Uses spaCy's en_core_web_sm model for fast, accurate parsing.
 """
 
 import time
+from functools import lru_cache
 from typing import Optional
 import spacy
 from spacy.tokens import Doc, Span, Token
@@ -25,6 +26,24 @@ from .types import (
     DetectorSource,
     SpanAction,
 )
+
+
+@lru_cache(maxsize=1)
+def _get_spacy_model(model_name: str = "en_core_web_sm"):
+    """Lazy-load and cache the spaCy model as a singleton.
+
+    The model is only loaded on first call (~2-3s), and cached for
+    all subsequent calls. Shared across StructuralDetector instances.
+    """
+    try:
+        nlp = spacy.load(model_name)
+    except OSError:
+        import subprocess
+        subprocess.run(["python", "-m", "spacy", "download", model_name])
+        nlp = spacy.load(model_name)
+    # Disable NER for speed — we only need parser and tagger
+    nlp.select_pipes(disable=["ner"])
+    return nlp
 
 
 class StructuralDetector:
@@ -62,17 +81,8 @@ class StructuralDetector:
     ABSOLUTE_PHRASES = {"no one"}
 
     def __init__(self, model_name: str = "en_core_web_sm"):
-        """Initialize with spaCy model."""
-        try:
-            self.nlp = spacy.load(model_name)
-        except OSError:
-            # Model not installed - try to download
-            import subprocess
-            subprocess.run(["python", "-m", "spacy", "download", model_name])
-            self.nlp = spacy.load(model_name)
-
-        # Disable components we don't need for speed
-        self.nlp.select_pipes(disable=["ner"])  # Keep parser and tagger
+        """Initialize with lazy-loaded spaCy model."""
+        self.nlp = _get_spacy_model(model_name)
 
     def detect(
         self,
@@ -468,13 +478,7 @@ class StructuralDetector:
         return self.detect(body, segment=ArticleSegment.BODY)
 
 
-# Singleton instance for reuse
-_detector_instance: Optional[StructuralDetector] = None
-
-
+@lru_cache(maxsize=1)
 def get_structural_detector() -> StructuralDetector:
     """Get or create the singleton structural detector instance."""
-    global _detector_instance
-    if _detector_instance is None:
-        _detector_instance = StructuralDetector()
-    return _detector_instance
+    return StructuralDetector()

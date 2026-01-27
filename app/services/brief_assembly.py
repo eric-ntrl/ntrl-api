@@ -16,7 +16,7 @@ No personalization, trending, or popularity signals.
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NamedTuple, Optional
 
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,13 @@ from app.models import (
     FeedCategory, FEED_CATEGORY_ORDER,
     PipelineStage, PipelineStatus,
 )
+
+
+class StoryRow(NamedTuple):
+    """A neutralized story with its raw source data, used throughout brief assembly."""
+    neutralized: models.StoryNeutralized
+    raw: models.StoryRaw
+    source: models.Source
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +86,8 @@ class BriefAssemblyService:
 
     def _sort_stories(
         self,
-        stories: List[tuple],  # (StoryNeutralized, StoryRaw, Source)
-    ) -> List[tuple]:
+        stories: List[StoryRow],
+    ) -> List[StoryRow]:
         """
         Sort stories deterministically.
 
@@ -102,7 +109,7 @@ class BriefAssemblyService:
         self,
         db: Session,
         cutoff_time: datetime,
-    ) -> Dict[FeedCategory, List[tuple]]:
+    ) -> Dict[FeedCategory, List[StoryRow]]:
         """
         Get all qualifying stories grouped by feed category.
 
@@ -130,7 +137,7 @@ class BriefAssemblyService:
         )
 
         # Group by feed_category
-        by_category: Dict[FeedCategory, List[tuple]] = {cat: [] for cat in FeedCategory}
+        by_category: Dict[FeedCategory, List[StoryRow]] = {cat: [] for cat in FeedCategory}
 
         for neutralized, story_raw, source in results:
             cat_value = story_raw.feed_category
@@ -144,7 +151,7 @@ class BriefAssemblyService:
 
             try:
                 category = FeedCategory(cat_value)
-                by_category[category].append((neutralized, story_raw, source))
+                by_category[category].append(StoryRow(neutralized, story_raw, source))
             except ValueError:
                 continue
 

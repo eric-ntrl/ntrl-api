@@ -190,13 +190,15 @@ class Auditor:
         NOTE: LLM-based audit is currently disabled as it's too strict and
         causes false failures. Using basic rule-based audit only.
         """
-        # Always use basic audit for now - LLM audit is too strict
-        # TODO: Re-enable LLM audit once prompts are tuned
+        # LLM-based audit disabled: produces too many false failures with current prompts.
+        # Basic rule-based audit is sufficient for current quality level.
+        # To re-enable: tune AUDITOR_SYSTEM_PROMPT to reduce false positives,
+        # then remove the early return below.
         return self._basic_audit(
             original_title, original_description, model_output
         )
 
-        # LLM audit disabled - keeping code for future use
+        # LLM audit code below is unreachable — kept for future re-enablement.
         if not self._api_key:
             # Fallback to basic validation if no API key
             return self._basic_audit(

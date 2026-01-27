@@ -5,10 +5,13 @@ Daily brief endpoints.
 GET /v1/brief - Get the current daily brief
 """
 
+import hashlib
+import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from cachetools import TTLCache
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -18,9 +21,18 @@ from app.schemas.brief import BriefResponse, BriefSection, BriefStory, FEED_CATE
 
 router = APIRouter(prefix="/v1", tags=["brief"])
 
+# In-memory cache for brief responses (15 min TTL, max 10 entries)
+_brief_cache: TTLCache = TTLCache(maxsize=10, ttl=900)
+
+
+def invalidate_brief_cache():
+    """Clear the brief response cache. Call after POST /v1/brief/run."""
+    _brief_cache.clear()
+
 
 @router.get("/brief", response_model=BriefResponse)
 def get_brief(
+    response: Response,
     db: Session = Depends(get_db),
     hours: Optional[int] = Query(
         default=None,
@@ -40,6 +52,17 @@ def get_brief(
 
     No personalization, trending, or engagement signals.
     """
+    # Check cache
+    cache_key = f"brief:{hours}"
+    cached = _brief_cache.get(cache_key)
+    if cached is not None:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["Cache-Control"] = "public, max-age=900"
+        return cached
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["Cache-Control"] = "public, max-age=900"
+
     # Get current brief
     brief = (
         db.query(models.DailyBrief)
@@ -133,7 +156,7 @@ def get_brief(
     # Sort sections by order
     sections.sort(key=lambda x: x.order)
 
-    return BriefResponse(
+    result = BriefResponse(
         id=str(brief.id),
         brief_date=brief.brief_date,
         cutoff_time=brief.cutoff_time,
@@ -143,3 +166,7 @@ def get_brief(
         is_empty=len(sections) == 0,
         empty_message="No stories in the requested time window." if len(sections) == 0 and hours else None,
     )
+
+    # Store in cache
+    _brief_cache[cache_key] = result
+    return result

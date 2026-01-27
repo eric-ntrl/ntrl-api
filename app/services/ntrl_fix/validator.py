@@ -21,6 +21,7 @@ Any failure in these checks indicates the rewrite may have changed meaning.
 """
 
 import re
+from functools import lru_cache
 from typing import Optional
 import spacy
 from spacy.tokens import Doc
@@ -31,6 +32,18 @@ from .types import (
     ValidationStatus,
     RiskLevel,
 )
+
+
+@lru_cache(maxsize=1)
+def _get_spacy_model(model_name: str = "en_core_web_sm"):
+    """Lazy-load and cache the spaCy model as a singleton."""
+    try:
+        nlp = spacy.load(model_name)
+    except OSError:
+        import subprocess
+        subprocess.run(["python", "-m", "spacy", "download", model_name])
+        nlp = spacy.load(model_name)
+    return nlp
 
 
 class RedLineValidator:
@@ -77,13 +90,8 @@ class RedLineValidator:
     }
 
     def __init__(self, model_name: str = "en_core_web_sm"):
-        """Initialize with spaCy model for NLP analysis."""
-        try:
-            self.nlp = spacy.load(model_name)
-        except OSError:
-            import subprocess
-            subprocess.run(["python", "-m", "spacy", "download", model_name])
-            self.nlp = spacy.load(model_name)
+        """Initialize with lazy-loaded spaCy model."""
+        self.nlp = _get_spacy_model(model_name)
 
     def validate(
         self,
@@ -503,13 +511,7 @@ class RedLineValidator:
         )
 
 
-# Singleton instance
-_validator_instance: Optional[RedLineValidator] = None
-
-
+@lru_cache(maxsize=1)
 def get_validator() -> RedLineValidator:
     """Get or create singleton validator instance."""
-    global _validator_instance
-    if _validator_instance is None:
-        _validator_instance = RedLineValidator()
-    return _validator_instance
+    return RedLineValidator()

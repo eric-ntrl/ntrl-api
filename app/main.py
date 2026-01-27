@@ -9,11 +9,24 @@ No personalization, trending, or recommendations.
 No urgency language or "breaking" alerts.
 """
 
-from fastapi import FastAPI
+import logging
+import os
+import uuid
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from app.routers import brief_router, stories_router, admin_router, sources_router, pipeline_router
+
+logger = logging.getLogger(__name__)
+
+# Rate limiter — in-memory store (upgrade to Redis for multi-instance)
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 
 # Create app
 app = FastAPI(
@@ -23,6 +36,10 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Attach rate limiter to app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def custom_openapi():
@@ -56,14 +73,32 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# CORS middleware
+# CORS middleware — restrict origins in production
+_cors_origins_env = os.getenv("CORS_ORIGINS", "")
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()] if _cors_origins_env else [
+    "http://localhost:8081",
+    "http://localhost:19006",
+    "http://localhost:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
+
+# Global exception handler — never leak internal details to clients
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = str(uuid.uuid4())[:8]
+    logger.error(f"Unhandled exception [request_id={request_id}]: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error", "request_id": request_id},
+    )
+
 
 # Include routers
 app.include_router(brief_router)

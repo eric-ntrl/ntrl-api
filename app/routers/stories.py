@@ -10,7 +10,8 @@ import logging
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from cachetools import TTLCache
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -29,6 +30,11 @@ from app.storage.factory import get_storage_provider
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/stories", tags=["stories"])
+
+# In-memory cache for story detail (1 hour TTL, max 200 entries)
+_story_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
+# In-memory cache for transparency data (1 hour TTL, max 200 entries)
+_transparency_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 
 
 def _get_body_from_storage(story_raw: models.StoryRaw) -> Optional[str]:
@@ -225,6 +231,7 @@ def list_stories(
 @router.get("/{story_id}", response_model=StoryDetail)
 def get_story(
     story_id: str,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> StoryDetail:
     """
@@ -234,9 +241,18 @@ def get_story(
     Always links to original source URL.
     No engagement mechanics (likes, saves, shares).
     """
+    cached = _story_cache.get(story_id)
+    if cached is not None:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return cached
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["Cache-Control"] = "public, max-age=3600"
+
     neutralized, story_raw, source = _get_story_or_404(db, story_id)
 
-    return StoryDetail(
+    result = StoryDetail(
         id=str(neutralized.id),
         feed_title=neutralized.feed_title,
         feed_summary=neutralized.feed_summary,
@@ -251,10 +267,14 @@ def get_story(
         section=story_raw.section,
     )
 
+    _story_cache[story_id] = result
+    return result
+
 
 @router.get("/{story_id}/transparency", response_model=StoryTransparency)
 def get_story_transparency(
     story_id: str,
+    response: Response,
     db: Session = Depends(get_db),
 ) -> StoryTransparency:
     """
@@ -264,6 +284,15 @@ def get_story_transparency(
     Includes original content for comparison.
     Always links to original source.
     """
+    cached = _transparency_cache.get(story_id)
+    if cached is not None:
+        response.headers["X-Cache"] = "HIT"
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return cached
+
+    response.headers["X-Cache"] = "MISS"
+    response.headers["Cache-Control"] = "public, max-age=3600"
+
     neutralized, story_raw, source = _get_story_or_404(db, story_id)
 
     # Get spans
@@ -289,7 +318,7 @@ def get_story_transparency(
     # Retrieve body from object storage
     original_body = _get_body_from_storage(story_raw)
 
-    return StoryTransparency(
+    result = StoryTransparency(
         id=str(neutralized.id),
         original_title=story_raw.original_title,
         original_description=story_raw.original_description,
@@ -307,6 +336,9 @@ def get_story_transparency(
         prompt_version=neutralized.prompt_version,
         processed_at=neutralized.created_at,
     )
+
+    _transparency_cache[story_id] = result
+    return result
 
 
 def _check_readability(text: Optional[str]) -> tuple[bool, list[str]]:

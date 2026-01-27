@@ -17,9 +17,10 @@ import json
 import logging
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -337,12 +338,48 @@ class LLMClassifier:
             method=method,
         )
 
+    def _prefetch_bodies(self, stories: List, storage) -> Dict[str, str]:
+        """Pre-fetch article bodies from S3 in parallel using a thread pool.
+
+        Returns a dict mapping story ID (str) to body excerpt (first 2000 chars).
+        Stories without content URIs or failed downloads map to empty string.
+        """
+        body_map: Dict[str, str] = {}
+        fetchable = [
+            s for s in stories
+            if s.raw_content_uri and s.raw_content_available
+        ]
+
+        if not fetchable:
+            return body_map
+
+        def _fetch_one(story_id: str, uri: str) -> tuple:
+            try:
+                body_bytes = storage.get(uri)
+                if body_bytes:
+                    return (story_id, body_bytes.decode("utf-8", errors="replace")[:2000])
+            except Exception as e:
+                logger.warning(f"[CLASSIFY] Failed to fetch body for {story_id}: {e}")
+            return (story_id, "")
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(_fetch_one, str(s.id), s.raw_content_uri): s
+                for s in fetchable
+            }
+            for future in as_completed(futures):
+                story_id, excerpt = future.result()
+                body_map[story_id] = excerpt
+
+        logger.info(f"[CLASSIFY] Pre-fetched {len(body_map)} bodies from storage")
+        return body_map
+
     def classify_pending(self, db: Session, limit: int = 25) -> ClassifyRunResult:
         """
         Classify stories where classified_at IS NULL.
 
-        Fetches normalized body from S3 (first 2000 chars) for each article,
-        then runs the classification reliability chain.
+        Pre-fetches article bodies from S3 in parallel, then runs
+        the classification reliability chain serially.
         """
         from app import models
         from app.storage.factory import get_storage_provider
@@ -371,20 +408,17 @@ class LLMClassifier:
         except Exception as e:
             logger.warning(f"[CLASSIFY] Could not get storage provider: {e}")
 
+        # Pre-fetch all bodies from S3 in parallel
+        body_map: Dict[str, str] = {}
+        if storage:
+            body_map = self._prefetch_bodies(stories, storage)
+
         run_result.total = len(stories)
         logger.info(f"[CLASSIFY] Classifying {len(stories)} pending stories")
 
         for story in stories:
             try:
-                # Fetch body excerpt from S3
-                body_excerpt = ""
-                if storage and story.raw_content_uri and story.raw_content_available:
-                    try:
-                        body_bytes = storage.get(story.raw_content_uri)
-                        if body_bytes:
-                            body_excerpt = body_bytes.decode("utf-8", errors="replace")[:2000]
-                    except Exception as e:
-                        logger.warning(f"[CLASSIFY] Failed to fetch body for {story.id}: {e}")
+                body_excerpt = body_map.get(str(story.id), "")
 
                 # Get source slug
                 source_slug = ""
@@ -435,6 +469,7 @@ class LLMClassifier:
         Force reclassify all stories (for migration or prompt changes).
 
         Same as classify_pending but ignores classified_at filter.
+        Pre-fetches article bodies from S3 in parallel.
         """
         from app import models
         from app.storage.factory import get_storage_provider
@@ -460,19 +495,17 @@ class LLMClassifier:
         except Exception as e:
             logger.warning(f"[CLASSIFY] Could not get storage provider: {e}")
 
+        # Pre-fetch all bodies from S3 in parallel
+        body_map: Dict[str, str] = {}
+        if storage:
+            body_map = self._prefetch_bodies(stories, storage)
+
         run_result.total = len(stories)
         logger.info(f"[CLASSIFY] Reclassifying {len(stories)} stories")
 
         for story in stories:
             try:
-                body_excerpt = ""
-                if storage and story.raw_content_uri and story.raw_content_available:
-                    try:
-                        body_bytes = storage.get(story.raw_content_uri)
-                        if body_bytes:
-                            body_excerpt = body_bytes.decode("utf-8", errors="replace")[:2000]
-                    except Exception as e:
-                        logger.warning(f"[CLASSIFY] Failed to fetch body for {story.id}: {e}")
+                body_excerpt = body_map.get(str(story.id), "")
 
                 source_slug = ""
                 if story.source:
