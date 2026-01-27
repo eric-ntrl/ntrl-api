@@ -20,6 +20,7 @@ class AlertCode(str, Enum):
     BRIEF_STORY_COUNT_LOW = "brief_story_count_low"
     PIPELINE_FAILED = "pipeline_failed"
     INGESTION_ZERO = "ingestion_zero"
+    CLASSIFY_FALLBACK_RATE_HIGH = "classify_fallback_rate_high"
 
 
 # Alert thresholds (can be made configurable via env vars in the future)
@@ -58,6 +59,12 @@ def check_alerts(summary: "PipelineRunSummary") -> list[str]:
     if summary.brief_story_count < ALERT_THRESHOLDS[AlertCode.BRIEF_STORY_COUNT_LOW]:
         alerts.append(AlertCode.BRIEF_STORY_COUNT_LOW.value)
 
+    # Check classification keyword fallback rate
+    if hasattr(summary, 'classify_total') and summary.classify_total > 0:
+        fallback_rate = summary.classify_keyword_fallback / summary.classify_total
+        if fallback_rate > 0.01:  # >1% keyword fallback
+            alerts.append(AlertCode.CLASSIFY_FALLBACK_RATE_HIGH.value)
+
     # Check for zero ingestion
     if summary.ingest_total == 0:
         alerts.append(AlertCode.INGESTION_ZERO.value)
@@ -83,5 +90,6 @@ def get_alert_description(alert_code: str) -> str:
         ),
         AlertCode.PIPELINE_FAILED.value: "Pipeline run failed",
         AlertCode.INGESTION_ZERO.value: "No articles were ingested",
+        AlertCode.CLASSIFY_FALLBACK_RATE_HIGH.value: "LLM classification fallback rate exceeded 1%",
     }
     return descriptions.get(alert_code, f"Unknown alert: {alert_code}")

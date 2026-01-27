@@ -3,11 +3,11 @@
 Daily brief assembly service.
 
 Deterministic rules:
-1. Fixed section order: World, U.S., Local, Business & Markets, Technology
-2. Within each section: order by published_at DESC
+1. Fixed category order: World, U.S., Local, Business, Technology, Science, Health, Environment, Sports, Culture
+2. Within each category: order by published_at DESC
 3. Tie-breaker: source priority (AP > Reuters > others), then story ID (deterministic)
 4. Only include stories from last 24 hours (configurable)
-5. Only include non-duplicate, neutralized stories
+5. Only include non-duplicate, neutralized, classified stories
 6. Empty state if no qualifying stories
 
 No personalization, trending, or popularity signals.
@@ -19,11 +19,12 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
 from app import models
-from app.models import Section, SECTION_ORDER, PipelineStage, PipelineStatus
-from app.schemas.brief import SECTION_DISPLAY_NAMES
+from app.models import (
+    FeedCategory, FEED_CATEGORY_ORDER,
+    PipelineStage, PipelineStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,17 +102,20 @@ class BriefAssemblyService:
         self,
         db: Session,
         cutoff_time: datetime,
-    ) -> Dict[Section, List[tuple]]:
+    ) -> Dict[FeedCategory, List[tuple]]:
         """
-        Get all qualifying stories grouped by section.
+        Get all qualifying stories grouped by feed category.
 
         Qualifying means:
         - Not a duplicate
-        - Has current neutralization
+        - Has current neutralization (status=success)
         - Published after cutoff
+        - Has been classified (feed_category is not null)
+
+        Falls back to legacy section for articles that haven't been
+        classified yet (maps the 5 old sections to feed categories).
         """
         # Query for neutralized, non-duplicate stories
-        # Only include successfully neutralized articles (no failed_llm, failed_garbled, etc.)
         results = (
             db.query(models.StoryNeutralized, models.StoryRaw, models.Source)
             .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
@@ -121,27 +125,34 @@ class BriefAssemblyService:
                 models.StoryNeutralized.neutralization_status == "success",
                 models.StoryRaw.is_duplicate == False,
                 models.StoryRaw.published_at >= cutoff_time,
-                models.StoryRaw.section.isnot(None),
             )
             .all()
         )
 
-        # Group by section
-        by_section: Dict[Section, List[tuple]] = {section: [] for section in Section}
+        # Group by feed_category
+        by_category: Dict[FeedCategory, List[tuple]] = {cat: [] for cat in FeedCategory}
 
         for neutralized, story_raw, source in results:
+            cat_value = story_raw.feed_category
+            if cat_value is None:
+                # Not yet classified — fall back to legacy section mapping
+                section_val = story_raw.section
+                if section_val is None:
+                    continue
+                # Legacy sections map 1:1 to feed categories for the original 5
+                cat_value = section_val
+
             try:
-                section = Section(story_raw.section)
-                by_section[section].append((neutralized, story_raw, source))
+                category = FeedCategory(cat_value)
+                by_category[category].append((neutralized, story_raw, source))
             except ValueError:
-                # Unknown section, skip
                 continue
 
-        # Sort each section
-        for section in by_section:
-            by_section[section] = self._sort_stories(by_section[section])
+        # Sort each category
+        for cat in by_category:
+            by_category[cat] = self._sort_stories(by_category[cat])
 
-        return by_section
+        return by_category
 
     def assemble_brief(
         self,
@@ -237,22 +248,22 @@ class BriefAssemblyService:
             db.flush()
 
             # Create brief items
-            for section in Section:
-                section_stories = stories_by_section.get(section, [])
-                section_order = SECTION_ORDER[section]
+            for category in FeedCategory:
+                cat_stories = stories_by_section.get(category, [])
+                cat_order = FEED_CATEGORY_ORDER[category]
 
                 result['sections'].append({
-                    'section': section.value,
-                    'story_count': len(section_stories),
+                    'section': category.value,
+                    'story_count': len(cat_stories),
                 })
 
-                for position, (neutralized, story_raw, source) in enumerate(section_stories):
+                for position, (neutralized, story_raw, source) in enumerate(cat_stories):
                     item = models.DailyBriefItem(
                         id=uuid.uuid4(),
                         brief_id=brief.id,
                         story_neutralized_id=neutralized.id,
-                        section=section.value,
-                        section_order=section_order,
+                        section=category.value,
+                        section_order=cat_order,
                         position=position,
                         feed_title=neutralized.feed_title,
                         feed_summary=neutralized.feed_summary,

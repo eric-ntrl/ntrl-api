@@ -103,6 +103,46 @@ class NeutralizeRunResponse(BaseModel):
 
 
 # -----------------------------------------------------------------------------
+# Classify
+# -----------------------------------------------------------------------------
+
+class ClassifyRunRequest(BaseModel):
+    """Request to trigger article classification."""
+    limit: int = Field(
+        25,
+        ge=1,
+        le=500,
+        description="Max stories to classify"
+    )
+    force: bool = Field(
+        False,
+        description="Reclassify already-classified articles"
+    )
+    story_ids: Optional[List[str]] = Field(
+        None,
+        description="Specific story IDs to classify (default: all pending)"
+    )
+
+
+class ClassifyRunResponse(BaseModel):
+    """Response from classification run."""
+    status: str = Field(..., description="completed|empty|failed")
+    started_at: datetime
+    finished_at: datetime
+    duration_ms: int
+
+    # Results
+    classify_total: int = 0
+    classify_success: int = 0
+    classify_llm: int = 0
+    classify_keyword_fallback: int = 0
+    classify_failed: int = 0
+
+    # Errors
+    errors: List[str] = Field(default_factory=list)
+
+
+# -----------------------------------------------------------------------------
 # Brief Assembly
 # -----------------------------------------------------------------------------
 

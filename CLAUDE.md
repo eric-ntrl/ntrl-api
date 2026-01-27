@@ -9,9 +9,11 @@ NTRL API is a neutral news backend service that removes manipulative language fr
 **The original article body is the single source of truth.**
 
 ```
-INGESTION:     RSS → Database (metadata) + S3 (body.txt)
-NEUTRALIZATION: body.txt → ALL outputs (title, summary, brief, full, spans)
-DISPLAY:        Neutralized content by default, originals only in "ntrl view"
+INGEST:        RSS → Database (metadata) + S3 (body.txt)
+CLASSIFY:      body.txt → domain (20) + feed_category (10) + tags
+NEUTRALIZE:    body.txt → ALL outputs (title, summary, brief, full, spans)
+BRIEF ASSEMBLE: Group by feed_category (10 categories) → DailyBrief
+DISPLAY:       Neutralized content by default, originals only in "ntrl view"
 ```
 
 - RSS title/description are stored for audit but NOT used for neutralization
@@ -93,10 +95,11 @@ During development/testing, follow these resource-conservation rules:
 
 ### Testing Workflow
 1. Run ingestion (limit 25)
-2. Run neutralization (limit 25)
-3. Rebuild brief
-4. Test in UI
-5. Old articles auto-hidden on next scheduled run
+2. Run classification (auto-classifies pending articles)
+3. Run neutralization (limit 25)
+4. Rebuild brief
+5. Test in UI
+6. Old articles auto-hidden on next scheduled run
 
 ### Before Production
 - [ ] Increase `max_items_per_source` in ScheduledRunRequest (50+)
@@ -123,8 +126,9 @@ The scheduled pipeline should run on Railway (NOT locally). Set up in Railway da
 
 The `scheduled-run` endpoint automatically:
 - Ingests up to 25 new articles
+- Classifies pending articles (LLM → domain + feed_category)
 - Neutralizes up to 25 pending articles
-- Rebuilds the brief
+- Rebuilds the brief (grouped by 10 feed categories)
 - Hides articles older than 24 hours
 
 ### Common Operations
@@ -133,6 +137,18 @@ The `scheduled-run` endpoint automatically:
 # Trigger RSS ingestion
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/ingest/run" \
   -H "X-API-Key: staging-key-123"
+
+# Classify pending articles (LLM-powered domain + feed category)
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: staging-key-123" \
+  -d '{"limit": 25}'
+
+# Reclassify all articles (e.g., after prompt changes)
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: staging-key-123" \
+  -d '{"limit": 200, "force": true}'
 
 # Neutralize pending articles (or force re-neutralize)
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
@@ -213,10 +229,10 @@ python scripts/test_span_detection.py --limit 5           # Multiple from brief
 app/
 ├── main.py              # FastAPI entry point
 ├── database.py          # DB configuration
-├── models.py            # SQLAlchemy ORM models
+├── models.py            # SQLAlchemy ORM models (Domain, FeedCategory, Section enums)
 ├── taxonomy.py          # 115 manipulation types (v2)
 ├── routers/
-│   ├── admin.py         # V1 admin endpoints
+│   ├── admin.py         # V1 admin endpoints (ingest, classify, neutralize, brief, pipeline)
 │   ├── brief.py         # V1 brief endpoints
 │   ├── stories.py       # V1 story endpoints + debug endpoint
 │   ├── sources.py       # V1 sources endpoints
@@ -224,8 +240,12 @@ app/
 ├── schemas/             # Pydantic request/response schemas
 ├── services/
 │   ├── ingestion.py     # RSS ingestion
+│   ├── llm_classifier.py           # LLM article classification (gpt-4o-mini → gemini fallback)
+│   ├── domain_mapper.py            # Domain + geography → feed_category mapping
+│   ├── enhanced_keyword_classifier.py  # 20-domain keyword fallback classifier
 │   ├── neutralizer.py   # V1 neutralizer with synthesis fallback
-│   ├── brief_assembly.py
+│   ├── brief_assembly.py # Groups by feed_category (10 categories)
+│   ├── alerts.py        # Pipeline alerting (includes classify fallback rate)
 │   └── ...
 ├── storage/             # Object storage providers (S3, local)
 └── jobs/                # Background jobs
@@ -246,6 +266,69 @@ When UI text appears too long or gets truncated, the constraint is usually in th
 4. Re-neutralize: `POST /v1/neutralize/run` with `force: true`
 5. Rebuild brief: `POST /v1/brief/run`
 6. Verify in app
+
+## Article Classification Pipeline (Jan 2026)
+
+### Overview
+
+Articles are classified into 20 internal **domains** (editorial taxonomy) and mapped to 10 user-facing **feed categories**. Classification runs as a separate pipeline stage between INGEST and NEUTRALIZE.
+
+### Pipeline Stage: CLASSIFY
+
+```
+StoryRaw (from INGEST) → fetch body from S3 (first 2000 chars)
+  → LLM classify (gpt-4o-mini primary, gemini-2.0-flash fallback)
+  → Enhanced keyword classifier (last resort, <1% of articles)
+  → domain_mapper: domain + geography → feed_category
+  → Update StoryRaw with: domain, feed_category, classification_tags, confidence, model, method
+```
+
+**Reliability chain (4 attempts):**
+1. gpt-4o-mini with full prompt (JSON mode)
+2. gpt-4o-mini with simplified prompt
+3. gemini-2.0-flash with full prompt
+4. Enhanced keyword classifier (flagged as `classification_method="keyword_fallback"`)
+
+### Enums (in `app/models.py`)
+
+**Domain** (20 internal values): `global_affairs`, `governance_politics`, `law_justice`, `security_defense`, `crime_public_safety`, `economy_macroeconomics`, `finance_markets`, `business_industry`, `labor_demographics`, `infrastructure_systems`, `energy`, `environment_climate`, `science_research`, `health_medicine`, `technology`, `media_information`, `sports_competition`, `society_culture`, `lifestyle_personal`, `incidents_disasters`
+
+**FeedCategory** (10 user-facing): `world`, `us`, `local`, `business`, `technology`, `science`, `health`, `environment`, `sports`, `culture`
+
+### Domain → Feed Category Mapping (`domain_mapper.py`)
+
+15 domains map directly regardless of geography. 5 domains (`governance_politics`, `law_justice`, `security_defense`, `crime_public_safety`, `incidents_disasters`) are geography-dependent — they map to `us`/`local`/`world` based on the LLM's geography tag.
+
+### StoryRaw Classification Columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `domain` | String(40) | Internal domain (20 values) |
+| `feed_category` | String(32) | User-facing category (10 values) |
+| `classification_tags` | JSONB | `{geography, geography_detail, actors, action_type, topic_keywords}` |
+| `classification_confidence` | Float | 0.0-1.0 (LLM self-reported, 0.0 for keyword fallback) |
+| `classification_model` | String(64) | e.g. "gpt-4o-mini", "gemini-2.0-flash" |
+| `classification_method` | String(20) | "llm" or "keyword_fallback" |
+| `classified_at` | DateTime | When classification was performed |
+
+### Brief Assembly
+
+Brief groups stories by `feed_category` (10 categories) in fixed order: World, U.S., Local, Business, Technology, Science, Health, Environment, Sports, Culture. Articles without `feed_category` fall back to the legacy `section` field.
+
+### Monitoring
+
+Pipeline alerts fire if keyword fallback rate exceeds 1% (`CLASSIFY_FALLBACK_RATE_HIGH`).
+
+### Classify Endpoint
+
+```bash
+POST /v1/classify/run
+Body: {"limit": 25, "force": false, "story_ids": null}
+```
+
+- `limit`: Max articles to classify (default 25)
+- `force`: Reclassify already-classified articles
+- `story_ids`: Classify specific articles by ID
 
 ## UI Verification Workflow
 

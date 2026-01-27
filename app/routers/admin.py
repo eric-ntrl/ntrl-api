@@ -24,6 +24,8 @@ from app.schemas.admin import (
     IngestRunRequest,
     IngestRunResponse,
     IngestSourceResult,
+    ClassifyRunRequest,
+    ClassifyRunResponse,
     NeutralizeRunRequest,
     NeutralizeRunResponse,
     NeutralizeStoryResult,
@@ -289,6 +291,63 @@ def run_ingest(
     )
 
 
+@router.post("/classify/run", response_model=ClassifyRunResponse)
+def run_classify(
+    request: ClassifyRunRequest = ClassifyRunRequest(),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> ClassifyRunResponse:
+    """
+    Trigger LLM-based article classification.
+
+    Classifies articles into 20 internal domains, maps to 10 user-facing
+    feed categories. Uses multi-model retry chain (gpt-4o-mini → gemini-flash)
+    with keyword fallback.
+    """
+    from app.services.llm_classifier import LLMClassifier
+
+    started_at = datetime.utcnow()
+    classifier = LLMClassifier()
+
+    try:
+        if request.force:
+            result = classifier.reclassify_all(db, limit=request.limit)
+        else:
+            result = classifier.classify_pending(db, limit=request.limit)
+
+        finished_at = datetime.utcnow()
+        duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+
+        status = "completed"
+        if result.total == 0:
+            status = "empty"
+        elif result.failed > 0 and result.success == 0:
+            status = "failed"
+
+        return ClassifyRunResponse(
+            status=status,
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+            classify_total=result.total,
+            classify_success=result.success,
+            classify_llm=result.llm,
+            classify_keyword_fallback=result.keyword_fallback,
+            classify_failed=result.failed,
+            errors=result.errors,
+        )
+    except Exception as e:
+        finished_at = datetime.utcnow()
+        duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+        return ClassifyRunResponse(
+            status="failed",
+            started_at=started_at,
+            finished_at=finished_at,
+            duration_ms=duration_ms,
+            errors=[str(e)],
+        )
+
+
 @router.post("/neutralize/run", response_model=NeutralizeRunResponse)
 def run_neutralize(
     request: NeutralizeRunRequest = NeutralizeRunRequest(),
@@ -436,7 +495,36 @@ def run_pipeline(
         ))
         errors.append(f"Ingest failed: {e}")
 
-    # Stage 2: Neutralize
+    # Stage 2: Classify
+    try:
+        from app.services.llm_classifier import LLMClassifier
+        classify_started = datetime.utcnow()
+        classifier = LLMClassifier()
+        classify_result = classifier.classify_pending(db, limit=25)
+        classify_finished = datetime.utcnow()
+        classify_duration = int((classify_finished - classify_started).total_seconds() * 1000)
+        stages.append(PipelineStageResult(
+            stage="classify",
+            status="completed",
+            duration_ms=classify_duration,
+            details={
+                'total': classify_result.total,
+                'success': classify_result.success,
+                'llm': classify_result.llm,
+                'keyword_fallback': classify_result.keyword_fallback,
+                'failed': classify_result.failed,
+            }
+        ))
+    except Exception as e:
+        stages.append(PipelineStageResult(
+            stage="classify",
+            status="failed",
+            duration_ms=0,
+            details={'error': str(e)}
+        ))
+        errors.append(f"Classify failed: {e}")
+
+    # Stage 3: Neutralize
     try:
         neutralize_service = NeutralizerService()
         neutralize_result = neutralize_service.neutralize_pending(
@@ -463,7 +551,7 @@ def run_pipeline(
         ))
         errors.append(f"Neutralize failed: {e}")
 
-    # Stage 3: Brief assembly
+    # Stage 4: Brief assembly
     try:
         brief_service = BriefAssemblyService()
         brief_result = brief_service.assemble_brief(
@@ -499,6 +587,13 @@ def run_pipeline(
     else:
         overall_status = "completed"
 
+    # Build summary from named stages
+    def _stage_detail(name: str, key: str, default=0):
+        for s in stages:
+            if s.stage == name:
+                return s.details.get(key, default)
+        return default
+
     return PipelineRunResponse(
         status=overall_status,
         started_at=started_at,
@@ -506,9 +601,10 @@ def run_pipeline(
         total_duration_ms=total_duration_ms,
         stages=stages,
         summary={
-            'articles_ingested': stages[0].details.get('total_ingested', 0) if stages else 0,
-            'articles_neutralized': stages[1].details.get('total_processed', 0) if len(stages) > 1 else 0,
-            'stories_in_brief': stages[2].details.get('total_stories', 0) if len(stages) > 2 else 0,
+            'articles_ingested': _stage_detail('ingest', 'total_ingested'),
+            'articles_classified': _stage_detail('classify', 'success'),
+            'articles_neutralized': _stage_detail('neutralize', 'total_processed'),
+            'stories_in_brief': _stage_detail('brief', 'total_stories'),
             'errors': errors,
         }
     )
@@ -539,6 +635,11 @@ class ScheduledRunResponse(BaseModel):
     ingest_body_downloaded: int
     ingest_body_failed: int
     ingest_skipped_duplicate: int
+    classify_total: int = 0
+    classify_success: int = 0
+    classify_llm: int = 0
+    classify_keyword_fallback: int = 0
+    classify_failed: int = 0
     neutralize_total: int
     neutralize_success: int
     neutralize_skipped_no_body: int
@@ -600,7 +701,25 @@ def run_scheduled_pipeline(
     except Exception as e:
         errors.append(f"Ingest failed: {e}")
 
-    # Stage 2: Neutralize
+    # Stage 2: Classify
+    classify_total = 0
+    classify_success = 0
+    classify_llm = 0
+    classify_keyword_fallback = 0
+    classify_failed = 0
+    try:
+        from app.services.llm_classifier import LLMClassifier
+        classifier = LLMClassifier()
+        classify_result = classifier.classify_pending(db, limit=25)
+        classify_total = classify_result.total
+        classify_success = classify_result.success
+        classify_llm = classify_result.llm
+        classify_keyword_fallback = classify_result.keyword_fallback
+        classify_failed = classify_result.failed
+    except Exception as e:
+        errors.append(f"Classify failed: {e}")
+
+    # Stage 3: Neutralize
     try:
         neutralize_service = NeutralizerService()
         neutralize_result = neutralize_service.neutralize_pending(
@@ -615,7 +734,7 @@ def run_scheduled_pipeline(
     except Exception as e:
         errors.append(f"Neutralize failed: {e}")
 
-    # Stage 3: Brief assembly
+    # Stage 4: Brief assembly
     try:
         brief_service = BriefAssemblyService()
         brief_result = brief_service.assemble_brief(
@@ -657,6 +776,11 @@ def run_scheduled_pipeline(
         ingest_body_downloaded=ingest_body_downloaded,
         ingest_body_failed=ingest_body_failed,
         ingest_skipped_duplicate=ingest_skipped_duplicate,
+        classify_total=classify_total,
+        classify_success=classify_success,
+        classify_llm=classify_llm,
+        classify_keyword_fallback=classify_keyword_fallback,
+        classify_failed=classify_failed,
         neutralize_total=neutralize_total,
         neutralize_success=neutralize_success,
         neutralize_skipped_no_body=neutralize_skipped_no_body,
@@ -685,6 +809,11 @@ def run_scheduled_pipeline(
         ingest_body_downloaded=ingest_body_downloaded,
         ingest_body_failed=ingest_body_failed,
         ingest_skipped_duplicate=ingest_skipped_duplicate,
+        classify_total=classify_total,
+        classify_success=classify_success,
+        classify_llm=classify_llm,
+        classify_keyword_fallback=classify_keyword_fallback,
+        classify_failed=classify_failed,
         neutralize_total=neutralize_total,
         neutralize_success=neutralize_success,
         neutralize_skipped_no_body=neutralize_skipped_no_body,

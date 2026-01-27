@@ -32,9 +32,9 @@ class BriefSection(BaseModel):
     """A section in the daily brief with its stories."""
     model_config = ConfigDict(from_attributes=True)
 
-    name: str = Field(..., description="Section name (world, us, local, business, technology)")
+    name: str = Field(..., description="Section name (e.g. world, us, science, health)")
     display_name: str = Field(..., description="Display name for UI")
-    order: int = Field(..., description="Section order (0-4)")
+    order: int = Field(..., description="Section order (0-9)")
     stories: List[BriefStory] = Field(default_factory=list)
     story_count: int = Field(0, description="Number of stories in section")
 
@@ -63,11 +63,25 @@ class BriefResponse(BaseModel):
     )
 
 
-# Section display names
+# Section display names (legacy 5-section)
 SECTION_DISPLAY_NAMES = {
     "world": "World",
     "us": "U.S.",
     "local": "Local",
     "business": "Business & Markets",
     "technology": "Technology",
+}
+
+# Feed category display names (10-category)
+FEED_CATEGORY_DISPLAY_NAMES = {
+    "world": "World",
+    "us": "U.S.",
+    "local": "Local",
+    "business": "Business",
+    "technology": "Technology",
+    "science": "Science",
+    "health": "Health",
+    "environment": "Environment",
+    "sports": "Sports",
+    "culture": "Culture",
 }

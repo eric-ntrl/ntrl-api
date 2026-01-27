@@ -39,7 +39,7 @@ from app.database import Base
 # -----------------------------------------------------------------------------
 
 class Section(str, Enum):
-    """Fixed sections for daily brief (deterministic order)."""
+    """Fixed sections for daily brief (deterministic order). Legacy — see FeedCategory."""
     WORLD = "world"
     US = "us"
     LOCAL = "local"
@@ -47,13 +47,79 @@ class Section(str, Enum):
     TECHNOLOGY = "technology"
 
 
-# Section ordering for deterministic briefs
+# Section ordering for deterministic briefs (legacy — see FEED_CATEGORY_ORDER)
 SECTION_ORDER = {
     Section.WORLD: 0,
     Section.US: 1,
     Section.LOCAL: 2,
     Section.BUSINESS: 3,
     Section.TECHNOLOGY: 4,
+}
+
+
+class Domain(str, Enum):
+    """20 internal editorial domains (system-only, not user-facing)."""
+    GLOBAL_AFFAIRS = "global_affairs"
+    GOVERNANCE_POLITICS = "governance_politics"
+    LAW_JUSTICE = "law_justice"
+    SECURITY_DEFENSE = "security_defense"
+    CRIME_PUBLIC_SAFETY = "crime_public_safety"
+    ECONOMY_MACROECONOMICS = "economy_macroeconomics"
+    FINANCE_MARKETS = "finance_markets"
+    BUSINESS_INDUSTRY = "business_industry"
+    LABOR_DEMOGRAPHICS = "labor_demographics"
+    INFRASTRUCTURE_SYSTEMS = "infrastructure_systems"
+    ENERGY = "energy"
+    ENVIRONMENT_CLIMATE = "environment_climate"
+    SCIENCE_RESEARCH = "science_research"
+    HEALTH_MEDICINE = "health_medicine"
+    TECHNOLOGY = "technology"
+    MEDIA_INFORMATION = "media_information"
+    SPORTS_COMPETITION = "sports_competition"
+    SOCIETY_CULTURE = "society_culture"
+    LIFESTYLE_PERSONAL = "lifestyle_personal"
+    INCIDENTS_DISASTERS = "incidents_disasters"
+
+
+class FeedCategory(str, Enum):
+    """10 user-facing feed categories."""
+    WORLD = "world"
+    US = "us"
+    LOCAL = "local"
+    BUSINESS = "business"
+    TECHNOLOGY = "technology"
+    SCIENCE = "science"
+    HEALTH = "health"
+    ENVIRONMENT = "environment"
+    SPORTS = "sports"
+    CULTURE = "culture"
+
+
+FEED_CATEGORY_ORDER = {
+    FeedCategory.WORLD: 0,
+    FeedCategory.US: 1,
+    FeedCategory.LOCAL: 2,
+    FeedCategory.BUSINESS: 3,
+    FeedCategory.TECHNOLOGY: 4,
+    FeedCategory.SCIENCE: 5,
+    FeedCategory.HEALTH: 6,
+    FeedCategory.ENVIRONMENT: 7,
+    FeedCategory.SPORTS: 8,
+    FeedCategory.CULTURE: 9,
+}
+
+
+FEED_CATEGORY_DISPLAY = {
+    "world": "World",
+    "us": "U.S.",
+    "local": "Local",
+    "business": "Business",
+    "technology": "Technology",
+    "science": "Science",
+    "health": "Health",
+    "environment": "Environment",
+    "sports": "Sports",
+    "culture": "Culture",
 }
 
 
@@ -166,8 +232,18 @@ class StoryRaw(Base):
     published_at = Column(DateTime, nullable=False)
     ingested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    # Classification (set during pipeline)
-    section = Column(String(32), nullable=True)  # Section enum value
+    # Classification (set during ingestion — keyword heuristic)
+    section = Column(String(32), nullable=True)  # Legacy Section enum value
+
+    # Classification results (populated by CLASSIFY pipeline stage)
+    domain = Column(String(40), nullable=True)                  # Internal domain (20 values)
+    feed_category = Column(String(32), nullable=True)           # User-facing category (10 values)
+    classification_tags = Column(JSONB, nullable=True)          # {geography, actors, action_type, ...}
+    classification_confidence = Column(Float, nullable=True)    # 0.0-1.0
+    classification_model = Column(String(64), nullable=True)    # "gpt-4o-mini", "gemini-2.0-flash", etc.
+    classification_method = Column(String(20), nullable=True)   # "llm" or "keyword_fallback"
+    classified_at = Column(DateTime(timezone=True), nullable=True)
+
     is_duplicate = Column(Boolean, default=False, nullable=False)
     duplicate_of_id = Column(UUID(as_uuid=True), ForeignKey("stories_raw.id"), nullable=True)
 
@@ -187,6 +263,10 @@ class StoryRaw(Base):
         Index("ix_stories_raw_section", "section"),
         Index("ix_stories_raw_ingested_at", "ingested_at"),
         Index("ix_stories_raw_content_available", "raw_content_available"),
+        Index("ix_stories_raw_domain", "domain"),
+        Index("ix_stories_raw_feed_category", "feed_category"),
+        Index("ix_stories_raw_classified_at", "classified_at"),
+        Index("ix_stories_raw_classification_method", "classification_method"),
     )
 
 
@@ -485,6 +565,13 @@ class PipelineRunSummary(Base):
     ingest_body_downloaded = Column(Integer, default=0, nullable=False)
     ingest_body_failed = Column(Integer, default=0, nullable=False)
     ingest_skipped_duplicate = Column(Integer, default=0, nullable=False)
+
+    # Classification stats
+    classify_total = Column(Integer, default=0, nullable=False)
+    classify_success = Column(Integer, default=0, nullable=False)
+    classify_llm = Column(Integer, default=0, nullable=False)
+    classify_keyword_fallback = Column(Integer, default=0, nullable=False)
+    classify_failed = Column(Integer, default=0, nullable=False)
 
     # Neutralization stats
     neutralize_total = Column(Integer, default=0, nullable=False)

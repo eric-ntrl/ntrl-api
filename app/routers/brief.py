@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models
-from app.models import Section, SECTION_ORDER
-from app.schemas.brief import BriefResponse, BriefSection, BriefStory, SECTION_DISPLAY_NAMES
+from app.models import FeedCategory, FEED_CATEGORY_ORDER
+from app.schemas.brief import BriefResponse, BriefSection, BriefStory, FEED_CATEGORY_DISPLAY_NAMES
 
 router = APIRouter(prefix="/v1", tags=["brief"])
 
@@ -76,24 +76,24 @@ def get_brief(
     sections: List[BriefSection] = []
     total_filtered_stories = 0
 
-    for section in Section:
-        section_items = [
+    for category in FeedCategory:
+        category_items = [
             item for item in brief.items
-            if item.section == section.value
+            if item.section == category.value
         ]
 
         # Apply time filter if specified
         if time_cutoff:
-            section_items = [
-                item for item in section_items
+            category_items = [
+                item for item in category_items
                 if item.published_at >= time_cutoff
             ]
 
-        if not section_items:
+        if not category_items:
             continue
 
         # Fetch detail fields from story_neutralized for each item
-        story_ids = [item.story_neutralized_id for item in section_items]
+        story_ids = [item.story_neutralized_id for item in category_items]
         neutralized_map = {}
         if story_ids:
             neutralized_stories = db.query(models.StoryNeutralized).filter(
@@ -102,7 +102,7 @@ def get_brief(
             neutralized_map = {str(s.id): s for s in neutralized_stories}
 
         stories = []
-        for item in sorted(section_items, key=lambda x: x.position):
+        for item in sorted(category_items, key=lambda x: x.position):
             neutralized = neutralized_map.get(str(item.story_neutralized_id))
             stories.append(BriefStory(
                 id=str(item.story_neutralized_id),
@@ -123,9 +123,9 @@ def get_brief(
         total_filtered_stories += len(stories)
 
         sections.append(BriefSection(
-            name=section.value,
-            display_name=SECTION_DISPLAY_NAMES.get(section.value, section.value.title()),
-            order=SECTION_ORDER[section],
+            name=category.value,
+            display_name=FEED_CATEGORY_DISPLAY_NAMES.get(category.value, category.value.title()),
+            order=FEED_CATEGORY_ORDER[category],
             stories=stories,
             story_count=len(stories),
         ))
