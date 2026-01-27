@@ -69,9 +69,9 @@ class S3StorageProvider(StorageProvider):
 
         # Configure boto3 client
         config = Config(
-            retries={"max_attempts": 3, "mode": "adaptive"},
+            retries={"max_attempts": 2, "mode": "adaptive"},
             connect_timeout=5,
-            read_timeout=30,
+            read_timeout=15,
         )
 
         # Pass credentials explicitly if available

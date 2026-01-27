@@ -6,6 +6,7 @@ GET /v1/stories/{id} - Get story detail (neutralized content first)
 GET /v1/stories/{id}/transparency - Get transparency view with what was removed
 """
 
+import concurrent.futures
 import logging
 import uuid
 from typing import List, Optional
@@ -37,27 +38,38 @@ _story_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 _transparency_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 
 
-def _get_body_from_storage(story_raw: models.StoryRaw) -> Optional[str]:
+def _do_download(uri: str) -> Optional[str]:
+    """Download content from storage (runs in thread for timeout support)."""
+    storage = get_storage_provider()
+    result = storage.download(uri)
+    if result and result.exists:
+        return result.content.decode("utf-8")
+    return None
+
+
+def _get_body_from_storage(story_raw: models.StoryRaw, timeout_seconds: int = 8) -> Optional[str]:
     """
-    Retrieve body content from object storage.
+    Retrieve body content from object storage with timeout.
 
     Returns None if:
     - No content was stored
     - Content has expired
     - Storage retrieval fails
+    - Download exceeds timeout_seconds
     """
     if not story_raw.raw_content_available or not story_raw.raw_content_uri:
         return None
 
     try:
-        storage = get_storage_provider()
-        result = storage.download(story_raw.raw_content_uri)
-        if result and result.exists:
-            return result.content.decode("utf-8")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_do_download, story_raw.raw_content_uri)
+            return future.result(timeout=timeout_seconds)
+    except concurrent.futures.TimeoutError:
+        logger.warning(f"Storage download timed out after {timeout_seconds}s")
+        return None
     except Exception as e:
         logger.warning(f"Failed to retrieve body from storage: {e}")
-
-    return None
+        return None
 
 
 def _get_story_or_404(db: Session, story_id: str) -> tuple:

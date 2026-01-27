@@ -336,6 +336,17 @@
       "false_negatives": 8,
       "articles_tested": 4,
       "test_passed": true
+    },
+    {
+      "date": "2026-01-27T15:21:14.831252",
+      "precision": 0.1069,
+      "recall": 0.7571,
+      "f1": 0.1873,
+      "true_positives": 53,
+      "false_positives": 443,
+      "false_negatives": 17,
+      "articles_tested": 14,
+      "test_passed": false
     }
   ]
 }
