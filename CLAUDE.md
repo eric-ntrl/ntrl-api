@@ -367,7 +367,8 @@ Check these in Expo dev tools or browser console.
 ## Highlight Accuracy Testing
 
 ### Test Framework
-- `tests/test_highlight_accuracy.py` - Main accuracy tests
+- `tests/test_highlight_accuracy.py` - Main accuracy tests against gold standard corpus
+- `tests/test_span_accuracy_e2e.py` - E2E tests for specific phrase detection (must-flag/must-not-flag)
 - `tests/fixtures/gold_standard/` - Gold standard span annotations (10 articles)
 - `tests/fixtures/test_corpus/` - Test article corpus
 - `scripts/verify_gold_positions.py` - Verify/fix gold standard positions
@@ -379,8 +380,11 @@ Check these in Expo dev tools or browser console.
 # Pattern-based tests (fast, no API key)
 pipenv run pytest tests/test_highlight_accuracy.py -m "not llm" -v
 
-# LLM-based tests (requires OPENAI_API_KEY in .env)
+# LLM-based accuracy tests (requires OPENAI_API_KEY in .env)
 pipenv run pytest tests/test_highlight_accuracy.py -m llm -v -s
+
+# E2E span accuracy validation (tests specific phrases)
+pipenv run pytest tests/test_span_accuracy_e2e.py -m llm -v -s
 
 # Verify gold standard positions
 python scripts/verify_gold_positions.py --all
@@ -389,17 +393,28 @@ python scripts/verify_gold_positions.py --all
 python scripts/review_accuracy.py --article 003 --provider openai
 ```
 
+### E2E Accuracy Tests (`test_span_accuracy_e2e.py`)
+Tests specific phrase detection scenarios:
+- **must_flag**: Phrases that MUST be detected (ecstatic, furious, A-list celebs, whopping)
+- **must_not_flag**: Phrases that must NOT be detected (crisis management, literal "car slammed into wall")
+- **Quoted speech**: Verifies content inside quotes is excluded
+- **Professional terms**: Verifies legitimate professions aren't flagged
+
 ### Current Metrics (gpt-4o-mini, Jan 2026)
 | Metric | Pattern-Based | LLM-Based | Target | Status |
 |--------|---------------|-----------|--------|--------|
-| Precision | 5.87% | **72.09%** | 75% | Close |
-| Recall | 69.23% | **79.49%** | 75% | **Exceeded** |
-| F1 Score | 10.82% | **75.61%** | 75% | **Exceeded** |
+| Precision | 5.87% | **96.43%** | 80% | **Exceeded** |
+| Recall | 69.23% | **77.14%** | 85% | Close |
+| F1 Score | 10.82% | **85.71%** | 75% | **Exceeded** |
 
 **Recent improvements:**
+- Fixed curly quote filtering bug (see "Curly Quote Bug" section below)
+- Added emotional state words: ecstatic, outraged, furious, seething, gutted
+- Added tabloid vocabulary: A-list, celeb, haunts, mogul, sound the alarm
+- Added emphasis superlatives: whopping, staggering, eye-watering
+- Added professional terms to false positive filter: crisis management, public relations
 - Expanded gold standard based on LLM review (10 new spans added)
 - Improved span matching to handle phrase containment
-- Removed incorrectly flagged spans inside quotes
 
 ### LLM Span Detection Architecture
 
@@ -415,6 +430,17 @@ python scripts/review_accuracy.py --article 003 --provider openai
 - `neutralizer.py`: `detect_spans_via_llm_openai/gemini/anthropic()` - Provider-specific API calls
 - `neutralizer.py`: `filter_false_positives()` - Removes known false positives like "bowel cancer"
 - `neutralizer.py`: `detect_spans_debug_openai()` - Debug version returning pipeline trace
+- `neutralizer.py`: `QUOTE_PAIRS` - Quote character mapping (uses Unicode escapes)
+- `neutralizer.py`: `FALSE_POSITIVE_PHRASES` - Professional terms and medical terminology
+
+**Logging format** (`[SPAN_DETECTION]` prefix):
+```
+[SPAN_DETECTION] Starting LLM call, model=gpt-4o-mini, body_length=4721
+[SPAN_DETECTION] LLM responded, response_length=523
+[SPAN_DETECTION] LLM returned 17 phrases
+[SPAN_DETECTION] Pipeline: position_match=22 → quote_filter=13 → fp_filter=13
+[SPAN_DETECTION] False positive filter removed 2: ['crisis management', 'public relations']
+```
 
 **Manipulation Taxonomy (12 categories in prompt):**
 
@@ -486,6 +512,44 @@ The quote filter now handles apostrophes in contractions correctly:
 
 **Key file:** `app/services/neutralizer.py` - `is_contraction_apostrophe()` and `filter_spans_in_quotes()`
 
+### Curly Quote Bug (CRITICAL - Fixed Jan 2026)
+
+**Problem:** The quote filter wasn't filtering content inside curly quotes (`"` `"` `'` `'`). Many news articles use curly/smart quotes, not straight quotes.
+
+**Root cause:** The `QUOTE_PAIRS` dictionary was supposed to contain curly quote Unicode characters, but they were rendered as straight quotes when the file was saved/edited. The code only matched ord 34/39 (straight), not ord 8220/8221/8216/8217 (curly).
+
+**Fix:** Use Unicode escape sequences instead of literal characters:
+```python
+# WRONG - curly quotes may be converted to straight quotes by editors
+QUOTE_PAIRS = {
+    '"': '"',   # This comment says "curly" but chars are straight!
+    '"': '"',
+}
+
+# CORRECT - Unicode escapes are unambiguous
+QUOTE_PAIRS = {
+    '"': '"',           # Straight double quote (U+0022)
+    '\u201c': '\u201d', # Curly double quotes (U+201C -> U+201D)
+    "'": "'",           # Straight single quote (U+0027)
+    '\u2018': '\u2019', # Curly single quotes (U+2018 -> U+2019)
+}
+```
+
+**Best practice:** When defining Unicode characters in Python source files, **always use escape sequences** (`\u201c`) rather than literal characters. Editors, copy/paste, and file encoding can silently convert special characters.
+
+**How to verify quote filter is working:**
+```bash
+# Check QUOTE_PAIRS has correct Unicode code points
+pipenv run python3 -c "
+from app.services.neutralizer import QUOTE_PAIRS
+for k, v in QUOTE_PAIRS.items():
+    print(f'Key: ord={ord(k)}, Val: ord={ord(v)}')
+"
+# Should show: 34, 34, 8220, 8221, 39, 39, 8216, 8217
+```
+
+**Impact:** Before fix, quoted speech like `"That's shocking," he said` was being highlighted. After fix, content inside both straight AND curly quotes is correctly excluded.
+
 ### Known Test Failures (Expected)
 
 6 tests fail in `test_neutralizer.py` and `test_article_neutralization.py` - **these are expected**:
@@ -512,11 +576,44 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 4. ✅ Character limit tightening (feed_summary: 100-120 chars, hard max 130)
 5. ✅ **Architecture fix**: Removed MockNeutralizerProvider fallbacks, added failure tracking
 6. ✅ **Contraction detection**: Apostrophes in won't/it's no longer break quote filtering
+7. ✅ **Curly quote fix**: QUOTE_PAIRS now uses Unicode escapes to ensure curly quotes work
+8. ✅ **Expanded prompt**: Added emotional state words, tabloid vocabulary, emphasis superlatives
+9. ✅ **Professional terms**: crisis management, public relations added to false positive filter
+10. ✅ **Structured logging**: `[SPAN_DETECTION]` prefix for pipeline instrumentation
 
 ### Remaining Issues
 
 1. **Missing highlights in long articles** - LLM misses phrases in 8000+ char articles
    - May need chunking implementation (deferred)
+
+2. **Duplicate content in articles** - Some articles have repeated paragraphs
+   - Cause: Image captions repeating article intro text from source
+   - Effect: Same span appears multiple times at different positions
+   - This is an **ingestion issue** from source material, not span detection
+   - Example: Harry Styles article has "fiercely slammed" twice due to caption duplication
+
+### Important: Database Spans vs Fresh Detection
+
+**Spans in the database are from OLD pipeline runs.** When you change span detection code:
+
+1. Existing spans in DB won't change automatically
+2. Use `/debug/spans` endpoint to see what FRESH detection would return
+3. Re-neutralize articles with `force: true` to update spans in DB
+
+```bash
+# Compare old spans (in DB) vs new detection (fresh)
+# 1. Check what's in DB
+curl ".../v1/stories/{id}/transparency" -H "X-API-Key: ..."
+
+# 2. Check what fresh detection returns
+curl ".../v1/stories/{id}/debug/spans" -H "X-API-Key: ..."
+
+# 3. If different, re-neutralize to update DB
+curl -X POST ".../v1/neutralize/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ..." \
+  -d '{"story_ids": ["{id}"], "force": true}'
+```
 
 **Test commands:**
 ```bash
@@ -534,3 +631,21 @@ curl -s "https://api-staging-7b4d.up.railway.app/v1/stories/4365e5df-ffd1-42cd-9
 ## Related Project
 
 The mobile app is at `../ntrl-app/` - see its CLAUDE.md for frontend details.
+
+### UI Highlight Validation Tests
+
+The ntrl-app has E2E tests for highlight validation:
+- `e2e/test_highlight_validation.spec.ts` - Verifies WHAT is highlighted, not just IF something is
+- `e2e/ntrl-view-visual.spec.ts` - Visual regression tests for highlight styling
+
+Run with:
+```bash
+cd ../ntrl-app
+npx playwright test e2e/test_highlight_validation.spec.ts
+```
+
+These tests:
+1. Check that articles with manipulative content have highlights
+2. Verify common false positives (crisis management, etc.) are NOT highlighted
+3. Test highlight toggle behavior
+4. Capture screenshots for visual review

@@ -1125,6 +1125,11 @@ NEVER FLAG - Quoted Text:
 NEVER FLAG - Literal Meanings:
   "car slams into wall", "bomb blast", "radical surgery"
 
+NEVER FLAG - Professional Terms:
+  "crisis management", "reputation management", "crisis manager"
+  "public relations", "media relations", "investor relations"
+  "communications director", "crisis communications"
+
 If a phrase matches ANY of the above, DO NOT include it in your output.
 Most news articles are NOT manipulative - return [] if nothing qualifies.
 
@@ -1139,6 +1144,11 @@ WHAT TO FLAG (only if NOT excluded above)
    FLAG: shocking, devastating, heartbreaking, stunning, dramatic, dire, tragic
    FLAG: slams, blasts, rips, destroys, crushes (when meaning "criticizes")
    FLAG: mind-blowing, incredible, unbelievable, jaw-dropping
+   FLAG: ecstatic, elated, overjoyed (exaggerated positive emotions)
+   FLAG: outraged, furious, infuriated, livid, seething (exaggerated anger)
+   FLAG: devastated, gutted, heartbroken (dramatic emotional states)
+   FLAG: stunned, flabbergasted, gobsmacked (surprise amplification)
+   FLAG: scathed, unscathed (when editorializing, not literal injury)
 
 3. CLICKBAIT - Teases to get clicks
    FLAG: You won't believe, Here's what happened, The truth about
@@ -1147,6 +1157,13 @@ WHAT TO FLAG (only if NOT excluded above)
 4. SELLING/HYPE - Promotes rather than reports
    FLAG: revolutionary, game-changer, groundbreaking, unprecedented
    FLAG: undisputed leader, viral, exclusive, must-see
+   FLAG: celeb, celebs (casual celebrity references)
+   FLAG: A-list, B-list, D-list (celebrity tier language)
+   FLAG: haunts, hotspots (celebrity location slang)
+   FLAG: mogul, tycoon, kingpin (hyperbolic titles)
+   FLAG: sound the alarm, raise the alarm (manufactured urgency)
+   FLAG: whopping, staggering, eye-watering (amplifying numbers)
+   FLAG: massive, enormous (when used for emotional effect, not literal size)
 
 5. AGENDA SIGNALING - Politically loaded framing
    FLAG: radical left, radical right, extremist, dangerous (as political label)
@@ -1522,11 +1539,12 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
 
 
 # Quote character pairs for matching (opening -> closing)
+# Using Unicode escapes to ensure curly quotes are correctly defined
 QUOTE_PAIRS = {
-    '"': '"',   # Straight double quote
-    '"': '"',   # Curly double quotes (open -> close)
-    "'": "'",   # Straight single quote
-    "'": "'",   # Curly single quotes (open -> close)
+    '"': '"',           # Straight double quote (U+0022)
+    '\u201c': '\u201d', # Curly double quotes: " -> " (U+201C -> U+201D)
+    "'": "'",           # Straight single quote (U+0027)
+    '\u2018': '\u2019', # Curly single quotes: ' -> ' (U+2018 -> U+2019)
 }
 
 # All characters that can open a quote
@@ -1665,6 +1683,12 @@ FALSE_POSITIVE_PHRASES = {
     # UI/metadata (multi-word)
     "minutes ago", "hours ago", "sign up", "read more", "continue reading",
     "health newsletter", "email address",
+
+    # Professional service terms (legitimate professions)
+    "crisis management", "reputation management", "crisis manager",
+    "public relations", "media relations", "investor relations",
+    "communications director", "crisis communications",
+    "pr firm", "pr agency", "publicist",
 }
 
 # Patterns that match false positives (case-insensitive partial matches)
@@ -1682,7 +1706,7 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
     This is a safety net for when the LLM doesn't follow the prompt instructions
     to avoid flagging neutral language like medical terms and factual descriptors.
     """
-    logger.warning(f"FILTER_DEBUG: filter_false_positives called with {len(spans)} spans")
+    logger.debug(f"[SPAN_DETECTION] False positive filter input: {len(spans)} spans")
 
     if not spans:
         return spans
@@ -1710,7 +1734,7 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
 
     filtered_count = len(spans) - len(filtered)
     if filtered_count > 0:
-        logger.warning(f"FILTER_DEBUG: Filtered out {filtered_count} false positives: {removed_texts[:5]}")
+        logger.info(f"[SPAN_DETECTION] False positive filter removed {filtered_count}: {removed_texts[:5]}")
 
     return filtered
 
@@ -2817,6 +2841,7 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
 
         # Use minimal system prompt to let the detailed user prompt control detection
         user_prompt = build_span_detection_prompt(body)
+        logger.info(f"[SPAN_DETECTION] Starting LLM call, model={model}, body_length={len(body)}")
 
         response = client.chat.completions.create(
             model=model,
@@ -2830,12 +2855,11 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
 
         # Parse LLM response
         content = response.choices[0].message.content.strip()
-        logger.warning(f"LLM_DEBUG: Raw response (first 500 chars): {content[:500]}")
+        logger.info(f"[SPAN_DETECTION] LLM responded, response_length={len(content)}")
 
         # Handle JSON response (might be {"phrases": [...]} or just [...])
         try:
             data = json.loads(content)
-            logger.warning(f"LLM_DEBUG: Parsed data type: {type(data).__name__}, keys: {list(data.keys()) if isinstance(data, dict) else 'N/A'}")
             if isinstance(data, list):
                 llm_phrases = data
             elif isinstance(data, dict):
@@ -2857,22 +2881,23 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
                     llm_phrases = [data]
             else:
                 llm_phrases = []
-            logger.warning(f"LLM_DEBUG: llm_phrases count: {len(llm_phrases)}, first 3: {llm_phrases[:3]}")
+            logger.info(f"[SPAN_DETECTION] LLM returned {len(llm_phrases)} phrases")
         except json.JSONDecodeError:
             logger.warning(f"LLM span detection returned invalid JSON: {content[:200]}")
             return []
 
         # Convert to TransparencySpans with position matching
         spans = find_phrase_positions(body, llm_phrases)
-        logger.warning(f"LLM_DEBUG: After find_phrase_positions: {len(spans)} spans")
+        after_position = len(spans)
         spans = filter_spans_in_quotes(body, spans)
-        logger.warning(f"LLM_DEBUG: After filter_spans_in_quotes: {len(spans)} spans")
+        after_quotes = len(spans)
         spans = filter_false_positives(spans)
-        logger.warning(f"LLM_DEBUG: After filter_false_positives: {len(spans)} spans")
+        after_fp = len(spans)
+        logger.info(f"[SPAN_DETECTION] Pipeline: position_match={after_position} → quote_filter={after_quotes} → fp_filter={after_fp}")
         return spans
 
     except Exception as e:
-        logger.warning(f"LLM_DEBUG: OpenAI span detection FAILED with error: {type(e).__name__}: {e}")
+        logger.error(f"[SPAN_DETECTION] LLM call failed: {type(e).__name__}: {e}")
         return None  # Return None on failure (not []) so caller knows to use fallback
 
 
