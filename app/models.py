@@ -72,6 +72,7 @@ class SpanReason(str, Enum):
     SELLING = "selling"
     AGENDA_SIGNALING = "agenda_signaling"
     RHETORICAL_FRAMING = "rhetorical_framing"
+    EDITORIAL_VOICE = "editorial_voice"  # First-person opinion markers in news
 
 
 class PipelineStage(str, Enum):

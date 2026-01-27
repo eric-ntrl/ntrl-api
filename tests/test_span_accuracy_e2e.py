@@ -137,6 +137,45 @@ ACCURACY_TEST_CASES = [
         must_flag=["came under fire", "in the crosshairs", "took aim at"],
         must_not_flag=["politician", "comments", "voting record"],
     ),
+    AccuracyTestCase(
+        name="Tabloid celebrity - Katie Price style",
+        text=(
+            "Katie Price's shock fourth marriage sent shockwaves through the showbiz world. "
+            "Her family were completely horrified when they learned about the whirlwind romance. "
+            "The reality star has been through numerous high-profile relationships."
+        ),
+        must_flag=[
+            "shock fourth marriage", "sent shockwaves", "showbiz world",
+            "completely horrified", "whirlwind romance"
+        ],
+        must_not_flag=["Katie Price", "family", "reality star", "relationships"],
+    ),
+    AccuracyTestCase(
+        name="Editorial voice in news",
+        text=(
+            "We're glad to see the Border Czar finally taking action, as it should be. "
+            "These lunatic faceoffs at the border have gone on too long. "
+            "Of course, critics argue the policy doesn't go far enough."
+        ),
+        must_flag=[
+            "We're glad to see", "Border Czar", "as it should be",
+            "lunatic faceoffs", "Of course"
+        ],
+        # Note: "border" removed - it overlaps with "Border Czar" which IS correctly flagged
+        must_not_flag=["policy", "critics", "taking action"],
+    ),
+    AccuracyTestCase(
+        name="Editorial opinion markers",
+        text=(
+            "We believe this decision will have lasting consequences. "
+            "Naturally, the opposition disagrees, but as they should know, "
+            "the evidence clearly supports our position."
+        ),
+        must_flag=[
+            "We believe", "Naturally", "as they should know"
+        ],
+        must_not_flag=["decision", "opposition", "evidence"],
+    ),
 ]
 
 

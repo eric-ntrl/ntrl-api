@@ -13,9 +13,86 @@ For POC, uses keyword matching. Can be enhanced with ML later.
 """
 
 import re
+from enum import Enum
 from typing import Optional
 
 from app.models import Section
+
+
+# -----------------------------------------------------------------------------
+# Content Type Classification (Editorial Detection)
+# -----------------------------------------------------------------------------
+
+class ContentType(str, Enum):
+    """Type of content for determining neutralization approach."""
+    NEWS = "news"          # Standard news reporting
+    EDITORIAL = "editorial"  # Opinion/editorial masquerading as news
+    OPINION = "opinion"      # Explicitly labeled opinion
+
+
+# Patterns that indicate editorial content (not news reporting)
+EDITORIAL_SIGNALS = [
+    r"\bwe('re| are| believe| hope| think| feel| expect)\b",  # First-person opinion
+    r"\bas (it|they) should\b",  # Prescriptive statements
+    r"\bof course\b",  # Assumed agreement
+    r"\bnaturally\b",  # Editorial assumption
+    r"\bobviously\b",  # Editorial assumption
+    r"\bborder czar\b",  # Loaded unofficial title
+    r"\blunatic\b",  # Pejorative
+    r"\babsurd\b",  # Editorial judgment
+    r"\bridiculous\b",  # Editorial judgment
+    r"\bwe're glad\b",  # Editorial approval
+]
+
+
+class ContentTypeClassifier:
+    """
+    Classify content as news vs editorial.
+
+    Editorial content requires different neutralization approach:
+    - Full synthesis rather than span-guided rewriting
+    - Article-level warning about opinion content
+    """
+
+    def classify(
+        self,
+        text: str,
+        source_slug: Optional[str] = None,
+    ) -> ContentType:
+        """
+        Classify content type based on editorial signals.
+
+        Args:
+            text: Article body text
+            source_slug: Source identifier (some sources are inherently editorial)
+
+        Returns:
+            ContentType enum value
+        """
+        if not text:
+            return ContentType.NEWS
+
+        text_lower = text.lower()
+
+        # Count editorial signal matches
+        signal_count = 0
+        for pattern in EDITORIAL_SIGNALS:
+            if re.search(pattern, text_lower, re.IGNORECASE):
+                signal_count += 1
+
+        # High signal count indicates editorial content
+        # Threshold: 3+ signals or 2+ signals in short text
+        text_length = len(text)
+        if signal_count >= 3:
+            return ContentType.EDITORIAL
+        if signal_count >= 2 and text_length < 2000:
+            return ContentType.EDITORIAL
+
+        return ContentType.NEWS
+
+    def is_editorial(self, text: str, source_slug: Optional[str] = None) -> bool:
+        """Convenience method to check if content is editorial."""
+        return self.classify(text, source_slug) == ContentType.EDITORIAL
 
 
 # Keyword sets for each section (lowercase)

@@ -442,7 +442,7 @@ Tests specific phrase detection scenarios:
 [SPAN_DETECTION] False positive filter removed 2: ['crisis management', 'public relations']
 ```
 
-**Manipulation Taxonomy (12 categories in prompt):**
+**Manipulation Taxonomy (14 categories in prompt):**
 
 | # | Category | Examples |
 |---|----------|----------|
@@ -454,12 +454,18 @@ Tests specific phrase detection scenarios:
 | 6 | LOADED VERBS | slammed, blasted, admits, claims |
 | 7 | URGENCY INFLATION (subtle) | Act now, Before it's too late |
 | 8 | AGENDA FRAMING | "the crisis at the border" |
-| 9 | **SPORTS/EVENT HYPE** | brilliant, blockbuster, massive, beautiful (events) |
-| 10 | **LOADED PERSONAL DESCRIPTORS** | handsome, unfriendly face, menacing |
-| 11 | **HYPERBOLIC ADJECTIVES** | punishing, soaked in blood, "of the year" |
-| 12 | **LOADED IDIOMS** | came under fire, in the crosshairs, took aim at |
+| 9 | SPORTS/EVENT HYPE | brilliant, blockbuster, massive, beautiful (events) |
+| 10 | LOADED PERSONAL DESCRIPTORS | handsome, unfriendly face, menacing |
+| 11 | HYPERBOLIC ADJECTIVES | punishing, soaked in blood, "of the year" |
+| 12 | LOADED IDIOMS | came under fire, in the crosshairs, took aim at |
+| 13 | ENTERTAINMENT/CELEBRITY HYPE | romantic escape, whirlwind romance, A-list pair |
+| 14 | **EDITORIAL VOICE** | we're glad, as it should, Border Czar, lunatic |
 
-Categories 9-12 added Jan 2026 to catch sports/editorial manipulation.
+Categories 9-12 added Jan 2026. Categories 13-14 added Jan 2026 for tabloid/editorial detection.
+
+**SpanReason enum values** (in `models.py`):
+- `clickbait`, `urgency_inflation`, `emotional_trigger`, `selling`
+- `agenda_signaling`, `rhetorical_framing`, `editorial_voice`
 
 **JSON format (required by OpenAI json_object mode):**
 ```json
@@ -476,26 +482,35 @@ Categories 9-12 added Jan 2026 to catch sports/editorial manipulation.
 
 **IMPORTANT:** MockNeutralizerProvider is for testing only, never used as production fallback. It has ~5% precision and produces garbled output by removing words without grammar repair.
 
-### Model Discrepancy: Production vs Debug (IMPORTANT)
+### Model Consistency: Production vs Debug (FIXED Jan 2026)
 
-**Production neutralization** uses `gpt-4o-mini` (set via `OPENAI_MODEL` env var on Railway).
-**Debug endpoint** (`/debug/spans`) uses `gpt-4o` (hardcoded default).
+**Both production and debug now use `gpt-4o-mini`** (via `OPENAI_MODEL` env var, default `gpt-4o-mini`).
 
-This causes confusing results when debugging:
-- Debug endpoint may show 13 spans for an article
-- But production neutralization saved 0 spans
-- Reason: `gpt-4o-mini` is more conservative than `gpt-4o`
+Previously, debug endpoint used `gpt-4o` while production used `gpt-4o-mini`, causing confusing discrepancies.
 
-**Example (Katie Price tabloid article):**
-- Debug (`gpt-4o`): 14 phrases found → 13 final spans
-- Production (`gpt-4o-mini`): 0 phrases returned
+### Prompt Restructuring (Jan 2026)
 
-**Workaround:** Check `model_name` in transparency response to see what model was used for stored spans.
+The span detection prompt was restructured to improve `gpt-4o-mini` performance on tabloid content:
+
+1. **WHAT TO FLAG now comes BEFORE exclusions** - leads with detection, not restrictions
+2. **Softened conservative language** - "Balance precision with recall" instead of "BE CONSERVATIVE"
+3. **Added tabloid source awareness** - prompt notes that tabloid sources have more manipulation
+4. **Added tabloid examples** - Katie Price-style examples with emotional amplification
+5. **Added editorial voice category** - detects "we're glad", "as it should", "Border Czar", etc.
+
+### Editorial Content Detection (Jan 2026)
+
+**ContentTypeClassifier** (`classifier.py`) detects editorial content using regex patterns:
+- `we('re| are| believe| hope)`, `as it should`, `of course`, `Border Czar`, etc.
+- Returns `ContentType.EDITORIAL` if 3+ signals found (or 2+ in short text)
+
+**Editorial synthesis fallback** (`detail_full_gen.py`):
+- When content is editorial OR has >15 spans, uses full synthesis instead of span-guided rewriting
+- `EDITORIAL_SYNTHESIS_PROMPT` rewrites entire article neutrally
+- Result: Full view removes editorial voice entirely (like Brief does)
 
 ### Known Issues & Next Steps
 - Pattern-based fallback should probably just report an error instead of showing wrong data
-- **gpt-4o-mini is too conservative** for tabloid content - returns empty for articles like Katie Price that have obvious manipulation ("shockwaves", "whirlwind romance")
-- gpt-4o works better but costs more - consider using gpt-4o for span detection only
 - Article 010 has lower accuracy (38% F1) due to LLM flagging quoted speech
 - Gold standard corpus version is now 1.1 (human reviewed)
 
@@ -597,6 +612,13 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 8. ✅ **Expanded prompt**: Added emotional state words, tabloid vocabulary, emphasis superlatives
 9. ✅ **Professional terms**: crisis management, public relations added to false positive filter
 10. ✅ **Structured logging**: `[SPAN_DETECTION]` prefix for pipeline instrumentation
+11. ✅ **Debug model fix**: Debug endpoint now uses same model as production (gpt-4o-mini)
+12. ✅ **Prompt restructuring**: WHAT TO FLAG before EXCLUSIONS, softened conservative language
+13. ✅ **Editorial voice category**: Category 14 detects "we're glad", "Border Czar", "lunatic", etc.
+14. ✅ **ContentTypeClassifier**: Detects editorial content for synthesis fallback
+15. ✅ **Editorial synthesis**: Uses full rewrite for editorial content or >15 spans
+16. ✅ **Tabloid examples**: Added Katie Price-style examples to prompt
+17. ✅ **Category-specific highlights**: Frontend uses different colors per manipulation type
 
 ### Remaining Issues
 

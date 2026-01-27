@@ -37,7 +37,43 @@ ORIGINAL ARTICLE:
 MANIPULATION SPANS TO FIX:
 {spans_formatted}
 
-For each flagged span, apply the recommended action:
+For each flagged span, apply the recommended action:"""
+
+
+# Synthesis prompt for heavily editorial content
+EDITORIAL_SYNTHESIS_PROMPT = """You are a professional news editor. This article contains heavy editorial content that needs to be rewritten as neutral news.
+
+ORIGINAL ARTICLE:
+{body}
+
+This article has been identified as editorial content masquerading as news. Your task is to rewrite it as neutral, factual reporting.
+
+CRITICAL RULES:
+1. PRESERVE ALL FACTS - Every name, number, date, quote, and claim must remain
+2. REMOVE EDITORIAL VOICE - Remove "we believe", "we're glad", "as it should be", etc.
+3. NEUTRALIZE LOADED TERMS - Replace "Border Czar" with "immigration enforcement lead", etc.
+4. REMOVE PEJORATIVE JUDGMENTS - Remove "lunatic", "absurd", "ridiculous" as descriptors
+5. PRESERVE QUOTES - Direct quotes must be kept VERBATIM
+6. NO INFERENCE - Never add facts or conclusions not in original
+7. MAINTAIN LENGTH - Output should be 70-90% of input length
+
+Return a JSON object with this exact structure:
+{{
+  "neutralized_text": "The full neutralized article text...",
+  "changes": [
+    {{
+      "original": "editorial phrase that was changed",
+      "replacement": "neutral replacement or null if removed",
+      "rationale": "brief explanation"
+    }}
+  ]
+}}
+
+Return ONLY valid JSON, no other text."""
+
+
+# Span-guided prompt continuation (appended to DETAIL_FULL_PROMPT)
+DETAIL_FULL_PROMPT_CONTINUED = """
 - remove: Delete the text entirely (only for pure manipulation with no factual content)
 - replace: Use a neutral equivalent word/phrase
 - rewrite: Rephrase to remove manipulation while keeping facts
@@ -121,6 +157,7 @@ class DetailFullGenerator:
         self,
         body: str,
         scan_result: MergedScanResult,
+        use_synthesis: bool = False,
     ) -> DetailFullResult:
         """
         Generate neutralized article text.
@@ -128,6 +165,7 @@ class DetailFullGenerator:
         Args:
             body: Original article body text
             scan_result: Detection results from ntrl-scan
+            use_synthesis: Force synthesis mode for editorial content
 
         Returns:
             DetailFullResult with neutralized text and change records
@@ -149,16 +187,34 @@ class DetailFullGenerator:
                 processing_time_ms=(time.perf_counter() - start_time) * 1000
             )
 
-        # Format spans for prompt
-        spans_formatted = self._format_spans(scan_result.spans)
+        # Determine if we should use editorial synthesis
+        # Use synthesis when:
+        # 1. Explicitly requested (editorial content detected)
+        # 2. Too many spans (>15) - indicates pervasive manipulation
+        span_count = len(scan_result.spans)
+        should_use_synthesis = use_synthesis or span_count > 15
+
+        if should_use_synthesis:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Using editorial synthesis mode (use_synthesis={use_synthesis}, span_count={span_count})")
+
+        # Format spans for prompt (used in span-guided mode)
+        spans_formatted = self._format_spans(scan_result.spans) if not should_use_synthesis else ""
 
         # Generate based on provider
         if self.config.provider == "mock":
             result = self._mock_generate(body, scan_result.spans)
         elif self.config.provider == "openai":
-            result = await self._openai_generate(body, spans_formatted)
+            if should_use_synthesis:
+                result = await self._openai_synthesis(body)
+            else:
+                result = await self._openai_generate(body, spans_formatted)
         elif self.config.provider == "anthropic":
-            result = await self._anthropic_generate(body, spans_formatted)
+            if should_use_synthesis:
+                result = await self._anthropic_synthesis(body)
+            else:
+                result = await self._anthropic_generate(body, spans_formatted)
         else:
             result = self._mock_generate(body, scan_result.spans)
 
@@ -415,6 +471,118 @@ class DetailFullGenerator:
             else:
                 logger.error(f"Anthropic detail_full failed after {MAX_RETRIES + 1} attempts: {e}")
                 # Fall back to mock which does rule-based neutralization
+                return self._mock_generate(body, [])
+
+    async def _openai_synthesis(
+        self,
+        body: str,
+        retry_count: int = 0
+    ) -> DetailFullResult:
+        """
+        Generate using OpenAI with editorial synthesis prompt.
+
+        Used for heavily editorial content that needs full rewrite.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        MAX_RETRIES = 2
+
+        try:
+            client = await self._get_client()
+
+            prompt = EDITORIAL_SYNTHESIS_PROMPT.format(body=body)
+
+            response = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.config.model,
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": self.config.temperature,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                },
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"OpenAI API error: {response.status_code}")
+
+            result = response.json()
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+
+            return self._parse_response(content, body)
+
+        except Exception as e:
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"OpenAI synthesis failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
+                )
+                import asyncio
+                await asyncio.sleep(1)
+                return await self._openai_synthesis(body, retry_count + 1)
+            else:
+                logger.error(f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
+                return self._mock_generate(body, [])
+
+    async def _anthropic_synthesis(
+        self,
+        body: str,
+        retry_count: int = 0
+    ) -> DetailFullResult:
+        """
+        Generate using Anthropic with editorial synthesis prompt.
+
+        Used for heavily editorial content that needs full rewrite.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        MAX_RETRIES = 2
+
+        try:
+            client = await self._get_client()
+
+            prompt = EDITORIAL_SYNTHESIS_PROMPT.format(body=body)
+
+            response = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": os.getenv("ANTHROPIC_API_KEY"),
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": self.config.model,
+                    "max_tokens": self.config.max_tokens,
+                    "temperature": self.config.temperature,
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ],
+                },
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"Anthropic API error: {response.status_code}")
+
+            result = response.json()
+            content = result.get("content", [{}])[0].get("text", "{}")
+
+            return self._parse_response(content, body)
+
+        except Exception as e:
+            if retry_count < MAX_RETRIES:
+                logger.warning(
+                    f"Anthropic synthesis failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
+                )
+                import asyncio
+                await asyncio.sleep(1)
+                return await self._anthropic_synthesis(body, retry_count + 1)
+            else:
+                logger.error(f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
                 return self._mock_generate(body, [])
 
     def _parse_response(
