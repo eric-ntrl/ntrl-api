@@ -619,55 +619,33 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 15. ✅ **Editorial synthesis**: Uses full rewrite for editorial content or >15 spans
 16. ✅ **Tabloid examples**: Added Katie Price-style examples to prompt
 17. ✅ **Category-specific highlights**: Frontend uses different colors per manipulation type
+18. ✅ **editorial_voice mapping fix**: `_parse_span_reason()` now maps `"editorial_voice"` → `SpanReason.EDITORIAL_VOICE` (was falling back to `RHETORICAL_FRAMING`)
+19. ✅ **Paragraph deduplication**: `_deduplicate_paragraphs()` in `ingestion.py` removes duplicate paragraphs from extracted article bodies (fixes duplicate highlights from captions/pull quotes)
 
-### Current State (Jan 2026)
+### Current State (Jan 27 2026)
 
-**Code pushed but awaiting Railway deploy:**
-- Commits pushed to both `ntrl-api` and `ntrl-app` repos
-- Railway staging may not have auto-deployed yet (check version via `/v1/status`)
-- Version should update from `2026.01.26.8` after deploy
+**All fixes deployed and verified on Railway staging:**
+- Railway auto-deploys from `main` on push (build ~1m30s, deploy ~20s)
+- Note: `code_version` in `/v1/status` is not auto-bumped per deploy; check Railway dashboard for deploy status
+- All 4 highlight colors verified in UI (emotional=blue, urgency=rose, editorial=lavender, default=gold)
 
-**Verification status:**
+**Verification results:**
 - ✅ Local E2E tests pass (27 passed, 2 xfailed)
-- ✅ Debug endpoint fresh detection works (Katie Price: 9 spans detected)
-- ⏳ Production re-neutralization pending Railway deploy
-- ⏳ Frontend highlight colors pending app rebuild
-
-**After Railway deploys, run:**
-```bash
-# 1. Verify new code version
-curl -s "https://api-staging-7b4d.up.railway.app/v1/status" | jq '.code_version'
-
-# 2. Re-neutralize test articles with new prompt
-curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
-  -d '{"limit": 20, "force": true}'
-
-# 3. Rebuild brief
-curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
-  -H "X-API-Key: staging-key-123"
-
-# 4. Verify Katie Price article has spans
-curl -s "https://api-staging-7b4d.up.railway.app/v1/stories/{katie-price-id}/transparency" \
-  -H "X-API-Key: staging-key-123" | jq '.spans | length'
-```
-
-**Test articles to verify:**
-- Katie Price (tabloid): Should have 5+ spans (shockwaves, whirlwind romance, etc.)
-- Tom Homan (editorial): Should have spans for "Border Czar", editorial voice if present
-- Harry Styles: Already has 10 spans
+- ✅ `editorial_voice` spans stored correctly (e.g., "Border Czar", "Make no mistake")
+- ✅ Lavender highlight color renders in UI for editorial_voice spans
+- ✅ Highlight legend shows all 4 categories, collapses/expands correctly
+- ✅ Badge hides when highlight toggle is off
+- ✅ Paragraph deduplication deployed (takes effect on next ingestion run)
 
 ### Remaining Issues
 
 1. **Missing highlights in long articles** - LLM misses phrases in 8000+ char articles
    - May need chunking implementation (deferred)
 
-2. **Duplicate content in articles** - Some articles have repeated paragraphs
-   - Cause: Image captions repeating article intro text from source
-   - Effect: Same span appears multiple times at different positions
-   - This is an **ingestion issue** from source material, not span detection
-   - Example: Harry Styles article has "fiercely slammed" twice due to caption duplication
+2. ~~**Duplicate content in articles**~~ **FIXED** - `_deduplicate_paragraphs()` added to ingestion
+   - Removes exact-duplicate paragraphs (>50 chars) caused by image captions, pull quotes, sidebar summaries
+   - Existing articles in S3 are NOT retroactively fixed; only new ingestions benefit
+   - To fix existing articles, re-ingest them
 
 ### Important: Database Spans vs Fresh Detection
 
