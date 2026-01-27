@@ -52,6 +52,41 @@ class IngestionService:
         self.body_extractor = BodyExtractor()
         self._storage = None
 
+    def _deduplicate_paragraphs(self, body: str) -> str:
+        """Remove duplicate paragraphs from article body.
+
+        News sites often repeat intro text in image captions, pull quotes,
+        and sidebar summaries. This removes exact or near-duplicate paragraphs.
+
+        Args:
+            body: Raw article body text
+
+        Returns:
+            Body text with duplicate paragraphs removed
+        """
+        if not body:
+            return body
+
+        paragraphs = body.split('\n\n')
+        seen: set[str] = set()
+        unique: list[str] = []
+
+        for para in paragraphs:
+            # Normalize for comparison (lowercase, collapse whitespace)
+            normalized = ' '.join(para.lower().split())
+
+            # Skip if too short (likely a caption fragment) - keep as-is
+            if len(normalized) < 50:
+                unique.append(para)
+                continue
+
+            # Check for exact or near-duplicate
+            if normalized not in seen:
+                seen.add(normalized)
+                unique.append(para)
+
+        return '\n\n'.join(unique)
+
     @property
     def storage(self):
         """Lazy-load storage provider."""
@@ -226,6 +261,10 @@ class IngestionService:
 
         if not body:
             body = rss_body
+
+        # Remove duplicate paragraphs (common in news sites with captions/pull quotes)
+        if body:
+            body = self._deduplicate_paragraphs(body)
 
         # Get author
         author = entry.get('author') or entry.get('dc_creator')

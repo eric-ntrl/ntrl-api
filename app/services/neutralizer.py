@@ -2842,6 +2842,7 @@ def _parse_span_reason(reason: str) -> SpanReason:
         "selling": SpanReason.SELLING,
         "agenda_signaling": SpanReason.AGENDA_SIGNALING,
         "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
+        "editorial_voice": SpanReason.EDITORIAL_VOICE,
         "publisher_cruft": SpanReason.SELLING,  # Map to closest enum
     }
     return mapping.get(reason_lower, SpanReason.RHETORICAL_FRAMING)
