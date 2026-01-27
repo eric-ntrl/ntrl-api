@@ -476,9 +476,26 @@ Categories 9-12 added Jan 2026 to catch sports/editorial manipulation.
 
 **IMPORTANT:** MockNeutralizerProvider is for testing only, never used as production fallback. It has ~5% precision and produces garbled output by removing words without grammar repair.
 
+### Model Discrepancy: Production vs Debug (IMPORTANT)
+
+**Production neutralization** uses `gpt-4o-mini` (set via `OPENAI_MODEL` env var on Railway).
+**Debug endpoint** (`/debug/spans`) uses `gpt-4o` (hardcoded default).
+
+This causes confusing results when debugging:
+- Debug endpoint may show 13 spans for an article
+- But production neutralization saved 0 spans
+- Reason: `gpt-4o-mini` is more conservative than `gpt-4o`
+
+**Example (Katie Price tabloid article):**
+- Debug (`gpt-4o`): 14 phrases found → 13 final spans
+- Production (`gpt-4o-mini`): 0 phrases returned
+
+**Workaround:** Check `model_name` in transparency response to see what model was used for stored spans.
+
 ### Known Issues & Next Steps
 - Pattern-based fallback should probably just report an error instead of showing wrong data
-- gpt-4o is conservative - may return empty for articles with subtle manipulation
+- **gpt-4o-mini is too conservative** for tabloid content - returns empty for articles like Katie Price that have obvious manipulation ("shockwaves", "whirlwind romance")
+- gpt-4o works better but costs more - consider using gpt-4o for span detection only
 - Article 010 has lower accuracy (38% F1) due to LLM flagging quoted speech
 - Gold standard corpus version is now 1.1 (human reviewed)
 
@@ -649,3 +666,86 @@ These tests:
 2. Verify common false positives (crisis management, etc.) are NOT highlighted
 3. Test highlight toggle behavior
 4. Capture screenshots for visual review
+
+**Note:** Tests look for `[data-testid="article-item"]` which doesn't exist - they need text-based navigation instead.
+
+### Span Detection Validation Checklist
+
+When making changes to span detection (prompt, filtering, quote handling), follow this workflow:
+
+**Step 1: Identify Test Articles**
+```bash
+# Find articles with known manipulative content
+curl -s "https://api-staging-7b4d.up.railway.app/v1/stories?limit=30" \
+  -H "X-API-Key: staging-key-123" | jq '.stories[] | select(.has_manipulative_content == true) | {id, original_title, source_name}'
+```
+
+Good test candidates:
+- Dave Roberts (NY Post) - has quotes that should be filtered
+- Katie Price (Daily Mail) - tabloid content
+- Harry Styles (Daily Mail) - emotional triggers
+
+**Step 2: Check Current Spans (Before)**
+```bash
+# See what's currently in the database
+curl -s ".../v1/stories/{id}/transparency" -H "X-API-Key: ..." | jq '{span_count: .spans | length, spans}'
+```
+
+**Step 3: Run Fresh Detection (Debug)**
+```bash
+# See what NEW detection would return (uses gpt-4o, not production model!)
+curl -s ".../v1/stories/{id}/debug/spans" -H "X-API-Key: ..." | jq '{
+  model_used,
+  llm_phrases_count,
+  pipeline_trace,
+  final_span_count
+}'
+```
+
+**Step 4: Re-Neutralize Test Articles**
+```bash
+curl -X POST ".../v1/neutralize/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ..." \
+  -d '{"story_ids": ["id1", "id2"], "force": true}'
+```
+
+**Step 5: Verify in UI**
+```bash
+cd ../ntrl-app
+# Create Playwright script to capture screenshots
+cat > capture.cjs << 'EOF'
+const { chromium } = require('@playwright/test');
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  await page.goto('http://localhost:8081');
+  await page.waitForTimeout(4000);
+
+  // Click article by text
+  await page.getByText('Article Title', { exact: false }).first().click();
+  await page.waitForTimeout(2000);
+
+  // Go to ntrl view
+  await page.getByText('ntrl view').click();
+  await page.waitForTimeout(3000);
+  await page.screenshot({ path: '/tmp/ntrl-view.png' });
+
+  // Check highlights
+  const count = await page.locator('[data-testid^="highlight-span-"]').count();
+  console.log('Highlights found:', count);
+
+  await browser.close();
+})();
+EOF
+node capture.cjs
+```
+
+**Expected Validation Results:**
+
+| Check | How to Verify |
+|-------|---------------|
+| Quote filtering | Text inside `"quotes"` should NOT be highlighted |
+| Emotional triggers | Words like "slammed", "outraged" SHOULD be highlighted |
+| Span count matches | API transparency count = UI "X phrases flagged" |
+| Toggle works | Highlights appear/disappear with toggle |
