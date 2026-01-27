@@ -337,15 +337,16 @@ class TestStoryGrouping:
         result = self._run_with_db_results(stories)
         assert len(result[FeedCategory.BUSINESS]) == 5
 
-    def test_legacy_section_fallback(self):
-        """Stories without feed_category fall back to legacy section field."""
+    def test_unclassified_articles_skipped(self):
+        """Stories without feed_category are skipped (not misrouted via legacy section)."""
         source = _make_source(slug="ap")
 
         raw = _make_story_raw(feed_category=None, section="world")
         n = _make_neutralized(story_raw_id=raw.id)
 
         result = self._run_with_db_results([(n, raw, source)])
-        assert len(result[FeedCategory.WORLD]) == 1
+        for cat in FeedCategory:
+            assert result[cat] == [], f"Category {cat} should be empty"
 
     def test_no_category_no_section_skipped(self):
         """Stories with neither feed_category nor section are skipped entirely."""
