@@ -50,7 +50,7 @@ When filtering fails, use synthesis mode:
 ### Current Implementation
 - Primary: JSON-based filter prompt (tries to track spans)
 - Fallback: Synthesis prompt (plain text) + pattern-based span detection
-- See `_synthesize_detail_full_fallback()` in `neutralizer.py`
+- See `_synthesize_detail_full_fallback()` in `neutralizer/__init__.py`
 
 ## Tech Stack
 
@@ -59,8 +59,11 @@ When filtering fails, use synthesis mode:
 - **Migrations**: Alembic
 - **Storage**: S3 or local filesystem for raw articles
 - **AI**: Pluggable neutralizers (mock, OpenAI, Anthropic, Gemini)
-- **NLP**: spaCy (en_core_web_sm) for structural detection
-- **Dependencies**: Pipenv
+- **NLP**: spaCy (en_core_web_sm) for structural detection, lazy-loaded via `@lru_cache`
+- **Config**: pydantic-settings (`app/config.py`) — validates all env vars on startup
+- **Rate Limiting**: slowapi (100/min global, 10/min admin, 5/min pipeline triggers)
+- **Caching**: cachetools TTLCache for brief (15min), stories (1hr), transparency (1hr)
+- **Dependencies**: Pipenv (all versions pinned)
 
 ## Key Commands
 
@@ -227,23 +230,28 @@ python scripts/test_span_detection.py --limit 5           # Multiple from brief
 
 ```
 app/
-├── main.py              # FastAPI entry point
+├── main.py              # FastAPI entry point (CORS, rate limiting, exception handler)
+├── config.py            # Pydantic-settings config validation (loads from env)
+├── constants.py         # Centralized magic constants (TextLimits, PipelineDefaults, etc.)
 ├── database.py          # DB configuration
 ├── models.py            # SQLAlchemy ORM models (Domain, FeedCategory, Section enums)
 ├── taxonomy.py          # 115 manipulation types (v2)
 ├── routers/
 │   ├── admin.py         # V1 admin endpoints (ingest, classify, neutralize, brief, pipeline)
-│   ├── brief.py         # V1 brief endpoints
-│   ├── stories.py       # V1 story endpoints + debug endpoint
+│   ├── brief.py         # V1 brief endpoints (TTL-cached)
+│   ├── stories.py       # V1 story endpoints + debug endpoint (TTL-cached)
 │   ├── sources.py       # V1 sources endpoints
 │   └── pipeline.py      # V2 pipeline endpoints
 ├── schemas/             # Pydantic request/response schemas
 ├── services/
-│   ├── ingestion.py     # RSS ingestion
+│   ├── ingestion.py     # RSS ingestion (SSL verified)
 │   ├── llm_classifier.py           # LLM article classification (gpt-4o-mini → gemini fallback)
 │   ├── domain_mapper.py            # Domain + geography → feed_category mapping
 │   ├── enhanced_keyword_classifier.py  # 20-domain keyword fallback classifier
-│   ├── neutralizer.py   # V1 neutralizer with synthesis fallback
+│   ├── neutralizer/     # V1 neutralizer module (refactored from single file)
+│   │   ├── __init__.py  # Main neutralizer service, synthesis fallback
+│   │   ├── providers/   # LLM provider implementations (OpenAI, Gemini, Anthropic)
+│   │   └── spans.py     # Span detection utilities (find_phrase_positions, etc.)
 │   ├── brief_assembly.py # Groups by feed_category (10 categories)
 │   ├── alerts.py        # Pipeline alerting (includes classify fallback rate)
 │   └── ...
@@ -256,11 +264,11 @@ app/
 When UI text appears too long or gets truncated, the constraint is usually in the **backend LLM prompt**, not frontend CSS.
 
 ### Where to Look
-- `app/services/neutralizer.py` - Contains all LLM prompts
+- `app/services/neutralizer/` - Contains all LLM prompts (refactored into module)
 - Search for `feed_summary`, `feed_title`, `detail_title`, `detail_brief`
 
 ### Workflow for Length Changes
-1. Find constraint in `neutralizer.py` prompt
+1. Find constraint in `neutralizer/__init__.py` prompt
 2. Reduce limit (add 15-20% buffer for LLM inaccuracy)
 3. Deploy to Railway (push to main)
 4. Re-neutralize: `POST /v1/neutralize/run` with `force: true`
@@ -422,13 +430,13 @@ xcrun simctl io booted screenshot /tmp/sim-screenshot.png
 
 ## Console Logging (Frontend Debug)
 
-The frontend logs diagnostic info to console:
+The frontend logs diagnostic info to console, **guarded by `__DEV__`** so they are stripped in production builds:
 - `[ArticleDetail] Transparency data received:` - spans and originalBody info
 - `[ArticleDetail] Detail content:` - brief/full lengths and previews
 - `[ArticleDetail] Navigating to NtrlView:` - what's being passed
 - `[NtrlView] Received data:` - what NtrlView received
 
-Check these in Expo dev tools or browser console.
+Check these in Expo dev tools or browser console. In production, these are no-ops.
 
 ## Prompt Optimization Tips
 
@@ -509,12 +517,13 @@ Tests specific phrase detection scenarios:
 5. Result: spans with accurate positions for highlighting in UI
 
 **Key files:**
-- `neutralizer.py`: `DEFAULT_SPAN_DETECTION_PROMPT` - Conservative prompt with "NEVER FLAG" guidance
-- `neutralizer.py`: `detect_spans_via_llm_openai/gemini/anthropic()` - Provider-specific API calls
-- `neutralizer.py`: `filter_false_positives()` - Removes known false positives like "bowel cancer"
-- `neutralizer.py`: `detect_spans_debug_openai()` - Debug version returning pipeline trace
-- `neutralizer.py`: `QUOTE_PAIRS` - Quote character mapping (uses Unicode escapes)
-- `neutralizer.py`: `FALSE_POSITIVE_PHRASES` - Professional terms and medical terminology
+- `neutralizer/__init__.py`: `DEFAULT_SPAN_DETECTION_PROMPT` - Conservative prompt with "NEVER FLAG" guidance
+- `neutralizer/__init__.py`: `detect_spans_via_llm_openai/gemini/anthropic()` - Provider-specific API calls
+- `neutralizer/spans.py`: `find_phrase_positions()`, `filter_spans_in_quotes()`, span utilities
+- `neutralizer/__init__.py`: `filter_false_positives()` - Removes known false positives like "bowel cancer"
+- `neutralizer/__init__.py`: `detect_spans_debug_openai()` - Debug version returning pipeline trace
+- `neutralizer/__init__.py`: `QUOTE_PAIRS` - Quote character mapping (uses Unicode escapes)
+- `neutralizer/__init__.py`: `FALSE_POSITIVE_PHRASES` - Professional terms and medical terminology
 
 **Logging format** (`[SPAN_DETECTION]` prefix):
 ```
@@ -613,7 +622,7 @@ The neutralization pipeline now tracks success/failure status for each article:
 
 **Key code locations:**
 - `app/models.py`: `NeutralizationStatus` enum, new fields on `StoryNeutralized`
-- `app/services/neutralizer.py`: `DetailFullResult` dataclass with `status` and `failure_reason`
+- `app/services/neutralizer/__init__.py`: `DetailFullResult` dataclass with `status` and `failure_reason`
 - `app/services/brief_assembly.py`: Filters by `neutralization_status == "success"`
 - `app/routers/stories.py`: Filters neutralized stories by status
 
@@ -625,7 +634,7 @@ The quote filter now handles apostrophes in contractions correctly:
 
 **Solution:** `is_contraction_apostrophe()` function detects contractions (letters on both sides of apostrophe) and skips them during quote boundary detection.
 
-**Key file:** `app/services/neutralizer.py` - `is_contraction_apostrophe()` and `filter_spans_in_quotes()`
+**Key file:** `app/services/neutralizer/__init__.py` - `is_contraction_apostrophe()` and `filter_spans_in_quotes()`
 
 ### Curly Quote Bug (CRITICAL - Fixed Jan 2026)
 
@@ -656,7 +665,7 @@ QUOTE_PAIRS = {
 ```bash
 # Check QUOTE_PAIRS has correct Unicode code points
 pipenv run python3 -c "
-from app.services.neutralizer import QUOTE_PAIRS
+from app.services.neutralizer import QUOTE_PAIRS  # module re-exports
 for k, v in QUOTE_PAIRS.items():
     print(f'Key: ord={ord(k)}, Val: ord={ord(v)}')
 "
@@ -707,6 +716,11 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 20. ✅ **Article classification pipeline**: LLM-powered CLASSIFY stage (gpt-4o-mini → gemini fallback → keyword fallback) classifies articles into 20 domains → 10 feed categories
 21. ✅ **10-category brief assembly**: Brief groups by `feed_category` (10 categories) instead of `section` (5). Fixed order: World, U.S., Local, Business, Technology, Science, Health, Environment, Sports, Culture
 22. ✅ **Classification pipeline monitoring**: `CLASSIFY_FALLBACK_RATE_HIGH` alert fires if keyword fallback exceeds 1%
+23. ✅ **Codebase audit remediation** (Jan 2026): 25-item audit across backend + frontend
+    - **Security (P0)**: Auth hardened (timing-safe `secrets.compare_digest`, fail-closed), CORS restricted to configured origins, SSL verification re-enabled in ingestion
+    - **Hardening (P1)**: Rate limiting (slowapi), response caching (TTLCache), error response sanitization, dependency pinning, `neutralizer.py` refactored into module directory
+    - **Quality (P2)**: Centralized config (`app/config.py`), constants (`app/constants.py`), DB indexes migration, lazy-loaded spaCy models, parallel S3 downloads in classification, frontend error boundaries, `__DEV__` debug log guards, model docstrings, `StoryRow` NamedTuple
+    - **Documentation (P3)**: Backend API docstrings, backend test coverage (brief_assembly, domain_mapper, enhanced_keyword_classifier), frontend test coverage (api, storageService, secureStorage), frontend JSDoc, consolidated date formatting utils
 
 ### Current State (Jan 27 2026)
 

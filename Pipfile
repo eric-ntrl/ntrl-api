@@ -20,8 +20,9 @@ trafilatura = ">=2.0.0"
 spacy = ">=3.8.0"
 tenacity = ">=8.0.0"
 newspaper3k = ">=0.2.8"
-slowapi = ">=0.1.9"
-cachetools = ">=5.3.0"
+slowapi = "*"
+cachetools = "*"
+pydantic-settings = "*"
 
 [dev-packages]
 pytest-asyncio = ">=0.23.0"

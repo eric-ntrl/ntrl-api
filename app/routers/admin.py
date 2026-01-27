@@ -103,6 +103,25 @@ class StatusResponse(BaseModel):
     thresholds: AlertThresholds = Field(default_factory=AlertThresholds)
 
 
+def require_admin_key(
+    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+) -> None:
+    """Validate admin API key. Fails closed if ADMIN_API_KEY is not set."""
+    expected_key = os.getenv("ADMIN_API_KEY")
+
+    if not expected_key:
+        raise HTTPException(
+            status_code=500,
+            detail="Server misconfiguration: admin authentication not configured",
+        )
+
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key",
+        )
+
+
 @router.get("/status", response_model=StatusResponse)
 def get_status(
     db: Session = Depends(get_db),
@@ -244,25 +263,6 @@ def grade_text(
         overall_pass=result["overall_pass"],
         results=[RuleResult(**r) for r in result["results"]],
     )
-
-
-def require_admin_key(
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
-) -> None:
-    """Validate admin API key. Fails closed if ADMIN_API_KEY is not set."""
-    expected_key = os.getenv("ADMIN_API_KEY")
-
-    if not expected_key:
-        raise HTTPException(
-            status_code=500,
-            detail="Server misconfiguration: admin authentication not configured",
-        )
-
-    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or missing API key",
-        )
 
 
 @router.post("/ingest/run", response_model=IngestRunResponse)

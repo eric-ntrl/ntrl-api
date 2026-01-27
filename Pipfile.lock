@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "7d47266823f11485cad85a74d45eefa19e2bbde24ee8b4713b9f17d968593b43"
+            "sha256": "51be757cd4b5fa1c834e6189510ff30fb4d4861ff1ebf68f36d611e0037f9297"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -132,6 +132,15 @@
             ],
             "markers": "python_version >= '3.9'",
             "version": "==1.42.34"
+        },
+        "cachetools": {
+            "hashes": [
+                "sha256:6d8bfbba1ba94412fb9d9196c4da7a87e9d4928fffc5e93542965dca4740c77f",
+                "sha256:db3ae5465e90befb7c74720dd9308d77a09b7cf13433570e07caa0845c30d5fe"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.9'",
+            "version": "==6.2.5"
         },
         "catalogue": {
             "hashes": [
@@ -386,6 +395,14 @@
             ],
             "markers": "python_version >= '3.8'",
             "version": "==1.2.2"
+        },
+        "deprecated": {
+            "hashes": [
+                "sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f",
+                "sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223"
+            ],
+            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
+            "version": "==1.3.1"
         },
         "distro": {
             "hashes": [
@@ -869,6 +886,14 @@
                 "sha256:62b1c562b15c3c6265e121cc070874243a443bfd53060e869393f09d6b6cc9a7"
             ],
             "version": "==3.0.2"
+        },
+        "limits": {
+            "hashes": [
+                "sha256:807fac75755e73912e894fdd61e2838de574c5721876a19f7ab454ae1fffb4b5",
+                "sha256:b585c2104274528536a5b68864ec3835602b3c4a802cd6aa0b07419798394021"
+            ],
+            "markers": "python_version >= '3.10'",
+            "version": "==5.6.0"
         },
         "lxml": {
             "extras": [
@@ -1722,6 +1747,15 @@
             "markers": "python_version >= '3.9'",
             "version": "==2.41.5"
         },
+        "pydantic-settings": {
+            "hashes": [
+                "sha256:005538ef951e3c2a68e1c08b292b5f2e71490def8589d4221b95dab00dafcfd0",
+                "sha256:fddb9fd99a5b18da837b29710391e945b1e30c135477f484084ee513adb93809"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.10'",
+            "version": "==2.12.0"
+        },
         "pyparsing": {
             "hashes": [
                 "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d",
@@ -2022,6 +2056,15 @@
             ],
             "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2'",
             "version": "==1.17.0"
+        },
+        "slowapi": {
+            "hashes": [
+                "sha256:639192d0f1ca01b1c6d95bf6c71d794c3a9ee189855337b4821f7f457dddad77",
+                "sha256:cfad116cfb84ad9d763ee155c1e5c5cbf00b0d47399a769b227865f5df576e36"
+            ],
+            "index": "pypi",
+            "markers": "python_version >= '3.7' and python_version < '4.0'",
+            "version": "==0.1.9"
         },
         "smart-open": {
             "hashes": [
