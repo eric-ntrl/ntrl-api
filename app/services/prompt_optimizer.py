@@ -138,21 +138,32 @@ class PromptOptimizer:
 
         prompts_updated = []
 
-        # Group recommendations by prompt
-        by_prompt: Dict[str, List[Dict]] = {}
+        # Group recommendations by prompt (key = (name, model))
+        by_prompt: Dict[tuple, List[Dict]] = {}
         for rec in eval_run.recommendations:
             prompt_name = rec.get("prompt_name")
+            prompt_model = rec.get("model")  # None for model-agnostic prompts
             if prompt_name:
-                by_prompt.setdefault(prompt_name, []).append(rec)
+                key = (prompt_name, prompt_model)
+                by_prompt.setdefault(key, []).append(rec)
 
         # Process each prompt with issues
-        for prompt_name, issues in by_prompt.items():
+        for (prompt_name, prompt_model), issues in by_prompt.items():
             try:
                 # Get current prompt from DB
-                prompt = db.query(models.Prompt).filter(
+                # Handle model-agnostic prompts (model=NULL) vs model-specific ones
+                query = db.query(models.Prompt).filter(
                     models.Prompt.name == prompt_name,
                     models.Prompt.is_active == True,
-                ).first()
+                )
+                if prompt_model is None:
+                    # Model-agnostic prompt (model IS NULL)
+                    query = query.filter(models.Prompt.model.is_(None))
+                else:
+                    # Model-specific prompt
+                    query = query.filter(models.Prompt.model == prompt_model)
+
+                prompt = query.first()
 
                 if not prompt:
                     logger.warning(f"[OPTIMIZE] Prompt '{prompt_name}' not found, skipping")
@@ -171,19 +182,21 @@ class PromptOptimizer:
                     continue
 
                 # Apply if requested
+                model_desc = f" (model={prompt_model})" if prompt_model else " (model-agnostic)"
                 if auto_apply:
                     update_result = self._apply_improvement(db, prompt, improvement, eval_run)
                     if update_result:
                         prompts_updated.append(update_result)
-                        logger.info(f"[OPTIMIZE] Applied improvement to '{prompt_name}'")
+                        logger.info(f"[OPTIMIZE] Applied improvement to '{prompt_name}'{model_desc}")
                 else:
                     # Just log the proposed improvement
                     logger.info(
-                        f"[OPTIMIZE] Generated improvement for '{prompt_name}': "
+                        f"[OPTIMIZE] Generated improvement for '{prompt_name}'{model_desc}: "
                         f"{len(improvement.changes_made)} changes"
                     )
                     prompts_updated.append({
                         "prompt_name": prompt_name,
+                        "model": prompt_model,
                         "old_version": prompt.version,
                         "new_version": None,  # Not applied
                         "change_reason": improvement.rationale,
@@ -321,6 +334,7 @@ Generate an improved prompt that fixes these issues while preserving all working
 
             return {
                 "prompt_name": prompt.name,
+                "model": prompt.model,  # None for model-agnostic prompts
                 "old_version": old_version,
                 "new_version": new_version,
                 "change_reason": change_reason,
