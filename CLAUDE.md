@@ -4,6 +4,35 @@
 
 NTRL API is a neutral news backend service that removes manipulative language from news articles and creates calm, deterministic news briefs.
 
+## Documentation
+
+Full documentation suite in `docs/`. Start with:
+
+| Document | Description |
+|----------|-------------|
+| `docs/README.md` | Master index of all 28 documents |
+| `docs/technical/architecture-overview.md` | System-wide architecture |
+| `docs/technical/api-reference.md` | All API endpoints with schemas |
+| `docs/product/content-pipeline.md` | 4-stage pipeline spec |
+| `docs/team/onboarding-guide.md` | New team member setup |
+| `docs/operations/deployment-runbook.md` | Railway deployment |
+
+**Structure:**
+```
+docs/
+├── README.md              # Master index
+├── business/              # Investor materials (5 docs)
+├── product/               # Product specs (5 docs)
+├── technical/             # Architecture, API, data model (4 docs)
+├── team/                  # Onboarding, workflow, standards (4 docs)
+├── operations/            # Deployment, monitoring, incidents (3 docs)
+├── launch/                # App Store, legal, support (5 docs)
+├── governance/            # Editorial, content sourcing (2 docs)
+├── canon/                 # Neutralization canon (source material)
+├── prd/                   # Product requirements (legacy)
+└── adr/                   # Architecture decision records
+```
+
 ## Core Architecture Principle
 
 **The original article body is the single source of truth.**
@@ -20,7 +49,7 @@ DISPLAY:       Neutralized content by default, originals only in "ntrl view"
 - All user-facing content is derived from the scraped article body
 - Transparency spans reference the original body for highlighting
 
-See `docs/ARCHITECTURE.md` for full details.
+See `docs/technical/architecture-overview.md` for full details.
 
 ## The 4-View Content Architecture
 
@@ -823,7 +852,8 @@ curl -s "https://api-staging-7b4d.up.railway.app/v1/stories/4365e5df-ffd1-42cd-9
 
 ## Related Project
 
-The mobile app is at `../ntrl-app/` - see its CLAUDE.md for frontend details.
+- **Mobile app**: `../ntrl-app/` — see its CLAUDE.md for frontend details
+- **Documentation**: `docs/` — all project documentation lives in this repo (ntrl-api)
 
 ### UI Highlight Validation Tests
 
