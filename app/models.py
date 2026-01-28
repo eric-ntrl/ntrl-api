@@ -748,6 +748,13 @@ class PipelineRunSummary(Base):
 # Prompt
 # -----------------------------------------------------------------------------
 
+class ChangeSource(str, Enum):
+    """How a prompt version was created."""
+    MANUAL = "manual"
+    AUTO_OPTIMIZE = "auto_optimize"
+    ROLLBACK = "rollback"
+
+
 class Prompt(Base):
     """
     Prompts for LLM operations - stored in DB for hot-reload without redeploy.
@@ -757,6 +764,10 @@ class Prompt(Base):
 
     The model column allows per-model prompt tuning (e.g., different prompts
     for gpt-4o-mini vs gemini-2.0-flash). NULL model = generic fallback.
+
+    Relationships:
+        versions -> PromptVersion: One-to-many. All historical versions of this prompt.
+        current_version -> PromptVersion: The currently active version.
     """
     __tablename__ = "prompts"
     __table_args__ = (
@@ -771,3 +782,183 @@ class Prompt(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Auto-optimization settings
+    current_version_id = Column(UUID(as_uuid=True), nullable=True)  # FK added after PromptVersion
+    auto_optimize_enabled = Column(Boolean, default=False, nullable=False)
+    min_score_threshold = Column(Float, default=7.0, nullable=False)  # Below this triggers optimization
+    rollback_threshold = Column(Float, default=0.5, nullable=False)   # Score drop to trigger rollback
+
+    # Relationships (versions defined after PromptVersion class)
+
+
+# -----------------------------------------------------------------------------
+# PromptVersion
+# -----------------------------------------------------------------------------
+
+class PromptVersion(Base):
+    """
+    Complete version history for a prompt.
+
+    Every time a prompt is changed (manually, via auto-optimization, or via
+    rollback), a new PromptVersion row is created. This allows full audit
+    trail and rollback to any historical version.
+
+    The parent_version_id links to the version this was derived from,
+    creating a version tree (though typically it's linear).
+
+    Relationships:
+        prompt -> Prompt: Many-to-one. The prompt this version belongs to.
+        parent_version -> PromptVersion: Self-referential link to previous version.
+    """
+    __tablename__ = "prompt_versions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    prompt_id = Column(UUID(as_uuid=True), ForeignKey("prompts.id"), nullable=False)
+    version = Column(Integer, nullable=False)
+    content = Column(Text, nullable=False)
+    change_reason = Column(Text, nullable=True)            # "Auto-optimize: fixed classification of sports articles"
+    change_source = Column(String(32), nullable=False)     # ChangeSource enum
+    parent_version_id = Column(UUID(as_uuid=True), ForeignKey("prompt_versions.id"), nullable=True)
+    avg_score_at_creation = Column(Float, nullable=True)   # Quality score when created
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    prompt = relationship("Prompt", foreign_keys=[prompt_id], backref="versions")
+    parent_version = relationship("PromptVersion", remote_side=[id])
+
+    __table_args__ = (
+        UniqueConstraint("prompt_id", "version", name="uq_prompt_version"),
+        Index("ix_prompt_versions_prompt_id", "prompt_id"),
+        Index("ix_prompt_versions_created_at", "created_at"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# EvaluationRun
+# -----------------------------------------------------------------------------
+
+class EvaluationRun(Base):
+    """
+    Per-pipeline evaluation run using a teacher LLM.
+
+    After a scheduled pipeline run completes, an EvaluationRun samples articles
+    and uses a stronger LLM (teacher) to evaluate the quality of classification,
+    neutralization, and span detection performed by the production LLMs (students).
+
+    The evaluation results drive auto-optimization (improving prompts) and
+    rollback (reverting to previous prompts if quality degrades).
+
+    Relationships:
+        pipeline_run -> PipelineRunSummary: The pipeline run being evaluated.
+        article_evaluations -> ArticleEvaluation: Per-article evaluation details.
+    """
+    __tablename__ = "evaluation_runs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    pipeline_run_id = Column(UUID(as_uuid=True), ForeignKey("pipeline_run_summaries.id"), nullable=False)
+    teacher_model = Column(String(64), nullable=False)     # "gpt-4o"
+    sample_size = Column(Integer, nullable=False)          # 10
+
+    # Aggregate results
+    classification_accuracy = Column(Float, nullable=True)       # 0-1
+    avg_neutralization_score = Column(Float, nullable=True)      # 0-10
+    avg_span_precision = Column(Float, nullable=True)            # 0-1
+    avg_span_recall = Column(Float, nullable=True)               # 0-1
+    overall_quality_score = Column(Float, nullable=True)         # Combined metric
+
+    # Teacher recommendations (JSON)
+    recommendations = Column(JSONB, nullable=True)
+
+    # Actions taken
+    prompts_updated = Column(JSONB, nullable=True)  # [{prompt_name, old_version, new_version}]
+    rollback_triggered = Column(Boolean, default=False, nullable=False)
+    rollback_details = Column(JSONB, nullable=True)  # {prompt_name, from_version, to_version, reason}
+
+    # Cost tracking
+    input_tokens = Column(Integer, default=0, nullable=False)
+    output_tokens = Column(Integer, default=0, nullable=False)
+    estimated_cost_usd = Column(Float, default=0.0, nullable=False)
+
+    # Timing
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+
+    # Status
+    status = Column(String(20), default="running", nullable=False)  # running, completed, failed
+
+    # Relationships
+    pipeline_run = relationship("PipelineRunSummary", backref="evaluations")
+    article_evaluations = relationship("ArticleEvaluation", back_populates="evaluation_run",
+                                       order_by="ArticleEvaluation.created_at")
+
+    __table_args__ = (
+        Index("ix_evaluation_runs_pipeline_run_id", "pipeline_run_id"),
+        Index("ix_evaluation_runs_started_at", "started_at"),
+        Index("ix_evaluation_runs_status", "status"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# ArticleEvaluation
+# -----------------------------------------------------------------------------
+
+class ArticleEvaluation(Base):
+    """
+    Per-article evaluation details from a teacher LLM.
+
+    For each article in the evaluation sample, the teacher LLM grades:
+    - Classification correctness (domain and feed_category)
+    - Neutralization quality (meaning preservation, neutrality, grammar)
+    - Span detection quality (precision, recall, false positives, misses)
+
+    Detailed feedback is stored for prompt improvement generation.
+
+    Relationships:
+        evaluation_run -> EvaluationRun: The evaluation run this belongs to.
+        story_raw -> StoryRaw: The article being evaluated.
+    """
+    __tablename__ = "article_evaluations"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    evaluation_run_id = Column(UUID(as_uuid=True), ForeignKey("evaluation_runs.id"), nullable=False)
+    story_raw_id = Column(UUID(as_uuid=True), ForeignKey("stories_raw.id"), nullable=False)
+
+    # Classification evaluation
+    classification_correct = Column(Boolean, nullable=True)
+    expected_domain = Column(String(40), nullable=True)
+    expected_feed_category = Column(String(32), nullable=True)
+    classification_feedback = Column(Text, nullable=True)
+
+    # Neutralization evaluation
+    neutralization_score = Column(Float, nullable=True)         # 0-10
+    meaning_preservation_score = Column(Float, nullable=True)   # 0-10
+    neutrality_score = Column(Float, nullable=True)             # 0-10
+    grammar_score = Column(Float, nullable=True)                # 0-10
+    rule_violations = Column(JSONB, nullable=True)              # [{rule_id, description}]
+    neutralization_feedback = Column(Text, nullable=True)
+
+    # Span evaluation
+    span_precision = Column(Float, nullable=True)               # 0-1
+    span_recall = Column(Float, nullable=True)                  # 0-1
+    missed_manipulations = Column(JSONB, nullable=True)         # [{phrase, reason}]
+    false_positives = Column(JSONB, nullable=True)              # [{phrase, why_incorrect}]
+    span_feedback = Column(Text, nullable=True)
+
+    # Prompt improvement suggestions (aggregated from all evaluations)
+    classification_prompt_suggestion = Column(Text, nullable=True)
+    neutralization_prompt_suggestion = Column(Text, nullable=True)
+    span_prompt_suggestion = Column(Text, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    evaluation_run = relationship("EvaluationRun", back_populates="article_evaluations")
+    story_raw = relationship("StoryRaw")
+
+    __table_args__ = (
+        Index("ix_article_evaluations_evaluation_run_id", "evaluation_run_id"),
+        Index("ix_article_evaluations_story_raw_id", "story_raw_id"),
+    )

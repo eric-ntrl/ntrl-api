@@ -11,6 +11,9 @@ Reliability chain:
 Classification is independent of neutralization — articles are classified
 even if neutralization fails. The CLASSIFY stage runs after ingestion
 and before neutralization in the pipeline.
+
+Prompts are stored in the database for hot-reload without redeploy.
+Fallback to hardcoded prompts if DB lookup fails.
 """
 
 import json
@@ -29,6 +32,9 @@ from app.services.domain_mapper import map_domain_to_feed_category
 from app.services.enhanced_keyword_classifier import classify_by_keywords
 
 logger = logging.getLogger(__name__)
+
+# Prompt cache for hot-reload
+_classification_prompt_cache: Dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +127,63 @@ Respond with JSON only:
 
 # Valid domain values for validation
 VALID_DOMAINS = {d.value for d in Domain}
+
+
+# ---------------------------------------------------------------------------
+# Prompt loading from database
+# ---------------------------------------------------------------------------
+
+def get_classification_prompt(prompt_name: str = "classification_system_prompt") -> str:
+    """
+    Get classification prompt from database, with hardcoded fallback.
+
+    Prompts are cached for performance. Use clear_classification_prompt_cache()
+    to reload after changes.
+    """
+    if prompt_name in _classification_prompt_cache:
+        return _classification_prompt_cache[prompt_name]
+
+    # Try to fetch from database
+    try:
+        from app.database import SessionLocal
+        from app import models
+
+        db = SessionLocal()
+        try:
+            prompt = db.query(models.Prompt).filter(
+                models.Prompt.name == prompt_name,
+                models.Prompt.is_active == True,
+            ).first()
+
+            if prompt and prompt.content:
+                _classification_prompt_cache[prompt_name] = prompt.content
+                logger.info(f"[CLASSIFY] Loaded prompt '{prompt_name}' from DB (v{prompt.version})")
+                return prompt.content
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"[CLASSIFY] Failed to load prompt '{prompt_name}' from DB: {e}")
+
+    # Fallback to hardcoded prompts
+    fallback = {
+        "classification_system_prompt": CLASSIFICATION_SYSTEM_PROMPT,
+        "classification_simplified_prompt": CLASSIFICATION_SIMPLIFIED_PROMPT,
+    }
+
+    if prompt_name in fallback:
+        _classification_prompt_cache[prompt_name] = fallback[prompt_name]
+        logger.info(f"[CLASSIFY] Using hardcoded fallback for '{prompt_name}'")
+        return fallback[prompt_name]
+
+    # If not a known prompt, return the system prompt as default
+    logger.warning(f"[CLASSIFY] Unknown prompt '{prompt_name}', using system prompt")
+    return CLASSIFICATION_SYSTEM_PROMPT
+
+
+def clear_classification_prompt_cache() -> None:
+    """Clear the prompt cache to force reload from DB."""
+    _classification_prompt_cache.clear()
+    logger.info("[CLASSIFY] Prompt cache cleared")
 
 
 def _build_user_prompt(title: str, description: str, body_excerpt: str, source_slug: str) -> str:
@@ -280,8 +343,8 @@ class LLMClassifier:
         """
         Classify a single article through the reliability chain.
 
-        1. gpt-4o-mini with full prompt
-        2. gpt-4o-mini with simplified prompt
+        1. gpt-4o-mini with full prompt (from DB or fallback)
+        2. gpt-4o-mini with simplified prompt (from DB or fallback)
         3. gemini-2.0-flash with full prompt
         4. Enhanced keyword classifier (last resort)
         """
@@ -289,20 +352,24 @@ class LLMClassifier:
         excerpt = body_excerpt or ""
         slug = source_slug or ""
 
+        # Load prompts from DB (with fallback to hardcoded)
+        system_prompt = get_classification_prompt("classification_system_prompt")
+        simplified_prompt = get_classification_prompt("classification_simplified_prompt")
+
         # Attempt 1: gpt-4o-mini, full prompt
-        result = _classify_openai(title, desc, excerpt, slug, CLASSIFICATION_SYSTEM_PROMPT)
+        result = _classify_openai(title, desc, excerpt, slug, system_prompt)
         if result:
             logger.info(f"[CLASSIFY] Success: OpenAI attempt 1, domain={result['domain']}")
             return self._make_result(result, model="gpt-4o-mini", method="llm")
 
         # Attempt 2: gpt-4o-mini, simplified prompt
-        result = _classify_openai(title, desc, excerpt, slug, CLASSIFICATION_SIMPLIFIED_PROMPT)
+        result = _classify_openai(title, desc, excerpt, slug, simplified_prompt)
         if result:
             logger.info(f"[CLASSIFY] Success: OpenAI attempt 2 (simplified), domain={result['domain']}")
             return self._make_result(result, model="gpt-4o-mini", method="llm")
 
         # Attempt 3: gemini-2.0-flash, full prompt
-        result = _classify_gemini(title, desc, excerpt, slug, CLASSIFICATION_SYSTEM_PROMPT)
+        result = _classify_gemini(title, desc, excerpt, slug, system_prompt)
         if result:
             logger.info(f"[CLASSIFY] Success: Gemini attempt 3, domain={result['domain']}")
             return self._make_result(result, model="gemini-2.0-flash", method="llm")

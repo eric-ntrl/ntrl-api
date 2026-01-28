@@ -21,6 +21,22 @@ from app.schemas.admin import (
     BriefRunRequest,
     BriefRunResponse,
 )
+from app.schemas.evaluation import (
+    EvaluationRunRequest,
+    EvaluationRunResponse,
+    EvaluationRunSummary,
+    EvaluationRunListResponse,
+    ArticleEvaluationResult,
+    EvaluationRecommendation,
+    PromptUpdate,
+    PromptVersionResponse,
+    PromptVersionListResponse,
+    RollbackRequest,
+    RollbackResponse,
+    AutoOptimizeConfigRequest,
+    AutoOptimizeConfigResponse,
+    ScheduledRunEvaluationConfig,
+)
 
 __all__ = [
     "StoryDetail",
@@ -35,4 +51,19 @@ __all__ = [
     "NeutralizeRunResponse",
     "BriefRunRequest",
     "BriefRunResponse",
+    # Evaluation schemas
+    "EvaluationRunRequest",
+    "EvaluationRunResponse",
+    "EvaluationRunSummary",
+    "EvaluationRunListResponse",
+    "ArticleEvaluationResult",
+    "EvaluationRecommendation",
+    "PromptUpdate",
+    "PromptVersionResponse",
+    "PromptVersionListResponse",
+    "RollbackRequest",
+    "RollbackResponse",
+    "AutoOptimizeConfigRequest",
+    "AutoOptimizeConfigResponse",
+    "ScheduledRunEvaluationConfig",
 ]

@@ -639,6 +639,23 @@ class ScheduledRunRequest(BaseModel):
     max_workers: int = Field(5, ge=1, le=10, description="Parallel workers for neutralization")
     cutoff_hours: int = Field(24, ge=1, le=72, description="Hours to look back for brief")
 
+    # Evaluation options
+    enable_evaluation: bool = Field(False, description="Run teacher evaluation after pipeline")
+    teacher_model: str = Field("gpt-4o", description="Model to use for evaluation")
+    eval_sample_size: int = Field(10, ge=1, le=50, description="Number of articles to evaluate")
+    enable_auto_optimize: bool = Field(False, description="Auto-apply prompt improvements")
+
+
+class EvaluationSummary(BaseModel):
+    """Summary of evaluation results for scheduled run response."""
+    evaluation_run_id: Optional[str] = None
+    classification_accuracy: Optional[float] = None
+    avg_neutralization_score: Optional[float] = None
+    overall_quality_score: Optional[float] = None
+    prompts_updated: int = 0
+    rollback_triggered: bool = False
+    estimated_cost_usd: float = 0.0
+
 
 class ScheduledRunResponse(BaseModel):
     """Response from scheduled pipeline run with summary stats."""
@@ -663,6 +680,7 @@ class ScheduledRunResponse(BaseModel):
     brief_story_count: int
     brief_section_count: int
     alerts: List[str]
+    evaluation: Optional[EvaluationSummary] = None
 
 
 @router.post("/pipeline/scheduled-run", response_model=ScheduledRunResponse)
@@ -813,6 +831,67 @@ def run_scheduled_pipeline(
     db.add(summary)
     db.commit()
 
+    # Stage 5: Evaluation (optional)
+    evaluation_summary = None
+    if request.enable_evaluation:
+        try:
+            from app.services.evaluation_service import EvaluationService
+            from app.services.prompt_optimizer import PromptOptimizer
+            from app.services.rollback_service import RollbackService
+
+            eval_service = EvaluationService(teacher_model=request.teacher_model)
+            eval_result = eval_service.run_evaluation(
+                db,
+                pipeline_run_id=str(summary.id),
+                sample_size=request.eval_sample_size,
+            )
+
+            prompts_updated_count = 0
+            rollback_triggered = False
+
+            # Check for rollback if previous evaluation exists
+            rollback_service = RollbackService()
+            rollback_result = rollback_service.check_and_rollback(
+                db,
+                current_eval_id=eval_result.evaluation_run_id,
+                auto_rollback=True,
+            )
+            if rollback_result and rollback_result.success:
+                rollback_triggered = True
+                alerts.append(f"ROLLBACK_TRIGGERED: {rollback_result.prompt_name}")
+
+            # Auto-optimize if enabled and no rollback occurred
+            if request.enable_auto_optimize and not rollback_triggered:
+                optimizer = PromptOptimizer(teacher_model=request.teacher_model)
+                opt_result = optimizer.analyze_and_improve(
+                    db,
+                    evaluation_run_id=eval_result.evaluation_run_id,
+                    auto_apply=True,
+                )
+                prompts_updated_count = len([p for p in opt_result.prompts_updated if p.get("applied")])
+
+            evaluation_summary = EvaluationSummary(
+                evaluation_run_id=eval_result.evaluation_run_id,
+                classification_accuracy=eval_result.classification_accuracy,
+                avg_neutralization_score=eval_result.avg_neutralization_score,
+                overall_quality_score=eval_result.overall_quality_score,
+                prompts_updated=prompts_updated_count,
+                rollback_triggered=rollback_triggered,
+                estimated_cost_usd=eval_result.estimated_cost_usd,
+            )
+
+            admin_logger.info(
+                f"[SCHEDULED-RUN] Evaluation complete: accuracy={eval_result.classification_accuracy:.2%}, "
+                f"quality={eval_result.overall_quality_score:.1f}/10, cost=${eval_result.estimated_cost_usd:.2f}"
+            )
+        except Exception as e:
+            admin_logger.error(f"[SCHEDULED-RUN] Evaluation failed: {e}")
+            alerts.append(f"EVALUATION_FAILED: {str(e)}")
+
+    # Update summary with final alerts
+    summary.alerts = alerts
+    db.commit()
+
     return ScheduledRunResponse(
         status=overall_status,
         trace_id=trace_id,
@@ -835,6 +914,7 @@ def run_scheduled_pipeline(
         brief_story_count=brief_story_count,
         brief_section_count=brief_section_count,
         alerts=alerts,
+        evaluation=evaluation_summary,
     )
 
 
@@ -1274,4 +1354,356 @@ def reset_all_data(
         db_deleted=db_deleted,
         storage_deleted=storage_deleted,
         warning=warning,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Evaluation endpoints
+# -----------------------------------------------------------------------------
+
+from app.schemas.evaluation import (
+    EvaluationRunRequest,
+    EvaluationRunResponse,
+    EvaluationRunSummary,
+    EvaluationRunListResponse,
+    ArticleEvaluationResult,
+    PromptVersionResponse,
+    PromptVersionListResponse,
+    RollbackRequest,
+    RollbackResponse,
+    AutoOptimizeConfigRequest,
+    AutoOptimizeConfigResponse,
+)
+
+
+@router.post("/evaluation/run", response_model=EvaluationRunResponse)
+def run_evaluation(
+    request: EvaluationRunRequest = EvaluationRunRequest(),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> EvaluationRunResponse:
+    """
+    Run a teacher LLM evaluation on a pipeline run.
+
+    Uses GPT-4o to evaluate classification, neutralization, and span detection
+    quality. Generates recommendations for prompt improvements.
+    """
+    from app import models
+    from app.services.evaluation_service import EvaluationService
+    from app.services.prompt_optimizer import PromptOptimizer
+
+    # Determine pipeline run to evaluate
+    if request.pipeline_run_id:
+        pipeline_run_id = request.pipeline_run_id
+    else:
+        # Get most recent completed pipeline run
+        latest = (
+            db.query(models.PipelineRunSummary)
+            .filter(models.PipelineRunSummary.status == "completed")
+            .order_by(models.PipelineRunSummary.finished_at.desc())
+            .first()
+        )
+        if not latest:
+            raise HTTPException(status_code=404, detail="No completed pipeline runs found")
+        pipeline_run_id = str(latest.id)
+
+    # Run evaluation
+    eval_service = EvaluationService(teacher_model=request.teacher_model)
+    result = eval_service.run_evaluation(
+        db,
+        pipeline_run_id=pipeline_run_id,
+        sample_size=request.sample_size,
+    )
+
+    # Optionally run auto-optimization
+    if request.enable_auto_optimize and result.status == "completed":
+        optimizer = PromptOptimizer(teacher_model=request.teacher_model)
+        opt_result = optimizer.analyze_and_improve(
+            db,
+            evaluation_run_id=result.evaluation_run_id,
+            auto_apply=True,
+        )
+        # Update result with optimization info
+        result.recommendations.extend(opt_result.prompts_updated)
+
+    # Get article evaluations for response
+    eval_run = db.query(models.EvaluationRun).filter(
+        models.EvaluationRun.id == result.evaluation_run_id
+    ).first()
+
+    article_evals = None
+    if eval_run and eval_run.article_evaluations:
+        article_evals = [
+            ArticleEvaluationResult(
+                story_raw_id=str(ae.story_raw_id),
+                original_title=ae.story_raw.original_title if ae.story_raw else None,
+                classification_correct=ae.classification_correct,
+                expected_domain=ae.expected_domain,
+                expected_feed_category=ae.expected_feed_category,
+                classification_feedback=ae.classification_feedback,
+                neutralization_score=ae.neutralization_score,
+                meaning_preservation_score=ae.meaning_preservation_score,
+                neutrality_score=ae.neutrality_score,
+                grammar_score=ae.grammar_score,
+                rule_violations=ae.rule_violations,
+                neutralization_feedback=ae.neutralization_feedback,
+                span_precision=ae.span_precision,
+                span_recall=ae.span_recall,
+                missed_manipulations=ae.missed_manipulations,
+                false_positives=ae.false_positives,
+                span_feedback=ae.span_feedback,
+            )
+            for ae in eval_run.article_evaluations
+        ]
+
+    return EvaluationRunResponse(
+        id=result.evaluation_run_id,
+        pipeline_run_id=pipeline_run_id,
+        teacher_model=request.teacher_model,
+        sample_size=result.sample_size,
+        status=result.status,
+        started_at=eval_run.started_at if eval_run else datetime.utcnow(),
+        finished_at=eval_run.finished_at if eval_run else None,
+        duration_ms=eval_run.duration_ms if eval_run else None,
+        classification_accuracy=result.classification_accuracy,
+        avg_neutralization_score=result.avg_neutralization_score,
+        avg_span_precision=result.avg_span_precision,
+        avg_span_recall=result.avg_span_recall,
+        overall_quality_score=result.overall_quality_score,
+        recommendations=result.recommendations,
+        prompts_updated=None,
+        rollback_triggered=False,
+        rollback_details=None,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        estimated_cost_usd=result.estimated_cost_usd,
+        article_evaluations=article_evals,
+    )
+
+
+@router.get("/evaluation/runs", response_model=EvaluationRunListResponse)
+def list_evaluation_runs(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> EvaluationRunListResponse:
+    """List recent evaluation runs."""
+    from app import models
+
+    runs = (
+        db.query(models.EvaluationRun)
+        .order_by(models.EvaluationRun.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    return EvaluationRunListResponse(
+        evaluations=[
+            EvaluationRunSummary(
+                id=str(r.id),
+                pipeline_run_id=str(r.pipeline_run_id),
+                teacher_model=r.teacher_model,
+                sample_size=r.sample_size,
+                status=r.status,
+                started_at=r.started_at,
+                finished_at=r.finished_at,
+                duration_ms=r.duration_ms,
+                classification_accuracy=r.classification_accuracy,
+                avg_neutralization_score=r.avg_neutralization_score,
+                overall_quality_score=r.overall_quality_score,
+                prompts_updated_count=len(r.prompts_updated) if r.prompts_updated else 0,
+                rollback_triggered=r.rollback_triggered,
+                estimated_cost_usd=r.estimated_cost_usd,
+            )
+            for r in runs
+        ],
+        total=len(runs),
+    )
+
+
+@router.get("/evaluation/runs/{run_id}", response_model=EvaluationRunResponse)
+def get_evaluation_run(
+    run_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> EvaluationRunResponse:
+    """Get detailed evaluation run by ID."""
+    from app import models
+    import uuid as uuid_module
+
+    eval_run = db.query(models.EvaluationRun).filter(
+        models.EvaluationRun.id == uuid_module.UUID(run_id)
+    ).first()
+
+    if not eval_run:
+        raise HTTPException(status_code=404, detail=f"Evaluation run {run_id} not found")
+
+    article_evals = [
+        ArticleEvaluationResult(
+            story_raw_id=str(ae.story_raw_id),
+            original_title=ae.story_raw.original_title if ae.story_raw else None,
+            classification_correct=ae.classification_correct,
+            expected_domain=ae.expected_domain,
+            expected_feed_category=ae.expected_feed_category,
+            classification_feedback=ae.classification_feedback,
+            neutralization_score=ae.neutralization_score,
+            meaning_preservation_score=ae.meaning_preservation_score,
+            neutrality_score=ae.neutrality_score,
+            grammar_score=ae.grammar_score,
+            rule_violations=ae.rule_violations,
+            neutralization_feedback=ae.neutralization_feedback,
+            span_precision=ae.span_precision,
+            span_recall=ae.span_recall,
+            missed_manipulations=ae.missed_manipulations,
+            false_positives=ae.false_positives,
+            span_feedback=ae.span_feedback,
+        )
+        for ae in eval_run.article_evaluations
+    ]
+
+    return EvaluationRunResponse(
+        id=str(eval_run.id),
+        pipeline_run_id=str(eval_run.pipeline_run_id),
+        teacher_model=eval_run.teacher_model,
+        sample_size=eval_run.sample_size,
+        status=eval_run.status,
+        started_at=eval_run.started_at,
+        finished_at=eval_run.finished_at,
+        duration_ms=eval_run.duration_ms,
+        classification_accuracy=eval_run.classification_accuracy,
+        avg_neutralization_score=eval_run.avg_neutralization_score,
+        avg_span_precision=eval_run.avg_span_precision,
+        avg_span_recall=eval_run.avg_span_recall,
+        overall_quality_score=eval_run.overall_quality_score,
+        recommendations=eval_run.recommendations,
+        prompts_updated=eval_run.prompts_updated,
+        rollback_triggered=eval_run.rollback_triggered,
+        rollback_details=eval_run.rollback_details,
+        input_tokens=eval_run.input_tokens,
+        output_tokens=eval_run.output_tokens,
+        estimated_cost_usd=eval_run.estimated_cost_usd,
+        article_evaluations=article_evals,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Prompt version history endpoints
+# -----------------------------------------------------------------------------
+
+@router.get("/prompts/{name}/versions", response_model=PromptVersionListResponse)
+def get_prompt_versions(
+    name: str,
+    model: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> PromptVersionListResponse:
+    """Get version history for a prompt."""
+    from app import models
+    from app.services.prompt_optimizer import get_prompt_versions
+
+    # Get the prompt
+    query = db.query(models.Prompt).filter(models.Prompt.name == name)
+    if model:
+        query = query.filter(models.Prompt.model == model)
+    else:
+        query = query.filter(models.Prompt.model.is_(None))
+
+    prompt = query.first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+
+    versions = get_prompt_versions(db, name, model)
+
+    return PromptVersionListResponse(
+        prompt_name=name,
+        prompt_id=str(prompt.id),
+        current_version=prompt.version,
+        versions=[
+            PromptVersionResponse(
+                id=str(v.id),
+                version=v.version,
+                content=v.content,
+                change_reason=v.change_reason,
+                change_source=v.change_source,
+                parent_version_id=str(v.parent_version_id) if v.parent_version_id else None,
+                avg_score_at_creation=v.avg_score_at_creation,
+                created_at=v.created_at,
+            )
+            for v in versions
+        ],
+    )
+
+
+@router.post("/prompts/{name}/rollback", response_model=RollbackResponse)
+def rollback_prompt(
+    name: str,
+    request: RollbackRequest = RollbackRequest(),
+    model: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> RollbackResponse:
+    """Rollback a prompt to a previous version."""
+    from app.services.rollback_service import RollbackService
+
+    service = RollbackService()
+    result = service.execute_rollback(
+        db,
+        prompt_name=name,
+        model=model,
+        target_version=request.target_version,
+        reason=request.reason or "Manual rollback",
+    )
+
+    return RollbackResponse(
+        status="completed" if result.success else "failed",
+        prompt_name=result.prompt_name,
+        previous_version=result.from_version,
+        new_version=result.to_version,
+        rollback_reason=result.reason,
+        created_at=datetime.utcnow(),
+        error=result.error,
+    )
+
+
+@router.post("/prompts/{name}/auto-optimize", response_model=AutoOptimizeConfigResponse)
+def configure_auto_optimize(
+    name: str,
+    request: AutoOptimizeConfigRequest,
+    model: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> AutoOptimizeConfigResponse:
+    """Configure auto-optimization settings for a prompt."""
+    from app import models
+
+    # Get the prompt
+    query = db.query(models.Prompt).filter(models.Prompt.name == name)
+    if model:
+        query = query.filter(models.Prompt.model == model)
+    else:
+        query = query.filter(models.Prompt.model.is_(None))
+
+    prompt = query.first()
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' not found")
+
+    # Update settings
+    prompt.auto_optimize_enabled = request.enabled
+    if request.min_score_threshold is not None:
+        prompt.min_score_threshold = request.min_score_threshold
+    if request.rollback_threshold is not None:
+        prompt.rollback_threshold = request.rollback_threshold
+    prompt.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(prompt)
+
+    return AutoOptimizeConfigResponse(
+        prompt_name=prompt.name,
+        prompt_id=str(prompt.id),
+        auto_optimize_enabled=prompt.auto_optimize_enabled,
+        min_score_threshold=prompt.min_score_threshold,
+        rollback_threshold=prompt.rollback_threshold,
+        current_version=prompt.version,
+        updated_at=prompt.updated_at,
     )

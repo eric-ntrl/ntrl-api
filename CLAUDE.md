@@ -267,7 +267,7 @@ app/
 ├── models.py            # SQLAlchemy ORM models (Domain, FeedCategory, Section enums)
 ├── taxonomy.py          # 115 manipulation types (v2)
 ├── routers/
-│   ├── admin.py         # V1 admin endpoints (ingest, classify, neutralize, brief, pipeline)
+│   ├── admin.py         # V1 admin endpoints (ingest, classify, neutralize, brief, pipeline, evaluation)
 │   ├── brief.py         # V1 brief endpoints (TTL-cached)
 │   ├── stories.py       # V1 story endpoints + debug endpoint (TTL-cached)
 │   ├── sources.py       # V1 sources endpoints
@@ -284,6 +284,9 @@ app/
 │   │   └── spans.py     # Span detection utilities (find_phrase_positions, etc.)
 │   ├── brief_assembly.py # Groups by feed_category (10 categories)
 │   ├── alerts.py        # Pipeline alerting (includes classify fallback rate)
+│   ├── evaluation_service.py  # Teacher LLM evaluation orchestration
+│   ├── prompt_optimizer.py    # Auto-improvement generation and application
+│   ├── rollback_service.py    # Degradation detection and prompt rollback
 │   └── ...
 ├── storage/             # Object storage providers (S3, local)
 └── jobs/                # Background jobs
@@ -757,15 +760,17 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 27. ✅ **requirements.txt** (Jan 2026): Generated from `Pipfile.lock` as Docker build safety net
 28. ✅ **Frontend transparency resilience** (Jan 2026): `api.ts` reduces transparency retries 3→1, adds 10s body parse timeout via `Promise.race`
 29. ✅ **Classify limit fix** (Jan 2026): Pipeline endpoints (`/pipeline/run`, `/pipeline/scheduled-run`) now use configurable `classify_limit` (default 200) instead of hardcoded 25. Prevents sports/culture articles from being misclassified as "world" due to unclassified articles falling back to legacy `SectionClassifier`. Brief assembly skips unclassified articles instead of misrouting them.
+30. ✅ **Automated Prompt Optimization System** (Jan 2026): Teacher LLM (GPT-4o) evaluates pipeline output quality and auto-improves prompts for production LLMs (GPT-4o-mini). New models: `PromptVersion`, `EvaluationRun`, `ArticleEvaluation`. New services: `EvaluationService`, `PromptOptimizer`, `RollbackService`. New endpoints: `/v1/evaluation/*`, `/v1/prompts/{name}/versions`, `/v1/prompts/{name}/rollback`, `/v1/prompts/{name}/auto-optimize`. Classification prompts now stored in DB with hot-reload. ~$0.40/evaluation run.
 
-### Current State (Jan 27 2026)
+### Current State (Jan 28 2026)
 
 **All fixes deployed and verified on Railway staging:**
 - Railway auto-deploys from `main` on push (build ~1m30s, deploy ~20s)
 - Note: `code_version` in `/v1/status` is not auto-bumped per deploy; check Railway dashboard for deploy status
 - All 4 highlight colors verified in UI (emotional=blue, urgency=rose, editorial=lavender, default=gold)
-- Full 4-stage pipeline running: INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE
+- Full 5-stage pipeline running: INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE → EVALUATE (optional)
 - API healthy after Alembic multiple-heads fix (was crash-looping)
+- Automated prompt optimization system deployed (enable via `enable_evaluation=true` in scheduled-run)
 
 **Classification results (Jan 27 2026):**
 - ✅ 200+ articles classified via LLM, 0 keyword fallbacks, 0 failures (100% LLM success rate)
@@ -809,10 +814,132 @@ Linear chain (must remain single-head):
 ```
 4b0a5b86cbe8 → 001 → 002 → 003 → 004 → 005 → 006
 → 48b2882dfa37 → 4eb5c6286d76 → 53b582a6786a → b29c9075587e
-→ 007_add_classification → c7f3a1b2d4e5
+→ 007_add_classification → c7f3a1b2d4e5 → 008_add_prompt_optimization
 ```
 
 **When adding new migrations:** Always set `down_revision` to the current single head. Run `alembic heads` to verify only one head exists before committing.
+
+## Automated Prompt Optimization System (Jan 2026)
+
+### Overview
+
+An automated "machine learning" loop that uses a stronger LLM (GPT-4o teacher) to evaluate pipeline output quality, identify issues, and auto-improve prompts for the weaker production LLMs (GPT-4o-mini students). Runs optionally after each scheduled pipeline.
+
+**Core Loop:**
+```
+Pipeline Run (gpt-4o-mini) → Evaluate 10 articles (GPT-4o) → Identify Issues
+→ Generate Prompt Improvements → Apply with Versioning → Monitor → Rollback if degraded
+```
+
+### New Database Models
+
+| Model | Description |
+|-------|-------------|
+| `PromptVersion` | Full version history with change tracking (manual/auto_optimize/rollback) |
+| `EvaluationRun` | Per-pipeline evaluation results with aggregate metrics |
+| `ArticleEvaluation` | Per-article evaluation details (classification, neutralization, spans) |
+
+**Updated `Prompt` model columns:**
+- `current_version_id` - FK to active PromptVersion
+- `auto_optimize_enabled` - Enable/disable auto-optimization
+- `min_score_threshold` - Below this triggers optimization (default 7.0)
+- `rollback_threshold` - Score drop to trigger rollback (default 0.5)
+
+### New Services
+
+| Service | File | Description |
+|---------|------|-------------|
+| `EvaluationService` | `app/services/evaluation_service.py` | Teacher LLM evaluation orchestration |
+| `PromptOptimizer` | `app/services/prompt_optimizer.py` | Improvement generation and application |
+| `RollbackService` | `app/services/rollback_service.py` | Degradation detection and auto-rollback |
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/evaluation/run` | Trigger teacher evaluation on a pipeline run |
+| GET | `/v1/evaluation/runs` | List recent evaluation runs |
+| GET | `/v1/evaluation/runs/{id}` | Get detailed evaluation results |
+| GET | `/v1/prompts/{name}/versions` | List prompt version history |
+| POST | `/v1/prompts/{name}/rollback` | Rollback to previous version |
+| POST | `/v1/prompts/{name}/auto-optimize` | Configure auto-optimization settings |
+
+### Usage
+
+**Enable evaluation in scheduled-run:**
+```bash
+curl -X POST ".../v1/pipeline/scheduled-run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ..." \
+  -d '{
+    "enable_evaluation": true,
+    "teacher_model": "gpt-4o",
+    "eval_sample_size": 10,
+    "enable_auto_optimize": false
+  }'
+```
+
+**Manually trigger evaluation:**
+```bash
+curl -X POST ".../v1/evaluation/run" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ..." \
+  -d '{"sample_size": 10, "enable_auto_optimize": false}'
+```
+
+**View evaluation results:**
+```bash
+curl ".../v1/evaluation/runs" -H "X-API-Key: ..."
+```
+
+**Configure auto-optimize for a prompt:**
+```bash
+curl -X POST ".../v1/prompts/classification_system_prompt/auto-optimize" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ..." \
+  -d '{"enabled": true, "min_score_threshold": 7.0, "rollback_threshold": 0.5}'
+```
+
+**Manual rollback:**
+```bash
+curl -X POST ".../v1/prompts/classification_system_prompt/rollback" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: ..." \
+  -d '{"target_version": 1, "reason": "Quality regression"}'
+```
+
+### Rollback Triggers
+
+Automatic rollback triggers when comparing current evaluation to previous:
+
+| Trigger | Threshold |
+|---------|-----------|
+| Overall score drop | ≥0.5 points |
+| Classification accuracy drop | ≥10% |
+| Neutralization score drop | ≥0.75 points |
+| Span precision drop | ≥15% |
+| Span recall drop | ≥15% |
+
+### Cost Estimate
+
+Per evaluation run (10 articles):
+- ~50K input tokens @ $5/1M = $0.25
+- ~10K output tokens @ $15/1M = $0.15
+- **Total: ~$0.40 per pipeline run**
+
+At 6 runs/day: ~$2.40/day, ~$72/month
+
+### Prompts in Database
+
+Classification prompts are now stored in DB for hot-reload:
+- `classification_system_prompt` - Full 20-domain classification prompt
+- `classification_simplified_prompt` - Fallback simplified prompt
+
+**Clear cache after DB updates:**
+```python
+from app.services.llm_classifier import clear_classification_prompt_cache
+clear_classification_prompt_cache()
+```
 
 ### Important: Database Spans vs Fresh Detection
 
