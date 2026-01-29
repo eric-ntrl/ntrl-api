@@ -763,6 +763,7 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 30. ✅ **Automated Prompt Optimization System** (Jan 2026): Teacher LLM (GPT-4o) evaluates pipeline output quality and auto-improves prompts for production LLMs (GPT-4o-mini). New models: `PromptVersion`, `EvaluationRun`, `ArticleEvaluation`. New services: `EvaluationService`, `PromptOptimizer`, `RollbackService`. New endpoints: `/v1/evaluation/*`, `/v1/prompts/{name}/versions`, `/v1/prompts/{name}/rollback`, `/v1/prompts/{name}/auto-optimize`. Classification prompts now stored in DB with hot-reload. ~$0.40/evaluation run.
 31. ✅ **Neutralizer prompts in DB** (Jan 2026): 7 model-agnostic prompts migrated from hardcoded defaults to DB. Enables auto-optimization of span detection and neutralization prompts. `PromptOptimizer` updated to handle `model=NULL` prompts.
 32. ✅ **Auto-optimize endpoint fix** (Jan 2026): Fixed internal server error when `enable_auto_optimize: true`. Bug was extending `recommendations` (list of `EvaluationRecommendation`) with `prompts_updated` (list of dicts) - incompatible types causing schema validation error. Now properly converts to `PromptUpdate` schema and populates the `prompts_updated` response field.
+33. ✅ **Enhanced evaluation output summary** (Jan 2026): Added three new response fields to evaluation endpoints: `score_comparison` (deltas and improvement flags vs previous run), `missed_items_summary` (aggregated missed manipulations by category with top phrases), `prompt_changes_detail` (specific changes made with content diff summaries). Helps quickly assess evaluation results without parsing per-article data.
 
 ### Current State (Jan 29 2026)
 
@@ -924,6 +925,66 @@ Pipeline Run (gpt-4o-mini) → Evaluate 10 articles (Claude Sonnet) → Identify
 | GET | `/v1/prompts/{name}/versions` | List prompt version history |
 | POST | `/v1/prompts/{name}/rollback` | Rollback to previous version |
 | POST | `/v1/prompts/{name}/auto-optimize` | Configure auto-optimization settings |
+
+### Enhanced Evaluation Response (Jan 2026)
+
+The evaluation response includes three enhanced summary fields for better visibility:
+
+**1. `score_comparison`** - Compares current run with previous evaluation:
+```json
+{
+  "previous_run_id": "uuid",
+  "classification_accuracy_prev": 0.60,
+  "classification_accuracy_delta": 0.07,
+  "classification_improved": true,
+  "neutralization_score_prev": 7.50,
+  "neutralization_score_delta": 0.23,
+  "neutralization_improved": true,
+  "span_precision_prev": 0.0,
+  "span_precision_delta": 0.0,
+  "span_recall_prev": 0.03,
+  "span_recall_delta": -0.01,
+  "overall_score_prev": 5.00,
+  "overall_score_delta": 0.25,
+  "overall_improved": true
+}
+```
+
+**2. `missed_items_summary`** - Aggregates missed manipulations and false positives:
+```json
+{
+  "total_missed_count": 6,
+  "missed_by_category": {
+    "urgency": 2,
+    "editorial_voice": 3,
+    "emotional_trigger": 1
+  },
+  "top_missed_phrases": [
+    {"phrase": "careens toward deadline", "category": "urgency", "reason_should_flag": "..."}
+  ],
+  "total_false_positives": 2,
+  "top_false_positives": [
+    {"phrase": "record 43-day closure", "reason_incorrect": "Factual descriptor"}
+  ]
+}
+```
+
+**3. `prompt_changes_detail`** - Details of prompt optimizations (when `enable_auto_optimize: true`):
+```json
+[
+  {
+    "prompt_name": "span_detection_prompt",
+    "old_version": 9,
+    "new_version": 10,
+    "change_reason": "Auto-optimize: Improved urgency and editorial voice detection",
+    "changes_made": [
+      "Added 'careen', 'escape hatch' to urgency examples",
+      "Added editorial emphasis modifiers like 'key' to detection list"
+    ],
+    "content_diff_summary": "+345 chars, +4 lines, 3 new sections"
+  }
+]
+```
 
 ### Usage
 
