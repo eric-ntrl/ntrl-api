@@ -822,6 +822,58 @@ Linear chain (must remain single-head):
 
 **When adding new migrations:** Always set `down_revision` to the current single head. Run `alembic heads` to verify only one head exists before committing.
 
+## LLM API Usage Summary
+
+### Production Pipeline (per article)
+
+| Stage | Purpose | Model | Provider | Calls/Article |
+|-------|---------|-------|----------|---------------|
+| **CLASSIFY** | Domain + feed category | `gpt-4o-mini` | OpenAI | 1 |
+| **CLASSIFY** | Fallback classification | `gemini-2.0-flash` | Google | 0-1 (if OpenAI fails) |
+| **NEUTRALIZE** | Span detection | `gpt-4o-mini` | OpenAI | 1 |
+| **NEUTRALIZE** | Detail full (body rewrite) | `gpt-4o-mini` | OpenAI | 1 |
+| **NEUTRALIZE** | Detail brief (summary) | `gpt-4o-mini` | OpenAI | 1-3 (retries on validation fail) |
+| **NEUTRALIZE** | Feed outputs (title/summary) | `gpt-4o-mini` | OpenAI | 1-3 (retries on validation fail) |
+
+**Total per article:** ~4-6 calls to `gpt-4o-mini`
+
+### Evaluation & Optimization (optional, per run)
+
+| Stage | Purpose | Model | Provider | Calls/Run |
+|-------|---------|-------|----------|-----------|
+| **EVAL** | Classification evaluation | `gpt-4o` | OpenAI | 1 per sample |
+| **EVAL** | Neutralization evaluation | `gpt-4o` | OpenAI | 1 per sample |
+| **EVAL** | Span detection evaluation | `gpt-4o` | OpenAI | 1 per sample |
+| **OPTIMIZE** | Generate prompt improvements | `gpt-4o` | OpenAI | 1 per prompt needing improvement |
+
+**Total per eval run (10 samples):** ~30 calls to `gpt-4o`
+
+### Alternative Providers (if configured)
+
+| Stage | Model | Provider | Notes |
+|-------|-------|----------|-------|
+| All neutralization | `gemini-2.0-flash` | Google | Full provider implementation |
+| All neutralization | `claude-3-5-haiku-latest` | Anthropic | Full provider implementation |
+
+### Cost Estimates
+
+| Operation | Model | Est. Cost |
+|-----------|-------|-----------|
+| Classify 1 article | gpt-4o-mini | ~$0.00002 |
+| Neutralize 1 article (4 calls) | gpt-4o-mini | ~$0.0003 |
+| **Full pipeline per article** | gpt-4o-mini | **~$0.0003** |
+| Evaluation run (10 samples) | gpt-4o | **~$0.40** |
+| Auto-optimize (if triggered) | gpt-4o | ~$0.05-0.10 |
+
+### Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `OPENAI_API_KEY` | OpenAI auth | required |
+| `OPENAI_MODEL` | Production model | `gpt-4o-mini` |
+| `GOOGLE_API_KEY` | Gemini auth | optional |
+| `ANTHROPIC_API_KEY` | Claude auth | optional |
+
 ## Automated Prompt Optimization System (Jan 2026)
 
 ### Overview
