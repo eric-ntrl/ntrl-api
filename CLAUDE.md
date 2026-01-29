@@ -762,8 +762,9 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 29. ✅ **Classify limit fix** (Jan 2026): Pipeline endpoints (`/pipeline/run`, `/pipeline/scheduled-run`) now use configurable `classify_limit` (default 200) instead of hardcoded 25. Prevents sports/culture articles from being misclassified as "world" due to unclassified articles falling back to legacy `SectionClassifier`. Brief assembly skips unclassified articles instead of misrouting them.
 30. ✅ **Automated Prompt Optimization System** (Jan 2026): Teacher LLM (GPT-4o) evaluates pipeline output quality and auto-improves prompts for production LLMs (GPT-4o-mini). New models: `PromptVersion`, `EvaluationRun`, `ArticleEvaluation`. New services: `EvaluationService`, `PromptOptimizer`, `RollbackService`. New endpoints: `/v1/evaluation/*`, `/v1/prompts/{name}/versions`, `/v1/prompts/{name}/rollback`, `/v1/prompts/{name}/auto-optimize`. Classification prompts now stored in DB with hot-reload. ~$0.40/evaluation run.
 31. ✅ **Neutralizer prompts in DB** (Jan 2026): 7 model-agnostic prompts migrated from hardcoded defaults to DB. Enables auto-optimization of span detection and neutralization prompts. `PromptOptimizer` updated to handle `model=NULL` prompts.
+32. ✅ **Auto-optimize endpoint fix** (Jan 2026): Fixed internal server error when `enable_auto_optimize: true`. Bug was extending `recommendations` (list of `EvaluationRecommendation`) with `prompts_updated` (list of dicts) - incompatible types causing schema validation error. Now properly converts to `PromptUpdate` schema and populates the `prompts_updated` response field.
 
-### Current State (Jan 28 2026)
+### Current State (Jan 29 2026)
 
 **All fixes deployed and verified on Railway staging:**
 - Railway auto-deploys from `main` on push (build ~1m30s, deploy ~20s)
@@ -796,6 +797,7 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - ✅ Sports section populated (Travis Kelce, Vanderbilt QB, etc.)
 - ✅ Culture section populated (King Charles, American Idol, etc.)
 - ✅ 23/23 brief assembly unit tests passing
+- ✅ Auto-optimize endpoint returns 200 with `prompts_updated` populated (was 500 error)
 
 ### Remaining Issues
 
@@ -960,9 +962,9 @@ clear_classification_prompt_cache()
 - Classification prompts are **model-specific** (e.g., `classification_system_prompt` for `gpt-4o-mini`)
 - Neutralizer prompts are **model-agnostic** (`model=NULL`) - same prompt used across all LLM providers
 
-**Results after auto-optimization (Jan 28 2026):**
-- `span_detection_prompt` optimized from v1 to v8
-- Span recall improved: 20% -> 49%
+**Results after auto-optimization (Jan 29 2026):**
+- `span_detection_prompt` optimized from v1 to v10
+- Span recall improved: 20% -> 50%
 
 ### Important: Database Spans vs Fresh Detection
 
