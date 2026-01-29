@@ -761,6 +761,7 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 28. ✅ **Frontend transparency resilience** (Jan 2026): `api.ts` reduces transparency retries 3→1, adds 10s body parse timeout via `Promise.race`
 29. ✅ **Classify limit fix** (Jan 2026): Pipeline endpoints (`/pipeline/run`, `/pipeline/scheduled-run`) now use configurable `classify_limit` (default 200) instead of hardcoded 25. Prevents sports/culture articles from being misclassified as "world" due to unclassified articles falling back to legacy `SectionClassifier`. Brief assembly skips unclassified articles instead of misrouting them.
 30. ✅ **Automated Prompt Optimization System** (Jan 2026): Teacher LLM (GPT-4o) evaluates pipeline output quality and auto-improves prompts for production LLMs (GPT-4o-mini). New models: `PromptVersion`, `EvaluationRun`, `ArticleEvaluation`. New services: `EvaluationService`, `PromptOptimizer`, `RollbackService`. New endpoints: `/v1/evaluation/*`, `/v1/prompts/{name}/versions`, `/v1/prompts/{name}/rollback`, `/v1/prompts/{name}/auto-optimize`. Classification prompts now stored in DB with hot-reload. ~$0.40/evaluation run.
+31. ✅ **Neutralizer prompts in DB** (Jan 2026): 7 model-agnostic prompts migrated from hardcoded defaults to DB. Enables auto-optimization of span detection and neutralization prompts. `PromptOptimizer` updated to handle `model=NULL` prompts.
 
 ### Current State (Jan 28 2026)
 
@@ -940,6 +941,28 @@ Classification prompts are now stored in DB for hot-reload:
 from app.services.llm_classifier import clear_classification_prompt_cache
 clear_classification_prompt_cache()
 ```
+
+### Neutralizer Prompts in Database (Jan 2026)
+
+**Model-agnostic prompts** (`model=NULL`) added to DB for auto-optimization:
+
+| Prompt Name | Purpose | Auto-Optimize |
+|-------------|---------|---------------|
+| `span_detection_prompt` | Detects manipulative phrases (14 categories) | Enabled |
+| `filter_detail_full_prompt` | Primary detail_full neutralization | Enabled |
+| `synthesis_detail_full_prompt` | Fallback full rewrite | Enabled |
+| `synthesis_detail_brief_prompt` | Summary generation | Enabled |
+| `compression_feed_outputs_prompt` | Feed title/summary | Enabled |
+| `neutralization_system_prompt` | Neutralization system context | Enabled |
+| `article_system_prompt` | Shared canon rules (A1-D4) | Disabled |
+
+**Key difference from classification prompts:**
+- Classification prompts are **model-specific** (e.g., `classification_system_prompt` for `gpt-4o-mini`)
+- Neutralizer prompts are **model-agnostic** (`model=NULL`) - same prompt used across all LLM providers
+
+**Results after auto-optimization (Jan 28 2026):**
+- `span_detection_prompt` optimized from v1 to v8
+- Span recall improved: 20% -> 49%
 
 ### Important: Database Spans vs Fresh Detection
 

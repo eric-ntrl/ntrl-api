@@ -1416,6 +1416,7 @@ def run_evaluation(
     )
 
     # Optionally run auto-optimization
+    prompts_updated = None
     if request.enable_auto_optimize and result.status == "completed":
         optimizer = PromptOptimizer(teacher_model=request.teacher_model)
         opt_result = optimizer.analyze_and_improve(
@@ -1423,8 +1424,19 @@ def run_evaluation(
             evaluation_run_id=result.evaluation_run_id,
             auto_apply=True,
         )
-        # Update result with optimization info
-        result.recommendations.extend(opt_result.prompts_updated)
+        # Convert to PromptUpdate schema (only include applied changes)
+        if opt_result.prompts_updated:
+            from app.schemas.evaluation import PromptUpdate
+            prompts_updated = [
+                PromptUpdate(
+                    prompt_name=p["prompt_name"],
+                    old_version=p["old_version"],
+                    new_version=p["new_version"],
+                    change_reason=p["change_reason"],
+                )
+                for p in opt_result.prompts_updated
+                if p.get("applied")
+            ]
 
     # Get article evaluations for response
     eval_run = db.query(models.EvaluationRun).filter(
@@ -1471,7 +1483,7 @@ def run_evaluation(
         avg_span_recall=result.avg_span_recall,
         overall_quality_score=result.overall_quality_score,
         recommendations=result.recommendations,
-        prompts_updated=None,
+        prompts_updated=prompts_updated,
         rollback_triggered=False,
         rollback_details=None,
         input_tokens=result.input_tokens,
