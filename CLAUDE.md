@@ -872,8 +872,8 @@ Linear chain (must remain single-head):
 | `OPENAI_API_KEY` | OpenAI auth | required |
 | `OPENAI_MODEL` | Production model | `gpt-4o-mini` |
 | `GOOGLE_API_KEY` | Gemini auth | optional |
-| `ANTHROPIC_API_KEY` | Claude auth | required for eval (if using Claude) |
-| `EVAL_MODEL` | Teacher model for evaluation/grading | `claude-3-5-sonnet-latest` |
+| `ANTHROPIC_API_KEY` | Claude auth | optional (if using Claude for eval) |
+| `EVAL_MODEL` | Teacher model for evaluation/grading | `gpt-4o` |
 | `OPTIMIZER_MODEL` | Model for prompt improvements | `gpt-4o` |
 
 ## Automated Prompt Optimization System (Jan 2026)
@@ -1005,7 +1005,7 @@ At 6 runs/day: ~$2.40/day, ~$72/month
 **Environment variables:**
 | Variable | Purpose | Default | Options |
 |----------|---------|---------|---------|
-| `EVAL_MODEL` | Model for evaluation/grading | `claude-3-5-sonnet-latest` | `claude-3-5-sonnet-*`, `gpt-4o` |
+| `EVAL_MODEL` | Model for evaluation/grading | `gpt-4o` | `gpt-4o`, `claude-3-5-sonnet-*` |
 | `OPTIMIZER_MODEL` | Model for prompt improvements | `gpt-4o` | `gpt-4o`, `o1-mini`, `o1` |
 | `ANTHROPIC_API_KEY` | Required if using Claude models | (none) | |
 

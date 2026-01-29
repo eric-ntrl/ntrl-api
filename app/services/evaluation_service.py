@@ -688,6 +688,7 @@ Evaluate the span detection quality (precision and recall)."""
 
     def _call_teacher_anthropic(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """Call Anthropic Claude for evaluation."""
+        import re
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
@@ -695,7 +696,7 @@ Evaluate the span detection quality (precision and recall)."""
         try:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=api_key, timeout=30.0)
+            client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
 
             response = client.messages.create(
                 model=self.teacher_model,
@@ -710,7 +711,16 @@ Evaluate the span detection quality (precision and recall)."""
                 self._total_output_tokens += response.usage.output_tokens
 
             content = response.content[0].text.strip()
-            return json.loads(content)
+
+            # Try direct JSON parse first
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                # Extract JSON from response (Claude may include text before/after)
+                json_match = re.search(r'\{[\s\S]*\}', content)
+                if json_match:
+                    return json.loads(json_match.group())
+                raise ValueError(f"No valid JSON found in response: {content[:200]}")
 
         except Exception as e:
             logger.error(f"[EVAL] Anthropic teacher LLM call failed: {e}")
