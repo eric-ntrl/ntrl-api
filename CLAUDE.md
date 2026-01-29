@@ -841,12 +841,12 @@ Linear chain (must remain single-head):
 
 | Stage | Purpose | Model | Provider | Calls/Run |
 |-------|---------|-------|----------|-----------|
-| **EVAL** | Classification evaluation | `gpt-4o` | OpenAI | 1 per sample |
-| **EVAL** | Neutralization evaluation | `gpt-4o` | OpenAI | 1 per sample |
-| **EVAL** | Span detection evaluation | `gpt-4o` | OpenAI | 1 per sample |
+| **EVAL** | Classification evaluation | `claude-sonnet-4-5` | Anthropic | 1 per sample |
+| **EVAL** | Neutralization evaluation | `claude-sonnet-4-5` | Anthropic | 1 per sample |
+| **EVAL** | Span detection evaluation | `claude-sonnet-4-5` | Anthropic | 1 per sample |
 | **OPTIMIZE** | Generate prompt improvements | `gpt-4o` | OpenAI | 1 per prompt needing improvement |
 
-**Total per eval run (10 samples):** ~30 calls to `gpt-4o`
+**Total per eval run (10 samples):** ~30 calls to `claude-sonnet-4-5`
 
 ### Alternative Providers (if configured)
 
@@ -862,7 +862,7 @@ Linear chain (must remain single-head):
 | Classify 1 article | gpt-4o-mini | ~$0.00002 |
 | Neutralize 1 article (4 calls) | gpt-4o-mini | ~$0.0003 |
 | **Full pipeline per article** | gpt-4o-mini | **~$0.0003** |
-| Evaluation run (10 samples) | claude-3-5-sonnet | **~$0.12** |
+| Evaluation run (10 samples) | claude-sonnet-4-5 | **~$0.30** |
 | Auto-optimize (if triggered) | gpt-4o | ~$0.05-0.10 |
 
 ### Environment Variables
@@ -872,8 +872,8 @@ Linear chain (must remain single-head):
 | `OPENAI_API_KEY` | OpenAI auth | required |
 | `OPENAI_MODEL` | Production model | `gpt-4o-mini` |
 | `GOOGLE_API_KEY` | Gemini auth | optional |
-| `ANTHROPIC_API_KEY` | Claude auth | optional (if using Claude for eval) |
-| `EVAL_MODEL` | Teacher model for evaluation/grading | `gpt-4o` |
+| `ANTHROPIC_API_KEY` | Claude auth | required for eval (Claude Sonnet 4.5 default) |
+| `EVAL_MODEL` | Teacher model for evaluation/grading | `claude-sonnet-4-5` |
 | `OPTIMIZER_MODEL` | Model for prompt improvements | `gpt-4o` |
 
 ## Automated Prompt Optimization System (Jan 2026)
@@ -883,8 +883,8 @@ Linear chain (must remain single-head):
 An automated "machine learning" loop that uses stronger LLMs to evaluate pipeline output quality, identify issues, and auto-improve prompts for the weaker production LLMs (GPT-4o-mini students). Runs optionally after each scheduled pipeline.
 
 **Split Architecture (Jan 2026):**
-- **Evaluation (grading)**: Uses Claude 3.5 Sonnet (better at nuanced manipulation detection)
-- **Optimization (prompt improvement)**: Uses GPT-4o (or o1-mini for complex reasoning)
+- **Evaluation (grading)**: Uses Claude Sonnet 4.5 (better at nuanced manipulation detection)
+- **Optimization (prompt improvement)**: Uses GPT-4o (or o3/o1-mini for complex reasoning)
 
 **Core Loop:**
 ```
@@ -986,17 +986,23 @@ Automatic rollback triggers when comparing current evaluation to previous:
 **Per evaluation run (10 articles):**
 | Stage | Model | Input Tokens | Output Tokens | Cost |
 |-------|-------|--------------|---------------|------|
-| Evaluation (grading) | Claude 3.5 Sonnet | ~50K @ $3/1M | ~10K @ $15/1M | ~$0.30 |
+| Evaluation (grading) | Claude Sonnet 4.5 | ~50K @ $3/1M | ~10K @ $15/1M | ~$0.30 |
 | Optimization (if triggered) | GPT-4o | ~20K @ $2.50/1M | ~5K @ $10/1M | ~$0.10 |
 | **Total per run** | | | | **~$0.40** |
 
-**Model pricing reference:**
-| Model | Input/1M | Output/1M |
-|-------|----------|-----------|
-| `claude-3-5-sonnet-latest` | $3.00 | $15.00 |
-| `gpt-4o` | $2.50 | $10.00 |
-| `o1-mini` | $3.00 | $12.00 |
-| `o1` | $15.00 | $60.00 |
+**Model pricing reference (Jan 2026):**
+| Model | Input/1M | Output/1M | Notes |
+|-------|----------|-----------|-------|
+| `claude-sonnet-4-5` | $3.00 | $15.00 | Recommended for eval |
+| `claude-haiku-4-5` | $1.00 | $5.00 | Fast, cheap |
+| `claude-opus-4-5` | $5.00 | $25.00 | Most capable |
+| `gpt-4o` | $2.50 | $10.00 | |
+| `o3` | $2.00 | $8.00 | New reasoning model |
+| `o3-mini` | $0.55 | $2.20 | Budget reasoning |
+| `o1` | $15.00 | $60.00 | Legacy reasoning |
+| `o1-mini` | $3.00 | $12.00 | |
+
+**Note:** `claude-3-5-sonnet-latest` is deprecated. Use `claude-sonnet-4-5` instead.
 
 At 6 runs/day: ~$2.40/day, ~$72/month
 
@@ -1005,13 +1011,14 @@ At 6 runs/day: ~$2.40/day, ~$72/month
 **Environment variables:**
 | Variable | Purpose | Default | Options |
 |----------|---------|---------|---------|
-| `EVAL_MODEL` | Model for evaluation/grading | `gpt-4o` | `gpt-4o`, `claude-3-5-sonnet-*` |
-| `OPTIMIZER_MODEL` | Model for prompt improvements | `gpt-4o` | `gpt-4o`, `o1-mini`, `o1` |
+| `EVAL_MODEL` | Model for evaluation/grading | `claude-sonnet-4-5` | `claude-sonnet-4-5`, `claude-haiku-4-5`, `claude-opus-4-5`, `gpt-4o` |
+| `OPTIMIZER_MODEL` | Model for prompt improvements | `gpt-4o` | `gpt-4o`, `o3`, `o1-mini`, `o1` |
 | `ANTHROPIC_API_KEY` | Required if using Claude models | (none) | |
 
 **Why split models:**
-- **Claude for evaluation**: Better at nuanced manipulation detection, fewer false positives in grading
+- **Claude Sonnet 4.5 for evaluation**: Better at nuanced manipulation detection, fewer false positives in grading
 - **GPT-4o for optimization**: Better at structured prompt engineering, reliable JSON output
+- **Consider o3 ($2/$8)**: New reasoning model, cost-effective alternative to GPT-4o ($2.50/$10) for optimization
 
 **o1 model notes:**
 - No system prompt support - prompts are combined into user message

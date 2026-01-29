@@ -28,12 +28,20 @@ logger = logging.getLogger(__name__)
 # Cost tracking
 # ---------------------------------------------------------------------------
 
-# Model pricing (per 1M tokens)
+# Model pricing (per 1M tokens) - Updated Jan 2026
 MODEL_PRICING = {
+    # Claude 4.5 series (current)
+    "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    "claude-opus-4-5": {"input": 5.00, "output": 25.00},
+    # OpenAI
     "gpt-4o": {"input": 2.50, "output": 10.00},
-    "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
-    "o1-mini": {"input": 3.00, "output": 12.00},
+    "o3": {"input": 2.00, "output": 8.00},
+    "o3-mini": {"input": 0.55, "output": 2.20},
     "o1": {"input": 15.00, "output": 60.00},
+    "o1-mini": {"input": 3.00, "output": 12.00},
+    # Legacy (backwards compat)
+    "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
 }
 
 
@@ -557,7 +565,9 @@ class EvaluationService:
             eval_data.classification_feedback = class_result.get("reasoning")
             eval_data.classification_prompt_suggestion = class_result.get("prompt_improvement_suggestion")
         except Exception as e:
-            logger.warning(f"[EVAL] Classification eval failed for {story_raw.id}: {e}")
+            import traceback
+            logger.error(f"[EVAL] Classification eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
+            eval_data.classification_feedback = f"ERROR: {str(e)}"
 
         # 2. Evaluate neutralization
         try:
@@ -577,7 +587,9 @@ class EvaluationService:
             eval_data.neutralization_feedback = neut_result.get("reasoning")
             eval_data.neutralization_prompt_suggestion = neut_result.get("prompt_improvement_suggestion")
         except Exception as e:
-            logger.warning(f"[EVAL] Neutralization eval failed for {story_raw.id}: {e}")
+            import traceback
+            logger.error(f"[EVAL] Neutralization eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
+            eval_data.neutralization_feedback = f"ERROR: {str(e)}"
 
         # 3. Evaluate spans
         try:
@@ -593,7 +605,9 @@ class EvaluationService:
             eval_data.span_feedback = span_result.get("reasoning")
             eval_data.span_prompt_suggestion = span_result.get("prompt_improvement_suggestion")
         except Exception as e:
-            logger.warning(f"[EVAL] Span eval failed for {story_raw.id}: {e}")
+            import traceback
+            logger.error(f"[EVAL] Span eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
+            eval_data.span_feedback = f"ERROR: {str(e)}"
 
         return eval_data
 
@@ -681,7 +695,10 @@ Evaluate the span detection quality (precision and recall)."""
 
     def _call_teacher(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """Call the teacher LLM (supports OpenAI and Anthropic)."""
-        if self.teacher_model.startswith("claude"):
+        # Match both old and new Claude model naming conventions
+        # Old: claude-3-5-sonnet-latest, claude-3-5-sonnet
+        # New: claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5
+        if "claude" in self.teacher_model.lower():
             return self._call_teacher_anthropic(system_prompt, user_prompt)
         else:
             return self._call_teacher_openai(system_prompt, user_prompt)
