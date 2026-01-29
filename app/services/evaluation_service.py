@@ -28,16 +28,22 @@ logger = logging.getLogger(__name__)
 # Cost tracking
 # ---------------------------------------------------------------------------
 
-# GPT-4o pricing (per 1M tokens)
-GPT4O_INPUT_PRICE = 5.00   # $5.00 per 1M input tokens
-GPT4O_OUTPUT_PRICE = 15.00  # $15.00 per 1M output tokens
+# Model pricing (per 1M tokens)
+MODEL_PRICING = {
+    "gpt-4o": {"input": 2.50, "output": 10.00},
+    "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
+    "o1-mini": {"input": 3.00, "output": 12.00},
+    "o1": {"input": 15.00, "output": 60.00},
+}
 
 
 def _calculate_cost(input_tokens: int, output_tokens: int, model: str = "gpt-4o") -> float:
     """Calculate estimated cost in USD."""
-    if "gpt-4o" in model:
-        return (input_tokens * GPT4O_INPUT_PRICE / 1_000_000 +
-                output_tokens * GPT4O_OUTPUT_PRICE / 1_000_000)
+    # Find matching pricing tier
+    for model_key, pricing in MODEL_PRICING.items():
+        if model_key in model:
+            return (input_tokens * pricing["input"] / 1_000_000 +
+                    output_tokens * pricing["output"] / 1_000_000)
     return 0.0
 
 
@@ -674,7 +680,44 @@ Evaluate the span detection quality (precision and recall)."""
         return self._call_teacher(SPAN_EVAL_PROMPT, user_prompt)
 
     def _call_teacher(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-        """Call the teacher LLM and parse JSON response."""
+        """Call the teacher LLM (supports OpenAI and Anthropic)."""
+        if self.teacher_model.startswith("claude"):
+            return self._call_teacher_anthropic(system_prompt, user_prompt)
+        else:
+            return self._call_teacher_openai(system_prompt, user_prompt)
+
+    def _call_teacher_anthropic(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+        """Call Anthropic Claude for evaluation."""
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+
+        try:
+            import anthropic
+
+            client = anthropic.Anthropic(api_key=api_key, timeout=30.0)
+
+            response = client.messages.create(
+                model=self.teacher_model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+
+            # Track tokens
+            if response.usage:
+                self._total_input_tokens += response.usage.input_tokens
+                self._total_output_tokens += response.usage.output_tokens
+
+            content = response.content[0].text.strip()
+            return json.loads(content)
+
+        except Exception as e:
+            logger.error(f"[EVAL] Anthropic teacher LLM call failed: {e}")
+            raise
+
+    def _call_teacher_openai(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+        """Call OpenAI GPT for evaluation."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY not set")
@@ -703,7 +746,7 @@ Evaluate the span detection quality (precision and recall)."""
             return json.loads(content)
 
         except Exception as e:
-            logger.error(f"[EVAL] Teacher LLM call failed: {e}")
+            logger.error(f"[EVAL] OpenAI teacher LLM call failed: {e}")
             raise
 
     def _generate_recommendations(

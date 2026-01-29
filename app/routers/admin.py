@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 admin_logger = logging.getLogger(__name__)
 
+from app.config import get_settings
 from app.database import get_db
 from app.schemas.admin import (
     IngestRunRequest,
@@ -839,7 +840,15 @@ def run_scheduled_pipeline(
             from app.services.prompt_optimizer import PromptOptimizer
             from app.services.rollback_service import RollbackService
 
-            eval_service = EvaluationService(teacher_model=request.teacher_model)
+            settings = get_settings()
+
+            # Use config defaults, allow request to override
+            eval_model = request.teacher_model
+            if eval_model == "gpt-4o":  # Schema default, use config instead
+                eval_model = settings.EVAL_MODEL
+            optimizer_model = settings.OPTIMIZER_MODEL
+
+            eval_service = EvaluationService(teacher_model=eval_model)
             eval_result = eval_service.run_evaluation(
                 db,
                 pipeline_run_id=str(summary.id),
@@ -862,7 +871,7 @@ def run_scheduled_pipeline(
 
             # Auto-optimize if enabled and no rollback occurred
             if request.enable_auto_optimize and not rollback_triggered:
-                optimizer = PromptOptimizer(teacher_model=request.teacher_model)
+                optimizer = PromptOptimizer(teacher_model=optimizer_model)
                 opt_result = optimizer.analyze_and_improve(
                     db,
                     evaluation_run_id=eval_result.evaluation_run_id,
@@ -1385,12 +1394,21 @@ def run_evaluation(
     """
     Run a teacher LLM evaluation on a pipeline run.
 
-    Uses GPT-4o to evaluate classification, neutralization, and span detection
-    quality. Generates recommendations for prompt improvements.
+    Uses configurable teacher model (default: Claude 3.5 Sonnet) to evaluate
+    classification, neutralization, and span detection quality.
+    Uses separate optimizer model (default: GPT-4o) for prompt improvements.
     """
     from app import models
     from app.services.evaluation_service import EvaluationService
     from app.services.prompt_optimizer import PromptOptimizer
+
+    settings = get_settings()
+
+    # Use config defaults if request uses schema defaults
+    eval_model = request.teacher_model
+    if eval_model == "gpt-4o":  # Schema default, use config instead
+        eval_model = settings.EVAL_MODEL
+    optimizer_model = settings.OPTIMIZER_MODEL
 
     # Determine pipeline run to evaluate
     if request.pipeline_run_id:
@@ -1407,18 +1425,18 @@ def run_evaluation(
             raise HTTPException(status_code=404, detail="No completed pipeline runs found")
         pipeline_run_id = str(latest.id)
 
-    # Run evaluation
-    eval_service = EvaluationService(teacher_model=request.teacher_model)
+    # Run evaluation with configured eval model
+    eval_service = EvaluationService(teacher_model=eval_model)
     result = eval_service.run_evaluation(
         db,
         pipeline_run_id=pipeline_run_id,
         sample_size=request.sample_size,
     )
 
-    # Optionally run auto-optimization
+    # Optionally run auto-optimization with configured optimizer model
     prompts_updated = None
     if request.enable_auto_optimize and result.status == "completed":
-        optimizer = PromptOptimizer(teacher_model=request.teacher_model)
+        optimizer = PromptOptimizer(teacher_model=optimizer_model)
         opt_result = optimizer.analyze_and_improve(
             db,
             evaluation_run_id=result.evaluation_run_id,
@@ -1471,7 +1489,7 @@ def run_evaluation(
     return EvaluationRunResponse(
         id=result.evaluation_run_id,
         pipeline_run_id=pipeline_run_id,
-        teacher_model=request.teacher_model,
+        teacher_model=eval_model,
         sample_size=result.sample_size,
         status=result.status,
         started_at=eval_run.started_at if eval_run else datetime.utcnow(),

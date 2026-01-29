@@ -57,6 +57,16 @@ class Settings(BaseSettings):
         description="OpenAI model to use for neutralization",
     )
 
+    # Teacher LLM Configuration
+    EVAL_MODEL: str = Field(
+        default="claude-3-5-sonnet-latest",
+        description="Model for evaluation/grading (supports claude-3-5-sonnet-*, gpt-4o)",
+    )
+    OPTIMIZER_MODEL: str = Field(
+        default="gpt-4o",
+        description="Model for prompt improvement generation (supports gpt-4o, o1-mini, o1)",
+    )
+
     # Storage
     STORAGE_PROVIDER: str = Field(
         default="s3",

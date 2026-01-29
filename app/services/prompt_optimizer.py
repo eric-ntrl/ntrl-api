@@ -346,7 +346,52 @@ Generate an improved prompt that fixes these issues while preserving all working
             return None
 
     def _call_teacher(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
-        """Call the teacher LLM."""
+        """Call the teacher LLM (supports GPT-4o and o1 models)."""
+        if self.teacher_model.startswith("o1"):
+            return self._call_teacher_o1(system_prompt, user_prompt)
+        else:
+            return self._call_teacher_openai(system_prompt, user_prompt)
+
+    def _call_teacher_o1(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+        """Call OpenAI o1 models (different API - no system prompt)."""
+        import re
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not set")
+
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(api_key=api_key, timeout=120.0)  # Longer timeout for reasoning
+
+            # o1 models don't support system prompts - combine into user message
+            combined_prompt = f"{system_prompt}\n\n---\n\n{user_prompt}"
+
+            response = client.chat.completions.create(
+                model=self.teacher_model,
+                max_completion_tokens=4096,  # o1 uses max_completion_tokens, not max_tokens
+                messages=[{"role": "user", "content": combined_prompt}],
+                # Note: o1 doesn't support temperature, response_format, or other params
+            )
+
+            if response.usage:
+                self._total_input_tokens += response.usage.prompt_tokens
+                self._total_output_tokens += response.usage.completion_tokens
+
+            # Parse JSON from response (o1 returns plain text, need to extract JSON)
+            content = response.choices[0].message.content.strip()
+            # Try to find JSON in response
+            json_match = re.search(r'\{[\s\S]*\}', content)
+            if json_match:
+                return json.loads(json_match.group())
+            return json.loads(content)
+
+        except Exception as e:
+            logger.error(f"[OPTIMIZE] o1 teacher LLM call failed: {e}")
+            raise
+
+    def _call_teacher_openai(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+        """Call OpenAI GPT models for optimization."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY not set")
@@ -374,7 +419,7 @@ Generate an improved prompt that fixes these issues while preserving all working
             return json.loads(content)
 
         except Exception as e:
-            logger.error(f"[OPTIMIZE] Teacher LLM call failed: {e}")
+            logger.error(f"[OPTIMIZE] OpenAI teacher LLM call failed: {e}")
             raise
 
 
