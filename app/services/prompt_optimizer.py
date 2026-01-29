@@ -332,18 +332,63 @@ Generate an improved prompt that fixes these issues while preserving all working
 
             db.flush()
 
+            # Generate a content diff summary
+            content_diff_summary = self._summarize_diff(
+                improvement.original_content,
+                improvement.improved_content,
+            )
+
             return {
                 "prompt_name": prompt.name,
                 "model": prompt.model,  # None for model-agnostic prompts
                 "old_version": old_version,
                 "new_version": new_version,
                 "change_reason": change_reason,
+                "changes_made": improvement.changes_made,
+                "content_diff_summary": content_diff_summary,
                 "applied": True,
             }
 
         except Exception as e:
             logger.error(f"[OPTIMIZE] Failed to apply improvement: {e}")
             return None
+
+    def _summarize_diff(self, old_content: str, new_content: str) -> str:
+        """Generate a brief summary of what changed between prompt versions."""
+        old_lines = old_content.strip().split('\n')
+        new_lines = new_content.strip().split('\n')
+
+        old_len = len(old_content)
+        new_len = len(new_content)
+        len_delta = new_len - old_len
+
+        old_line_count = len(old_lines)
+        new_line_count = len(new_lines)
+        line_delta = new_line_count - old_line_count
+
+        # Count added/removed lines (simple comparison)
+        old_set = set(old_lines)
+        new_set = set(new_lines)
+        added = len(new_set - old_set)
+        removed = len(old_set - new_set)
+
+        parts = []
+        if len_delta > 0:
+            parts.append(f"+{len_delta} chars")
+        elif len_delta < 0:
+            parts.append(f"{len_delta} chars")
+
+        if line_delta > 0:
+            parts.append(f"+{line_delta} lines")
+        elif line_delta < 0:
+            parts.append(f"{line_delta} lines")
+
+        if added > 0:
+            parts.append(f"{added} new sections")
+        if removed > 0:
+            parts.append(f"{removed} removed sections")
+
+        return ", ".join(parts) if parts else "Minor changes"
 
     def _call_teacher(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """Call the teacher LLM (supports GPT-4o and o1 models)."""

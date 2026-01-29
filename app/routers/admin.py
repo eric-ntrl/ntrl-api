@@ -15,7 +15,7 @@ import logging
 import os
 import secrets
 from datetime import datetime
-from typing import Optional, List
+from typing import Dict, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, Field
@@ -1382,7 +1382,105 @@ from app.schemas.evaluation import (
     RollbackResponse,
     AutoOptimizeConfigRequest,
     AutoOptimizeConfigResponse,
+    ScoreComparison,
+    MissedItemsSummary,
+    PromptChangeDetail,
 )
+
+
+# -----------------------------------------------------------------------------
+# Evaluation helper functions
+# -----------------------------------------------------------------------------
+
+def _get_score_comparison(
+    db: Session,
+    current_run: "models.EvaluationRun",
+) -> Optional[ScoreComparison]:
+    """Compare current evaluation with the most recent previous run."""
+    from app import models
+
+    # Find the previous completed evaluation run
+    prev_run = (
+        db.query(models.EvaluationRun)
+        .filter(models.EvaluationRun.status == "completed")
+        .filter(models.EvaluationRun.id != current_run.id)
+        .filter(models.EvaluationRun.finished_at < current_run.started_at)
+        .order_by(models.EvaluationRun.finished_at.desc())
+        .first()
+    )
+
+    if not prev_run:
+        return None
+
+    def safe_delta(current: Optional[float], prev: Optional[float]) -> Optional[float]:
+        if current is not None and prev is not None:
+            return round(current - prev, 4)
+        return None
+
+    def improved(current: Optional[float], prev: Optional[float]) -> Optional[bool]:
+        if current is not None and prev is not None:
+            return current > prev
+        return None
+
+    return ScoreComparison(
+        previous_run_id=str(prev_run.id),
+        classification_accuracy_prev=prev_run.classification_accuracy,
+        classification_accuracy_delta=safe_delta(
+            current_run.classification_accuracy, prev_run.classification_accuracy
+        ),
+        classification_improved=improved(
+            current_run.classification_accuracy, prev_run.classification_accuracy
+        ),
+        neutralization_score_prev=prev_run.avg_neutralization_score,
+        neutralization_score_delta=safe_delta(
+            current_run.avg_neutralization_score, prev_run.avg_neutralization_score
+        ),
+        neutralization_improved=improved(
+            current_run.avg_neutralization_score, prev_run.avg_neutralization_score
+        ),
+        span_precision_prev=prev_run.avg_span_precision,
+        span_precision_delta=safe_delta(
+            current_run.avg_span_precision, prev_run.avg_span_precision
+        ),
+        span_recall_prev=prev_run.avg_span_recall,
+        span_recall_delta=safe_delta(
+            current_run.avg_span_recall, prev_run.avg_span_recall
+        ),
+        overall_score_prev=prev_run.overall_quality_score,
+        overall_score_delta=safe_delta(
+            current_run.overall_quality_score, prev_run.overall_quality_score
+        ),
+        overall_improved=improved(
+            current_run.overall_quality_score, prev_run.overall_quality_score
+        ),
+    )
+
+
+def _aggregate_missed_items(
+    article_evals: List["models.ArticleEvaluation"],
+) -> MissedItemsSummary:
+    """Aggregate missed manipulations and false positives across articles."""
+    all_missed = []
+    all_false_positives = []
+    category_counts: Dict[str, int] = {}
+
+    for ae in article_evals:
+        if ae.missed_manipulations:
+            for item in ae.missed_manipulations:
+                all_missed.append(item)
+                cat = item.get("category", "other")
+                category_counts[cat] = category_counts.get(cat, 0) + 1
+
+        if ae.false_positives:
+            all_false_positives.extend(ae.false_positives)
+
+    return MissedItemsSummary(
+        total_missed_count=len(all_missed),
+        missed_by_category=category_counts,
+        top_missed_phrases=all_missed[:10],  # Top 10 missed phrases
+        total_false_positives=len(all_false_positives),
+        top_false_positives=all_false_positives[:10],  # Top 10 false positives
+    )
 
 
 @router.post("/evaluation/run", response_model=EvaluationRunResponse)
@@ -1435,6 +1533,7 @@ def run_evaluation(
 
     # Optionally run auto-optimization with configured optimizer model
     prompts_updated = None
+    prompt_changes_detail = None
     if request.enable_auto_optimize and result.status == "completed":
         optimizer = PromptOptimizer(teacher_model=optimizer_model)
         opt_result = optimizer.analyze_and_improve(
@@ -1455,6 +1554,19 @@ def run_evaluation(
                 for p in opt_result.prompts_updated
                 if p.get("applied")
             ]
+            # Build detailed prompt change info
+            prompt_changes_detail = [
+                PromptChangeDetail(
+                    prompt_name=p["prompt_name"],
+                    old_version=p["old_version"],
+                    new_version=p["new_version"],
+                    change_reason=p["change_reason"],
+                    changes_made=p.get("changes_made", []),
+                    content_diff_summary=p.get("content_diff_summary"),
+                )
+                for p in opt_result.prompts_updated
+                if p.get("applied")
+            ]
 
     # Get article evaluations for response
     eval_run = db.query(models.EvaluationRun).filter(
@@ -1462,29 +1574,39 @@ def run_evaluation(
     ).first()
 
     article_evals = None
-    if eval_run and eval_run.article_evaluations:
-        article_evals = [
-            ArticleEvaluationResult(
-                story_raw_id=str(ae.story_raw_id),
-                original_title=ae.story_raw.original_title if ae.story_raw else None,
-                classification_correct=ae.classification_correct,
-                expected_domain=ae.expected_domain,
-                expected_feed_category=ae.expected_feed_category,
-                classification_feedback=ae.classification_feedback,
-                neutralization_score=ae.neutralization_score,
-                meaning_preservation_score=ae.meaning_preservation_score,
-                neutrality_score=ae.neutrality_score,
-                grammar_score=ae.grammar_score,
-                rule_violations=ae.rule_violations,
-                neutralization_feedback=ae.neutralization_feedback,
-                span_precision=ae.span_precision,
-                span_recall=ae.span_recall,
-                missed_manipulations=ae.missed_manipulations,
-                false_positives=ae.false_positives,
-                span_feedback=ae.span_feedback,
-            )
-            for ae in eval_run.article_evaluations
-        ]
+    score_comparison = None
+    missed_items_summary = None
+
+    if eval_run:
+        # Compute score comparison with previous run
+        score_comparison = _get_score_comparison(db, eval_run)
+
+        # Aggregate missed items from article evaluations
+        if eval_run.article_evaluations:
+            missed_items_summary = _aggregate_missed_items(eval_run.article_evaluations)
+
+            article_evals = [
+                ArticleEvaluationResult(
+                    story_raw_id=str(ae.story_raw_id),
+                    original_title=ae.story_raw.original_title if ae.story_raw else None,
+                    classification_correct=ae.classification_correct,
+                    expected_domain=ae.expected_domain,
+                    expected_feed_category=ae.expected_feed_category,
+                    classification_feedback=ae.classification_feedback,
+                    neutralization_score=ae.neutralization_score,
+                    meaning_preservation_score=ae.meaning_preservation_score,
+                    neutrality_score=ae.neutrality_score,
+                    grammar_score=ae.grammar_score,
+                    rule_violations=ae.rule_violations,
+                    neutralization_feedback=ae.neutralization_feedback,
+                    span_precision=ae.span_precision,
+                    span_recall=ae.span_recall,
+                    missed_manipulations=ae.missed_manipulations,
+                    false_positives=ae.false_positives,
+                    span_feedback=ae.span_feedback,
+                )
+                for ae in eval_run.article_evaluations
+            ]
 
     return EvaluationRunResponse(
         id=result.evaluation_run_id,
@@ -1500,8 +1622,11 @@ def run_evaluation(
         avg_span_precision=result.avg_span_precision,
         avg_span_recall=result.avg_span_recall,
         overall_quality_score=result.overall_quality_score,
+        score_comparison=score_comparison,
+        missed_items_summary=missed_items_summary,
         recommendations=result.recommendations,
         prompts_updated=prompts_updated,
+        prompt_changes_detail=prompt_changes_detail,
         rollback_triggered=False,
         rollback_details=None,
         input_tokens=result.input_tokens,
@@ -1568,6 +1693,14 @@ def get_evaluation_run(
     if not eval_run:
         raise HTTPException(status_code=404, detail=f"Evaluation run {run_id} not found")
 
+    # Compute score comparison with previous run
+    score_comparison = _get_score_comparison(db, eval_run)
+
+    # Aggregate missed items from article evaluations
+    missed_items_summary = None
+    if eval_run.article_evaluations:
+        missed_items_summary = _aggregate_missed_items(eval_run.article_evaluations)
+
     article_evals = [
         ArticleEvaluationResult(
             story_raw_id=str(ae.story_raw_id),
@@ -1591,6 +1724,22 @@ def get_evaluation_run(
         for ae in eval_run.article_evaluations
     ]
 
+    # Build prompt_changes_detail from prompts_updated if available
+    prompt_changes_detail = None
+    if eval_run.prompts_updated:
+        prompt_changes_detail = [
+            PromptChangeDetail(
+                prompt_name=p.get("prompt_name", ""),
+                old_version=p.get("old_version", 0),
+                new_version=p.get("new_version", 0),
+                change_reason=p.get("change_reason", ""),
+                changes_made=p.get("changes_made", []),
+                content_diff_summary=p.get("content_diff_summary"),
+            )
+            for p in eval_run.prompts_updated
+            if p.get("applied", True)  # Include if applied flag missing (old data)
+        ]
+
     return EvaluationRunResponse(
         id=str(eval_run.id),
         pipeline_run_id=str(eval_run.pipeline_run_id),
@@ -1605,8 +1754,11 @@ def get_evaluation_run(
         avg_span_precision=eval_run.avg_span_precision,
         avg_span_recall=eval_run.avg_span_recall,
         overall_quality_score=eval_run.overall_quality_score,
+        score_comparison=score_comparison,
+        missed_items_summary=missed_items_summary,
         recommendations=eval_run.recommendations,
         prompts_updated=eval_run.prompts_updated,
+        prompt_changes_detail=prompt_changes_detail,
         rollback_triggered=eval_run.rollback_triggered,
         rollback_details=eval_run.rollback_details,
         input_tokens=eval_run.input_tokens,

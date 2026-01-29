@@ -10,6 +10,47 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 # -----------------------------------------------------------------------------
+# Score Comparison and Summary Schemas
+# -----------------------------------------------------------------------------
+
+class ScoreComparison(BaseModel):
+    """Comparison with previous evaluation run."""
+    previous_run_id: Optional[str] = None
+    classification_accuracy_prev: Optional[float] = None
+    classification_accuracy_delta: Optional[float] = None
+    classification_improved: Optional[bool] = None
+    neutralization_score_prev: Optional[float] = None
+    neutralization_score_delta: Optional[float] = None
+    neutralization_improved: Optional[bool] = None
+    span_precision_prev: Optional[float] = None
+    span_precision_delta: Optional[float] = None
+    span_recall_prev: Optional[float] = None
+    span_recall_delta: Optional[float] = None
+    overall_score_prev: Optional[float] = None
+    overall_score_delta: Optional[float] = None
+    overall_improved: Optional[bool] = None
+
+
+class MissedItemsSummary(BaseModel):
+    """Aggregated missed manipulations and false positives."""
+    total_missed_count: int = 0
+    missed_by_category: Dict[str, int] = Field(default_factory=dict)
+    top_missed_phrases: List[Dict[str, str]] = Field(default_factory=list)
+    total_false_positives: int = 0
+    top_false_positives: List[Dict[str, str]] = Field(default_factory=list)
+
+
+class PromptChangeDetail(BaseModel):
+    """Detailed prompt change information."""
+    prompt_name: str
+    old_version: int
+    new_version: int
+    change_reason: str
+    changes_made: List[str] = Field(default_factory=list)
+    content_diff_summary: Optional[str] = None
+
+
+# -----------------------------------------------------------------------------
 # Evaluation Run
 # -----------------------------------------------------------------------------
 
@@ -104,9 +145,16 @@ class EvaluationRunResponse(BaseModel):
     avg_span_recall: Optional[float] = None
     overall_quality_score: Optional[float] = None
 
+    # Score comparison with previous run
+    score_comparison: Optional[ScoreComparison] = None
+
+    # Aggregated missed items summary
+    missed_items_summary: Optional[MissedItemsSummary] = None
+
     # Recommendations and actions
     recommendations: Optional[List[EvaluationRecommendation]] = None
     prompts_updated: Optional[List[PromptUpdate]] = None
+    prompt_changes_detail: Optional[List[PromptChangeDetail]] = None
     rollback_triggered: bool = False
     rollback_details: Optional[Dict[str, Any]] = None
 
