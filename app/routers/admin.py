@@ -893,6 +893,27 @@ def run_scheduled_pipeline(
                 f"[SCHEDULED-RUN] Evaluation complete: accuracy={eval_result.classification_accuracy:.2%}, "
                 f"quality={eval_result.overall_quality_score:.1f}/10, cost=${eval_result.estimated_cost_usd:.2f}"
             )
+
+            # Stage 6: Send email notification
+            if evaluation_summary and evaluation_summary.evaluation_run_id:
+                try:
+                    from app.services.email_service import EmailService
+                    email_service = EmailService()
+                    email_result = email_service.send_evaluation_results(
+                        db, evaluation_summary.evaluation_run_id
+                    )
+                    if email_result.get("status") == "sent":
+                        admin_logger.info(
+                            f"[SCHEDULED-RUN] Email notification sent to {email_result.get('recipient')}"
+                        )
+                    elif email_result.get("status") == "skipped":
+                        admin_logger.info(
+                            f"[SCHEDULED-RUN] Email notification skipped: {email_result.get('reason')}"
+                        )
+                except Exception as email_error:
+                    admin_logger.error(f"[SCHEDULED-RUN] Email notification failed: {email_error}")
+                    alerts.append(f"EMAIL_NOTIFICATION_FAILED: {str(email_error)}")
+
         except Exception as e:
             admin_logger.error(f"[SCHEDULED-RUN] Evaluation failed: {e}")
             alerts.append(f"EVALUATION_FAILED: {str(e)}")
@@ -1673,6 +1694,48 @@ def list_evaluation_runs(
             for r in runs
         ],
         total=len(runs),
+    )
+
+
+class SendEmailRequest(BaseModel):
+    """Request to send evaluation email."""
+    recipient: Optional[str] = Field(None, description="Override recipient email address")
+
+
+class SendEmailResponse(BaseModel):
+    """Response from sending evaluation email."""
+    status: str
+    message_id: Optional[str] = None
+    recipient: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.post("/evaluation/runs/{run_id}/email", response_model=SendEmailResponse)
+def send_evaluation_email(
+    run_id: str,
+    request: SendEmailRequest = SendEmailRequest(),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> SendEmailResponse:
+    """
+    Manually send or re-send evaluation results email.
+
+    Useful for testing email delivery or re-sending after configuration changes.
+    """
+    from app.services.email_service import EmailService
+
+    email_service = EmailService()
+    result = email_service.send_evaluation_results(
+        db,
+        evaluation_run_id=run_id,
+        recipient=request.recipient,
+    )
+
+    return SendEmailResponse(
+        status=result.get("status", "unknown"),
+        message_id=result.get("message_id"),
+        recipient=result.get("recipient"),
+        error=result.get("error") or result.get("reason"),
     )
 
 

@@ -118,6 +118,24 @@ class Settings(BaseSettings):
         description="Days to retain raw article content in storage",
     )
 
+    # Email Notifications
+    RESEND_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Resend API key for email notifications",
+    )
+    EMAIL_FROM: str = Field(
+        default="NTRL <notifications@ntrl.news>",
+        description="From address for email notifications",
+    )
+    EMAIL_RECIPIENT: str = Field(
+        default="eric@ntrl.news",
+        description="Default recipient for evaluation emails",
+    )
+    EMAIL_ENABLED: bool = Field(
+        default=True,
+        description="Enable email notifications after evaluations",
+    )
+
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_database_url(cls, v: str) -> str:
