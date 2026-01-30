@@ -67,6 +67,28 @@ class Settings(BaseSettings):
         description="Model for prompt improvement generation (supports gpt-4o, o3, o1-mini, o1)",
     )
 
+    # Span Detection Configuration
+    SPAN_DETECTION_MODE: str = Field(
+        default="single",
+        description="Span detection mode: 'single' (original) or 'multi_pass' (99% recall target)",
+    )
+    SPAN_CHUNK_SIZE: int = Field(
+        default=3000,
+        description="Chunk size in characters for multi-pass detection",
+    )
+    SPAN_CHUNK_OVERLAP: int = Field(
+        default=500,
+        description="Overlap between chunks in characters",
+    )
+    HIGH_RECALL_MODEL: str = Field(
+        default="claude-3-5-haiku-latest",
+        description="Model for high-recall first pass (Anthropic)",
+    )
+    ADVERSARIAL_MODEL: str = Field(
+        default="gpt-4o-mini",
+        description="Model for adversarial second pass (OpenAI)",
+    )
+
     # Storage
     STORAGE_PROVIDER: str = Field(
         default="s3",

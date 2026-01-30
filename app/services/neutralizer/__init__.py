@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app import models
+from app.config import get_settings
 from app.models import PipelineStage, PipelineStatus, SpanAction, SpanReason
 from app.storage.factory import get_storage_provider
 from app.services.auditor import Auditor, AuditVerdict
@@ -1092,11 +1093,25 @@ The output should be similar in length to the input (full-length, not summarized
 
 # Minimal system prompt for span detection - defers to detailed user prompt
 # This replaces get_article_system_prompt() to avoid conflicting aggressive rules
-SPAN_DETECTION_SYSTEM_PROMPT = """You are a precision analyzer identifying manipulative language in news articles.
+SPAN_DETECTION_SYSTEM_PROMPT = """You are an expert analyzer identifying manipulative language in news articles.
 
 CRITICAL: Follow the detailed instructions in the user message EXACTLY.
 The user message contains all rules, examples, and calibration guidance.
-Prioritize PRECISION over RECALL - when in doubt, do NOT flag."""
+Balance PRECISION with RECALL - flag manipulative language while avoiding false positives."""
+
+# High-recall system prompt for first pass (Claude Haiku)
+HIGH_RECALL_SYSTEM_PROMPT = """You are detecting ALL manipulative language in news articles.
+
+CRITICAL: When in doubt, FLAG IT. It's better to flag something borderline than to miss genuine manipulation.
+Follow the detailed instructions in the user message for categories and examples.
+Prioritize RECALL over PRECISION - catch everything, filtering happens later."""
+
+# Adversarial system prompt for second pass (finds what was missed)
+ADVERSARIAL_SYSTEM_PROMPT = """You are a second-pass reviewer finding manipulative phrases that were MISSED by the first analysis.
+
+Your job is to identify manipulation that slipped through the initial detection.
+Look for subtle patterns, context-dependent manipulation, and phrases that seem neutral but carry bias.
+Be thorough - your role is to catch what others missed."""
 
 DEFAULT_SPAN_DETECTION_PROMPT = """You are a precision-focused media analyst. Your job is to identify manipulative language in news articles while balancing precision with recall.
 
@@ -1489,6 +1504,56 @@ def get_span_detection_prompt() -> str:
     - Applies judgment about justified vs inflated urgency
     """
     return get_prompt("span_detection_prompt", DEFAULT_SPAN_DETECTION_PROMPT)
+
+
+def get_model_agnostic_prompt(name: str, default: str) -> str:
+    """
+    Get a model-agnostic prompt from the database (model=NULL).
+
+    Used for prompts that work across all models (e.g., multi-pass detection prompts).
+    """
+    global _prompt_cache
+
+    cache_key = f"{name}:agnostic"
+
+    # Return from cache if available
+    if cache_key in _prompt_cache:
+        return _prompt_cache[cache_key]
+
+    # Load from DB
+    try:
+        from app.database import SessionLocal
+        from app import models
+
+        db = SessionLocal()
+        try:
+            prompt = db.query(models.Prompt).filter(
+                models.Prompt.name == name,
+                models.Prompt.model.is_(None),  # model=NULL (agnostic)
+                models.Prompt.is_active == True
+            ).first()
+
+            if prompt:
+                _prompt_cache[cache_key] = prompt.content
+                return prompt.content
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to load model-agnostic prompt '{name}' from DB: {e}")
+
+    # Use default if prompt not found
+    _prompt_cache[cache_key] = default
+    return default
+
+
+def get_high_recall_prompt() -> str:
+    """Get the high-recall prompt for Pass 1 (Claude Haiku)."""
+    return get_model_agnostic_prompt("high_recall_prompt", HIGH_RECALL_USER_PROMPT)
+
+
+def get_adversarial_prompt() -> str:
+    """Get the adversarial prompt for Pass 2 (GPT-4o-mini)."""
+    return get_model_agnostic_prompt("adversarial_prompt", ADVERSARIAL_USER_PROMPT)
 
 
 def build_span_detection_prompt(body: str) -> str:
@@ -2887,7 +2952,7 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
                 {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.2,  # Lower temp for more consistent detection
+            temperature=0.3,  # Balanced temp for variety while maintaining consistency
             response_format={"type": "json_object"},
         )
 
@@ -2985,7 +3050,7 @@ def detect_spans_debug_openai(body: str, api_key: str, model: str) -> SpanDetect
                 {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.2,
+            temperature=0.3,  # Balanced temp for variety while maintaining consistency
             response_format={"type": "json_object"},
         )
 
@@ -3097,7 +3162,7 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
             model_name=model,
             system_instruction=SPAN_DETECTION_SYSTEM_PROMPT,
             generation_config={
-                "temperature": 0.2,
+                "temperature": 0.3,  # Balanced temp for variety while maintaining consistency
                 "response_mime_type": "application/json",
             },
         )
@@ -3221,6 +3286,554 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
     except Exception as e:
         logger.warning(f"Anthropic span detection failed: {e}")
         return None  # Return None on failure so caller knows to use fallback
+
+
+# -----------------------------------------------------------------------------
+# High-Recall Detection (Phase 2 - Claude Haiku)
+# -----------------------------------------------------------------------------
+
+# High-recall user prompt (aggressive detection)
+HIGH_RECALL_USER_PROMPT = """You are detecting ALL manipulative language. When in doubt, FLAG IT.
+
+Your job is to find EVERY SINGLE manipulative phrase. It's better to flag something borderline than to miss genuine manipulation.
+
+Focus especially on:
+- Editorial voice: "we're glad", "naturally", "of course", "as it should", "key" (when emphasizing)
+- Subtle urgency: "careens toward", "scrambling", "racing against", "escape hatch"
+- Sports/entertainment hype in news context
+- Loaded verbs disguised as neutral: "admits" instead of "said", "claims", "concedes"
+- Amplifiers: "whopping", "staggering", "eye-watering", "massive", "enormous"
+- Emotional states: "ecstatic", "outraged", "furious", "seething", "gutted", "devastated"
+- Tabloid vocabulary: "A-list", "celeb", "mogul", "haunts", "hotspot"
+- Sensational imagery: "shockwaves", "firestorm", "whirlwind"
+
+Return ALL phrases that could possibly be manipulative. Better to over-flag than under-flag.
+
+ARTICLE BODY:
+\"\"\"
+{body}
+\"\"\"
+
+Return JSON format:
+{{"phrases": [{{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}}]}}"""
+
+
+def detect_spans_high_recall_anthropic(
+    body: str,
+    api_key: str,
+    model: str = "claude-3-5-haiku-latest"
+) -> List[TransparencySpan]:
+    """
+    High-recall span detection using Claude Haiku with aggressive prompting.
+
+    This is Pass 1 of multi-pass detection - optimized to catch EVERYTHING,
+    even at the cost of some false positives (which get filtered later).
+
+    Args:
+        body: Original article body text
+        api_key: Anthropic API key
+        model: Model name (default claude-3-5-haiku-latest for speed/cost)
+
+    Returns:
+        List of TransparencySpan (may include false positives)
+    """
+    if not body or not api_key:
+        return []
+
+    try:
+        import json
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        # Get prompt from DB (falls back to hardcoded default)
+        prompt_template = get_high_recall_prompt()
+        user_prompt = prompt_template.format(body=body)
+        logger.info(f"[SPAN_DETECTION] High-recall pass starting, model={model}, body_length={len(body)}")
+
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=HIGH_RECALL_SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+
+        content = response.content[0].text.strip()
+
+        # Claude may wrap JSON in markdown code blocks
+        if content.startswith("```"):
+            lines = content.split("\n")
+            json_lines = []
+            in_block = False
+            for line in lines:
+                if line.startswith("```"):
+                    in_block = not in_block
+                    continue
+                if in_block:
+                    json_lines.append(line)
+            content = "\n".join(json_lines)
+
+        # Parse response
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                llm_phrases = data
+            elif isinstance(data, dict):
+                llm_phrases = (
+                    data.get("phrases")
+                    or data.get("spans")
+                    or data.get("manipulative_phrases")
+                    or data.get("results")
+                    or []
+                )
+                if not llm_phrases and "phrase" in data:
+                    llm_phrases = [data]
+            else:
+                llm_phrases = []
+        except json.JSONDecodeError:
+            logger.warning(f"High-recall pass returned invalid JSON: {content[:200]}")
+            return []
+
+        logger.info(f"[SPAN_DETECTION] High-recall pass returned {len(llm_phrases)} phrases")
+
+        # Position matching (no filtering yet - that happens in merge step)
+        spans = find_phrase_positions(body, llm_phrases)
+        return spans
+
+    except Exception as e:
+        logger.warning(f"High-recall span detection failed: {e}")
+        return []
+
+
+# -----------------------------------------------------------------------------
+# Adversarial Second Pass Detection
+# -----------------------------------------------------------------------------
+
+# Adversarial user prompt (finds what first pass missed)
+ADVERSARIAL_USER_PROMPT = """The following manipulative phrases have already been detected in this article:
+
+ALREADY DETECTED:
+{detected_phrases}
+
+Your job: Find manipulative phrases that were MISSED.
+
+Look specifically for:
+1. Subtle editorial voice the first pass might have skipped ("naturally", "key", "crucial")
+2. Context-dependent hype (sports words in political coverage, entertainment language in news)
+3. Compound phrases that may have been partially detected
+4. Loaded verbs that seem neutral ("admits", "claims", "concedes", "insists")
+5. Amplifiers that weren't caught ("whopping", "staggering", "massive")
+6. Subtle urgency ("careens", "scrambling", "racing")
+
+ARTICLE BODY:
+\"\"\"
+{body}
+\"\"\"
+
+Return ONLY NEW phrases not already in the detected list above.
+Return JSON format:
+{{"phrases": [{{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}}]}}
+
+If no additional phrases found, return: {{"phrases": []}}"""
+
+
+def detect_spans_adversarial_pass(
+    body: str,
+    detected_phrases: List[str],
+    api_key: str,
+    model: str = "gpt-4o-mini"
+) -> List[TransparencySpan]:
+    """
+    Adversarial second pass that looks for phrases missed by the first pass.
+
+    This pass sees what was already detected and specifically looks for
+    manipulation that slipped through.
+
+    Args:
+        body: Original article body text
+        detected_phrases: List of phrase texts already detected in first pass
+        api_key: OpenAI API key
+        model: Model name (default gpt-4o-mini)
+
+    Returns:
+        List of NEW TransparencySpan (only phrases not in detected_phrases)
+    """
+    if not body or not api_key:
+        return []
+
+    try:
+        import json
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        # Format detected phrases for the prompt
+        detected_list = "\n".join(f"- \"{p}\"" for p in detected_phrases) if detected_phrases else "(none detected yet)"
+
+        # Get prompt from DB (falls back to hardcoded default)
+        prompt_template = get_adversarial_prompt()
+        user_prompt = prompt_template.format(
+            detected_phrases=detected_list,
+            body=body
+        )
+        logger.info(f"[SPAN_DETECTION] Adversarial pass starting, model={model}, already_detected={len(detected_phrases)}")
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": ADVERSARIAL_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
+
+        content = response.choices[0].message.content.strip()
+
+        # Parse response
+        try:
+            data = json.loads(content)
+            if isinstance(data, list):
+                llm_phrases = data
+            elif isinstance(data, dict):
+                llm_phrases = (
+                    data.get("phrases")
+                    or data.get("spans")
+                    or data.get("manipulative_phrases")
+                    or data.get("results")
+                    or []
+                )
+                if not llm_phrases and "phrase" in data:
+                    llm_phrases = [data]
+            else:
+                llm_phrases = []
+        except json.JSONDecodeError:
+            logger.warning(f"Adversarial pass returned invalid JSON: {content[:200]}")
+            return []
+
+        logger.info(f"[SPAN_DETECTION] Adversarial pass found {len(llm_phrases)} additional phrases")
+
+        # Position matching
+        spans = find_phrase_positions(body, llm_phrases)
+
+        # Filter out any that overlap with already-detected phrases
+        # (in case the LLM returned some duplicates)
+        detected_lower = {p.lower() for p in detected_phrases}
+        new_spans = [s for s in spans if s.original_text.lower() not in detected_lower]
+
+        logger.info(f"[SPAN_DETECTION] Adversarial pass returning {len(new_spans)} new spans")
+        return new_spans
+
+    except Exception as e:
+        logger.warning(f"Adversarial span detection failed: {e}")
+        return []
+
+
+# -----------------------------------------------------------------------------
+# Multi-Pass Span Detection Orchestration
+# -----------------------------------------------------------------------------
+
+async def detect_spans_multi_pass_async(
+    body: str,
+    openai_api_key: str,
+    anthropic_api_key: str,
+    openai_model: str = "gpt-4o-mini",
+    anthropic_model: str = "claude-3-5-haiku-latest",
+    chunk_size: int = 3000,
+    overlap_size: int = 500,
+) -> List[TransparencySpan]:
+    """
+    Multi-pass span detection with chunking for high recall.
+
+    Architecture:
+    1. CHUNKING: Split long articles into overlapping chunks
+    2. PASS 1 (HIGH-RECALL): Claude Haiku with aggressive prompt
+    3. PASS 2 (ADVERSARIAL): GPT-4o-mini looking for what Pass 1 missed
+    4. MERGE: Union all spans with deduplication
+
+    Args:
+        body: Original article body
+        openai_api_key: OpenAI API key
+        anthropic_api_key: Anthropic API key
+        openai_model: Model for adversarial pass
+        anthropic_model: Model for high-recall pass
+        chunk_size: Chunk size for long articles
+        overlap_size: Overlap between chunks
+
+    Returns:
+        Merged list of TransparencySpan (target: 99% recall)
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.services.neutralizer.chunking import ArticleChunker, ArticleChunk
+    from app.services.neutralizer.spans import (
+        merge_multi_pass_spans,
+        adjust_chunk_positions,
+        deduplicate_overlap_spans,
+        filter_spans_in_quotes,
+        filter_false_positives,
+    )
+
+    if not body:
+        return []
+
+    logger.info(f"[MULTI_PASS] Starting multi-pass detection, body_length={len(body)}")
+
+    # Phase 1: Chunking
+    chunker = ArticleChunker(chunk_size=chunk_size, overlap_size=overlap_size)
+    chunks = chunker.chunk(body)
+    logger.info(f"[MULTI_PASS] Created {len(chunks)} chunks")
+
+    # Helper to run blocking LLM calls
+    executor = ThreadPoolExecutor(max_workers=4)
+
+    async def run_high_recall_on_chunk(chunk: ArticleChunk) -> List[TransparencySpan]:
+        """Run high-recall pass on a single chunk."""
+        loop = asyncio.get_event_loop()
+        spans = await loop.run_in_executor(
+            executor,
+            lambda: detect_spans_high_recall_anthropic(
+                chunk.text,
+                anthropic_api_key,
+                anthropic_model
+            )
+        )
+        # Adjust positions from chunk-relative to body-relative
+        return adjust_chunk_positions(spans or [], chunk.start_offset)
+
+    async def run_adversarial_on_chunk(
+        chunk: ArticleChunk,
+        detected_phrases: List[str]
+    ) -> List[TransparencySpan]:
+        """Run adversarial pass on a single chunk."""
+        loop = asyncio.get_event_loop()
+        spans = await loop.run_in_executor(
+            executor,
+            lambda: detect_spans_adversarial_pass(
+                chunk.text,
+                detected_phrases,
+                openai_api_key,
+                openai_model
+            )
+        )
+        # Adjust positions from chunk-relative to body-relative
+        return adjust_chunk_positions(spans or [], chunk.start_offset)
+
+    # Phase 2: Parallel high-recall detection on all chunks
+    logger.info("[MULTI_PASS] Pass 1: High-recall detection (Claude Haiku)")
+    high_recall_tasks = [run_high_recall_on_chunk(chunk) for chunk in chunks]
+    high_recall_results = await asyncio.gather(*high_recall_tasks)
+
+    # Flatten Pass 1 results
+    pass1_spans = []
+    for spans in high_recall_results:
+        if spans:
+            pass1_spans.extend(spans)
+    logger.info(f"[MULTI_PASS] Pass 1 found {len(pass1_spans)} spans across {len(chunks)} chunks")
+
+    # Get detected phrases for Pass 2
+    detected_phrases = [s.original_text for s in pass1_spans]
+
+    # Phase 3: Adversarial pass on all chunks
+    logger.info("[MULTI_PASS] Pass 2: Adversarial detection (GPT-4o-mini)")
+    adversarial_tasks = [
+        run_adversarial_on_chunk(chunk, detected_phrases)
+        for chunk in chunks
+    ]
+    adversarial_results = await asyncio.gather(*adversarial_tasks)
+
+    # Flatten Pass 2 results
+    pass2_spans = []
+    for spans in adversarial_results:
+        if spans:
+            pass2_spans.extend(spans)
+    logger.info(f"[MULTI_PASS] Pass 2 found {len(pass2_spans)} additional spans")
+
+    # Phase 4: Merge all spans
+    logger.info("[MULTI_PASS] Merging spans from all passes")
+    merged_spans = merge_multi_pass_spans([pass1_spans, pass2_spans], body)
+
+    # Deduplicate overlaps
+    deduplicated = deduplicate_overlap_spans(merged_spans, overlap_size)
+
+    # Phase 5: Apply filters
+    filtered = filter_spans_in_quotes(body, deduplicated)
+    final = filter_false_positives(filtered)
+
+    logger.info(
+        f"[MULTI_PASS] Final: {len(final)} spans "
+        f"(pass1={len(pass1_spans)}, pass2={len(pass2_spans)}, "
+        f"merged={len(merged_spans)}, filtered={len(final)})"
+    )
+
+    executor.shutdown(wait=False)
+    return final
+
+
+def detect_spans_multi_pass(
+    body: str,
+    openai_api_key: str,
+    anthropic_api_key: str,
+    openai_model: str = "gpt-4o-mini",
+    anthropic_model: str = "claude-3-5-haiku-latest",
+    chunk_size: int = 3000,
+    overlap_size: int = 500,
+) -> List[TransparencySpan]:
+    """
+    Synchronous wrapper for multi-pass span detection.
+
+    See detect_spans_multi_pass_async for details.
+    """
+    import asyncio
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # Already in async context - create new loop
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(
+                detect_spans_multi_pass_async(
+                    body, openai_api_key, anthropic_api_key,
+                    openai_model, anthropic_model,
+                    chunk_size, overlap_size
+                )
+            )
+    except RuntimeError:
+        pass
+
+    # No running loop - create one
+    return asyncio.run(
+        detect_spans_multi_pass_async(
+            body, openai_api_key, anthropic_api_key,
+            openai_model, anthropic_model,
+            chunk_size, overlap_size
+        )
+    )
+
+
+def detect_spans_with_mode(
+    body: str,
+    mode: str,
+    openai_api_key: str = None,
+    anthropic_api_key: str = None,
+    gemini_api_key: str = None,
+    openai_model: str = "gpt-4o-mini",
+    anthropic_model: str = "claude-3-5-haiku-latest",
+) -> List[TransparencySpan]:
+    """
+    Detect spans using the specified detection mode.
+
+    Modes:
+    - "single": Original single-pass detection (current behavior)
+    - "multi_pass": Multi-pass with chunking for 99% recall target
+
+    Args:
+        body: Article body text
+        mode: Detection mode ("single" or "multi_pass")
+        openai_api_key: OpenAI API key
+        anthropic_api_key: Anthropic API key (required for multi_pass)
+        gemini_api_key: Gemini API key (for single mode fallback)
+        openai_model: OpenAI model name
+        anthropic_model: Anthropic model name
+
+    Returns:
+        List of TransparencySpan
+    """
+    if mode == "multi_pass":
+        if not anthropic_api_key:
+            logger.warning("[SPAN_DETECTION] multi_pass mode requires ANTHROPIC_API_KEY, falling back to single")
+            mode = "single"
+        elif not openai_api_key:
+            logger.warning("[SPAN_DETECTION] multi_pass mode requires OPENAI_API_KEY, falling back to single")
+            mode = "single"
+
+    if mode == "multi_pass":
+        logger.info("[SPAN_DETECTION] Using multi_pass mode (target: 99% recall)")
+        return detect_spans_multi_pass(
+            body=body,
+            openai_api_key=openai_api_key,
+            anthropic_api_key=anthropic_api_key,
+            openai_model=openai_model,
+            anthropic_model=anthropic_model,
+        )
+    else:
+        # Single pass mode (original behavior)
+        logger.info("[SPAN_DETECTION] Using single mode")
+        if openai_api_key:
+            return detect_spans_via_llm_openai(body, openai_api_key, openai_model)
+        elif gemini_api_key:
+            return detect_spans_via_llm_gemini(body, gemini_api_key, "gemini-2.0-flash")
+        elif anthropic_api_key:
+            return detect_spans_via_llm_anthropic(body, anthropic_api_key, anthropic_model)
+        else:
+            logger.error("[SPAN_DETECTION] No API keys available")
+            return []
+
+
+def _detect_spans_with_config(
+    body: str,
+    provider_api_key: str = None,
+    provider_type: str = "openai",
+    provider_model: str = "gpt-4o-mini",
+) -> List[TransparencySpan]:
+    """
+    Detect spans using the mode configured in settings.SPAN_DETECTION_MODE.
+
+    This helper function is called by each provider's _neutralize_detail_full method.
+    It checks the config and delegates to detect_spans_with_mode() or the single-pass
+    function as appropriate.
+
+    Args:
+        body: Article body text
+        provider_api_key: The API key for the provider calling this function
+        provider_type: "openai", "gemini", or "anthropic"
+        provider_model: The model name (e.g., "gpt-4o-mini")
+
+    Returns:
+        List of TransparencySpan (may be empty if article is clean, or if detection fails)
+    """
+    settings = get_settings()
+    mode = settings.SPAN_DETECTION_MODE
+
+    if mode == "multi_pass":
+        # Multi-pass requires both OpenAI and Anthropic keys
+        openai_key = settings.OPENAI_API_KEY
+        anthropic_key = settings.ANTHROPIC_API_KEY
+
+        # Fall back to single mode if keys are missing
+        if not openai_key:
+            logger.warning("[SPAN_DETECTION] multi_pass mode requires OPENAI_API_KEY, using single mode")
+            mode = "single"
+        elif not anthropic_key:
+            logger.warning("[SPAN_DETECTION] multi_pass mode requires ANTHROPIC_API_KEY, using single mode")
+            mode = "single"
+        else:
+            logger.info(f"[SPAN_DETECTION] Using multi_pass mode (config: SPAN_DETECTION_MODE={settings.SPAN_DETECTION_MODE})")
+            spans = detect_spans_with_mode(
+                body=body,
+                mode="multi_pass",
+                openai_api_key=openai_key,
+                anthropic_api_key=anthropic_key,
+                openai_model=settings.ADVERSARIAL_MODEL,
+                anthropic_model=settings.HIGH_RECALL_MODEL,
+            )
+            return spans if spans is not None else []
+
+    # Single mode - use the provider's own detection function
+    logger.info(f"[SPAN_DETECTION] Using single mode with {provider_type}")
+    if provider_type == "openai":
+        spans = detect_spans_via_llm_openai(body, provider_api_key, provider_model)
+    elif provider_type == "gemini":
+        spans = detect_spans_via_llm_gemini(body, provider_api_key, provider_model)
+    elif provider_type == "anthropic":
+        spans = detect_spans_via_llm_anthropic(body, provider_api_key, provider_model)
+    else:
+        logger.error(f"[SPAN_DETECTION] Unknown provider type: {provider_type}")
+        spans = None
+
+    return spans if spans is not None else []
 
 
 def _correct_span_positions(spans: List[TransparencySpan], original_body: str) -> List[TransparencySpan]:
@@ -3924,17 +4537,15 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 failure_reason="No OPENAI_API_KEY configured"
             )
 
-        # Get spans via LLM-based detection (context-aware)
-        # Returns None if API call fails, [] if article is clean
-        spans = detect_spans_via_llm_openai(body, self._api_key, self._model)
-        if spans is None:
-            # LLM API call failed - return 0 spans (NOT falling back to pattern-based)
-            # Pattern-based has 5% precision (95% false positives) - showing nothing is better
-            logger.error("LLM span detection failed - returning 0 spans (NOT falling back to pattern-based)")
-            spans = []
-        else:
-            # LLM succeeded - trust its result (even if empty = clean article)
-            logger.info(f"LLM span detection succeeded with {len(spans)} spans")
+        # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
+        # Uses multi_pass for 99% recall if configured, otherwise single-pass
+        spans = _detect_spans_with_config(
+            body=body,
+            provider_api_key=self._api_key,
+            provider_type="openai",
+            provider_model=self._model,
+        )
+        logger.info(f"Span detection completed with {len(spans)} spans")
 
         try:
             from openai import OpenAI
@@ -4249,17 +4860,15 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 failure_reason="No GOOGLE_API_KEY or GEMINI_API_KEY configured"
             )
 
-        # Get spans via LLM-based detection (context-aware)
-        # Returns None if API call fails, [] if article is clean
-        spans = detect_spans_via_llm_gemini(body, self._api_key, self._model)
-        if spans is None:
-            # LLM API call failed - return 0 spans (NOT falling back to pattern-based)
-            # Pattern-based has 5% precision (95% false positives) - showing nothing is better
-            logger.error("Gemini LLM span detection failed - returning 0 spans (NOT falling back to pattern-based)")
-            spans = []
-        else:
-            # LLM succeeded - trust its result (even if empty = clean article)
-            logger.info(f"Gemini LLM span detection succeeded with {len(spans)} spans")
+        # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
+        # Uses multi_pass for 99% recall if configured, otherwise single-pass
+        spans = _detect_spans_with_config(
+            body=body,
+            provider_api_key=self._api_key,
+            provider_type="gemini",
+            provider_model=self._model,
+        )
+        logger.info(f"Span detection completed with {len(spans)} spans")
 
         try:
             import google.generativeai as genai
@@ -4570,17 +5179,15 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 failure_reason="No ANTHROPIC_API_KEY configured"
             )
 
-        # Get spans via LLM-based detection (context-aware)
-        # Returns None if API call fails, [] if article is clean
-        spans = detect_spans_via_llm_anthropic(body, self._api_key, self._model)
-        if spans is None:
-            # LLM API call failed - return 0 spans (NOT falling back to pattern-based)
-            # Pattern-based has 5% precision (95% false positives) - showing nothing is better
-            logger.error("Anthropic LLM span detection failed - returning 0 spans (NOT falling back to pattern-based)")
-            spans = []
-        else:
-            # LLM succeeded - trust its result (even if empty = clean article)
-            logger.info(f"Anthropic LLM span detection succeeded with {len(spans)} spans")
+        # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
+        # Uses multi_pass for 99% recall if configured, otherwise single-pass
+        spans = _detect_spans_with_config(
+            body=body,
+            provider_api_key=self._api_key,
+            provider_type="anthropic",
+            provider_model=self._model,
+        )
+        logger.info(f"Span detection completed with {len(spans)} spans")
 
         try:
             import anthropic

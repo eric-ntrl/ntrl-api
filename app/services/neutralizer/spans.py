@@ -287,3 +287,192 @@ def filter_false_positives(spans: list) -> list:
         logger.info(f"[SPAN_DETECTION] False positive filter removed {filtered_count}: {removed_texts[:5]}")
 
     return filtered
+
+
+# -----------------------------------------------------------------------------
+# Multi-Pass Span Merging
+# -----------------------------------------------------------------------------
+
+def merge_multi_pass_spans(span_lists: list, body: str) -> list:
+    """
+    Merge spans from multiple detection passes into a unified list.
+
+    Takes the UNION of all spans and:
+    - Deduplicates overlapping spans (keeps the one with higher confidence)
+    - Boosts confidence for spans detected by multiple models
+    - Handles overlapping regions from chunk processing
+
+    Args:
+        span_lists: List of span lists from different passes
+        body: Original article body (for position verification)
+
+    Returns:
+        Merged and deduplicated list of TransparencySpan
+    """
+    # Import here to avoid circular import
+    from app.services.neutralizer import TransparencySpan
+
+    if not span_lists:
+        return []
+
+    # Flatten all spans with source tracking
+    all_spans = []
+    for pass_idx, spans in enumerate(span_lists):
+        if not spans:
+            continue
+        for span in spans:
+            all_spans.append({
+                "span": span,
+                "pass_idx": pass_idx,
+                "key": f"{span.start_char}:{span.end_char}:{span.original_text.lower()}"
+            })
+
+    if not all_spans:
+        return []
+
+    # Group by similar spans (same position or same text)
+    span_groups = {}
+    for item in all_spans:
+        span = item["span"]
+
+        # Try to find existing group by position match
+        matched_group = None
+        for key, group in span_groups.items():
+            existing_span = group[0]["span"]
+            # Consider overlapping if positions overlap significantly
+            if _spans_overlap(span, existing_span):
+                matched_group = key
+                break
+            # Or if exact same text
+            if span.original_text.lower() == existing_span.original_text.lower():
+                matched_group = key
+                break
+
+        if matched_group:
+            span_groups[matched_group].append(item)
+        else:
+            span_groups[item["key"]] = [item]
+
+    # Select best span from each group and track multi-model detection
+    final_spans = []
+    for key, group in span_groups.items():
+        # Get unique passes that detected this span
+        passes = set(item["pass_idx"] for item in group)
+        multi_model = len(passes) > 1
+
+        # Pick the best span (prefer the one with most specific action/reason)
+        best = group[0]["span"]
+        for item in group[1:]:
+            span = item["span"]
+            # Prefer REPLACED over REMOVED over SOFTENED (more informative)
+            if span.action.value > best.action.value:
+                best = span
+            # If same action, prefer longer (more specific) phrase
+            elif span.action == best.action and len(span.original_text) > len(best.original_text):
+                best = span
+
+        if multi_model:
+            logger.debug(f"[SPAN_MERGING] Multi-model agreement on: '{best.original_text[:30]}...'")
+
+        final_spans.append(best)
+
+    # Sort by position
+    final_spans.sort(key=lambda s: s.start_char)
+
+    # Remove overlapping spans (keep first occurrence)
+    non_overlapping = []
+    last_end = -1
+    for span in final_spans:
+        if span.start_char >= last_end:
+            non_overlapping.append(span)
+            last_end = span.end_char
+        else:
+            # Overlapping - prefer the longer/more specific one
+            if non_overlapping and len(span.original_text) > len(non_overlapping[-1].original_text):
+                non_overlapping[-1] = span
+                last_end = span.end_char
+
+    logger.info(f"[SPAN_MERGING] Merged {sum(len(sl) if sl else 0 for sl in span_lists)} spans → {len(non_overlapping)} unique")
+    return non_overlapping
+
+
+def _spans_overlap(span1, span2) -> bool:
+    """Check if two spans overlap (share any characters)."""
+    # Spans overlap if one starts before the other ends
+    return (span1.start_char < span2.end_char and span2.start_char < span1.end_char)
+
+
+def adjust_chunk_positions(spans: list, chunk_offset: int) -> list:
+    """
+    Adjust span positions from chunk-relative to body-relative.
+
+    When processing in chunks, spans have positions relative to the chunk.
+    This function adds the chunk offset to convert to absolute body positions.
+
+    Args:
+        spans: List of TransparencySpan with chunk-relative positions
+        chunk_offset: Character offset where this chunk starts in the full body
+
+    Returns:
+        List of TransparencySpan with body-relative positions
+    """
+    # Import here to avoid circular import
+    from app.services.neutralizer import TransparencySpan
+
+    if not spans or chunk_offset == 0:
+        return spans
+
+    adjusted = []
+    for span in spans:
+        adjusted.append(TransparencySpan(
+            field=span.field,
+            start_char=span.start_char + chunk_offset,
+            end_char=span.end_char + chunk_offset,
+            original_text=span.original_text,
+            action=span.action,
+            reason=span.reason,
+            replacement_text=span.replacement_text,
+        ))
+
+    return adjusted
+
+
+def deduplicate_overlap_spans(spans: list, overlap_size: int = 500) -> list:
+    """
+    Remove duplicate spans from chunk overlap regions.
+
+    When chunks overlap, the same phrase may be detected in multiple chunks.
+    This function deduplicates by keeping only the first occurrence.
+
+    Args:
+        spans: List of TransparencySpan (sorted by position)
+        overlap_size: Size of overlap region between chunks
+
+    Returns:
+        Deduplicated list of TransparencySpan
+    """
+    if not spans:
+        return spans
+
+    # Sort by position
+    sorted_spans = sorted(spans, key=lambda s: s.start_char)
+
+    # Track seen positions to deduplicate
+    seen_positions = set()
+    unique = []
+
+    for span in sorted_spans:
+        # Create a key based on text and approximate position
+        pos_key = (span.original_text.lower(), span.start_char // 100)  # Group by ~100 char windows
+
+        if pos_key not in seen_positions:
+            unique.append(span)
+            seen_positions.add(pos_key)
+        else:
+            logger.debug(f"[SPAN_DEDUP] Removed duplicate: '{span.original_text[:30]}...' at {span.start_char}")
+
+    dedup_count = len(spans) - len(unique)
+    if dedup_count > 0:
+        logger.info(f"[SPAN_DEDUP] Removed {dedup_count} duplicate spans from overlap regions")
+
+    return unique

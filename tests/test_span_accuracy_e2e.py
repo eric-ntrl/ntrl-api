@@ -17,6 +17,9 @@ import pytest
 
 from app.services.neutralizer import (
     detect_spans_via_llm_openai,
+    detect_spans_multi_pass,
+    detect_spans_high_recall_anthropic,
+    detect_spans_adversarial_pass,
     TransparencySpan,
 )
 
@@ -402,3 +405,152 @@ class TestQuotedSpeechExclusion:
 
         # We should flag the editorial "outrageous decision" but not the quoted one
         assert outrageous_count <= 1, "Quoted speech should not be flagged"
+
+
+class TestMultiPassDetection:
+    """
+    Tests for the multi-pass detection system (99% recall target).
+
+    These tests require both OpenAI and Anthropic API keys.
+    Run with: pytest tests/test_span_accuracy_e2e.py::TestMultiPassDetection -m llm -v -s
+    """
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        """Set up LLM providers."""
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
+        self.openai_model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        self.anthropic_model = os.environ.get("HIGH_RECALL_MODEL", "claude-3-5-haiku-latest")
+
+    @pytest.mark.llm
+    def test_multi_pass_finds_more_than_single_pass(self):
+        """Multi-pass detection should find more spans than single-pass."""
+        if not self.openai_api_key:
+            pytest.skip("OPENAI_API_KEY not set")
+        if not self.anthropic_api_key:
+            pytest.skip("ANTHROPIC_API_KEY not set")
+
+        from app.services.neutralizer import (
+            detect_spans_via_llm_openai,
+            detect_spans_multi_pass,
+        )
+
+        # Text with subtle manipulation that single pass might miss
+        text = (
+            "We're glad the Border Czar is finally taking key action on this crisis. "
+            "The whopping increase in apprehensions has left officials scrambling. "
+            "Critics, naturally, call this approach lunacy. "
+            "Sources say the situation careens toward disaster if nothing changes."
+        )
+
+        # Single pass detection
+        single_spans = detect_spans_via_llm_openai(
+            text, self.openai_api_key, self.openai_model
+        )
+        single_count = len(single_spans)
+        single_texts = [s.original_text for s in single_spans]
+
+        print(f"\n  Single-pass found {single_count} spans: {single_texts}")
+
+        # Multi-pass detection
+        multi_spans = detect_spans_multi_pass(
+            body=text,
+            openai_api_key=self.openai_api_key,
+            anthropic_api_key=self.anthropic_api_key,
+            openai_model=self.openai_model,
+            anthropic_model=self.anthropic_model,
+        )
+        multi_count = len(multi_spans)
+        multi_texts = [s.original_text for s in multi_spans]
+
+        print(f"  Multi-pass found {multi_count} spans: {multi_texts}")
+
+        # Multi-pass should find at least as many as single-pass
+        assert multi_count >= single_count, (
+            f"Multi-pass ({multi_count}) should find at least as many as single-pass ({single_count})"
+        )
+
+        # Check that key phrases are detected
+        key_phrases = [
+            "Border Czar", "whopping", "scrambling", "lunacy",
+            "careens toward", "We're glad"
+        ]
+
+        multi_texts_lower = [t.lower() for t in multi_texts]
+        found_count = 0
+        for phrase in key_phrases:
+            if any(phrase.lower() in t for t in multi_texts_lower):
+                found_count += 1
+
+        recall = found_count / len(key_phrases)
+        print(f"  Recall on key phrases: {found_count}/{len(key_phrases)} ({recall:.1%})")
+
+        # Target: find at least 80% of key phrases
+        assert recall >= 0.8, f"Multi-pass should find at least 80% of key phrases, found {recall:.1%}"
+
+    @pytest.mark.llm
+    def test_high_recall_pass_is_aggressive(self):
+        """High-recall pass should flag aggressively (even borderline cases)."""
+        if not self.anthropic_api_key:
+            pytest.skip("ANTHROPIC_API_KEY not set")
+
+        from app.services.neutralizer import detect_spans_high_recall_anthropic
+
+        # Text with both clear and subtle manipulation
+        text = (
+            "The stunning victory left fans ecstatic. "
+            "Key players delivered a massive performance. "
+            "Naturally, the team's brilliant form continues."
+        )
+
+        spans = detect_spans_high_recall_anthropic(
+            text, self.anthropic_api_key, self.anthropic_model
+        )
+        flagged_texts = [s.original_text.lower() for s in spans]
+
+        print(f"\n  High-recall found {len(spans)} spans: {flagged_texts}")
+
+        # High-recall should catch most of these
+        expected = ["stunning", "ecstatic", "massive", "brilliant"]
+        found = sum(1 for e in expected if any(e in t for t in flagged_texts))
+
+        print(f"  Found {found}/{len(expected)} expected phrases")
+
+        # High-recall should be aggressive - catch most things
+        assert found >= 3, f"High-recall should be aggressive, found only {found}/{len(expected)}"
+
+    @pytest.mark.llm
+    def test_adversarial_pass_finds_gaps(self):
+        """Adversarial pass should find phrases that first pass missed."""
+        if not self.openai_api_key:
+            pytest.skip("OPENAI_API_KEY not set")
+
+        from app.services.neutralizer import detect_spans_adversarial_pass
+
+        # Simulate first pass missing some phrases
+        text = (
+            "The whopping increase shocked analysts. "
+            "Officials are scrambling to respond. "
+            "The key decision-makers admit the situation is dire."
+        )
+
+        # First pass "detected" these
+        already_detected = ["whopping", "shocked"]
+
+        # Adversarial should find what was missed
+        spans = detect_spans_adversarial_pass(
+            body=text,
+            detected_phrases=already_detected,
+            api_key=self.openai_api_key,
+            model=self.openai_model,
+        )
+        new_texts = [s.original_text.lower() for s in spans]
+
+        print(f"\n  Adversarial found {len(spans)} new spans: {new_texts}")
+
+        # Should find at least one of: "scrambling", "key", "admit", "dire"
+        subtle_phrases = ["scrambling", "key", "admit", "dire"]
+        found = any(any(p in t for t in new_texts) for p in subtle_phrases)
+
+        assert found or len(spans) > 0, "Adversarial pass should find additional phrases"
