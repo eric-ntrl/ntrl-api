@@ -144,6 +144,13 @@ Evaluate:
 3. FALSE POSITIVES: Spans that shouldn't have been flagged
 4. MISSED MANIPULATIONS: Phrases that should have been flagged but weren't
 
+TITLE-BODY CONSISTENCY CHECK:
+Each span has a "field" attribute ("title" or "body"). Check:
+- If a manipulative phrase appears in the TITLE, is it flagged with field="title"?
+- If a manipulative phrase appears in the BODY, is it flagged with field="body"?
+- If a phrase appears in BOTH title AND body, BOTH occurrences should be flagged.
+Report any inconsistencies where a phrase appears in one location but is only flagged in the other.
+
 Respond with JSON:
 {
   "estimated_precision": 0.0-1.0,
@@ -152,8 +159,13 @@ Respond with JSON:
     {"phrase": "...", "reason_incorrect": "..."}
   ],
   "missed_manipulations": [
-    {"phrase": "...", "reason_should_flag": "...", "category": "emotional_trigger|urgency|clickbait|editorial_voice|other"}
+    {"phrase": "...", "reason_should_flag": "...", "category": "emotional_trigger|urgency|clickbait|editorial_voice|other", "location": "title|body|both"}
   ],
+  "title_body_inconsistencies": [
+    {"phrase": "...", "found_in": "title|body|both", "flagged_in": "title|body|neither", "issue": "..."}
+  ],
+  "title_spans_count": <number of spans with field="title">,
+  "body_spans_count": <number of spans with field="body">,
   "reasoning": "<brief assessment>",
   "prompt_improvement_suggestion": "<how to improve span detection, or null if good>"
 }"""
@@ -189,6 +201,10 @@ class ArticleEvaluationData:
     missed_manipulations: Optional[List[Dict]] = None
     false_positives: Optional[List[Dict]] = None
     span_feedback: Optional[str] = None
+    # Title-body consistency (new)
+    title_spans_count: Optional[int] = None
+    body_spans_count: Optional[int] = None
+    title_body_inconsistencies: Optional[List[Dict]] = None
 
     # Suggestions
     classification_prompt_suggestion: Optional[str] = None
@@ -540,10 +556,11 @@ class EvaluationService:
         # Get original body from storage
         original_body = self._get_body(story_raw)
 
-        # Get spans
+        # Get spans (include field for title-body consistency checking)
         spans = [
             {
                 "phrase": span.original_text,
+                "field": span.field,
                 "reason": span.reason,
                 "action": span.action,
             }
@@ -604,6 +621,10 @@ class EvaluationService:
             eval_data.false_positives = span_result.get("false_positives", [])
             eval_data.span_feedback = span_result.get("reasoning")
             eval_data.span_prompt_suggestion = span_result.get("prompt_improvement_suggestion")
+            # Title-body consistency metrics
+            eval_data.title_spans_count = span_result.get("title_spans_count")
+            eval_data.body_spans_count = span_result.get("body_spans_count")
+            eval_data.title_body_inconsistencies = span_result.get("title_body_inconsistencies", [])
         except Exception as e:
             import traceback
             logger.error(f"[EVAL] Span eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
@@ -920,14 +941,20 @@ Evaluate the span detection quality (precision and recall)."""
         # SPAN DETECTION RECOMMENDATIONS
         # =====================================================================
 
-        # Collect all false positives and missed manipulations
+        # Collect all false positives and missed manipulations (with story_raw_id)
         all_fps = []
         all_misses = []
         for e in article_evals:
             if e.false_positives:
-                all_fps.extend(e.false_positives)
+                for fp in e.false_positives:
+                    fp_copy = dict(fp)
+                    fp_copy["story_raw_id"] = e.story_raw_id
+                    all_fps.append(fp_copy)
             if e.missed_manipulations:
-                all_misses.extend(e.missed_manipulations)
+                for m in e.missed_manipulations:
+                    m_copy = dict(m)
+                    m_copy["story_raw_id"] = e.story_raw_id
+                    all_misses.append(m_copy)
 
         # Critical: precision below 80%
         low_precision = [
@@ -983,6 +1010,48 @@ Evaluate the span detection quality (precision and recall)."""
                 "priority": "low" if avg_span_recall >= 0.9 else "medium",
                 "affected_articles": [e.story_raw_id for e in article_evals if e.missed_manipulations][:5],
                 "missed_phrases_sample": all_misses[:10],
+            })
+
+        # =====================================================================
+        # TITLE-BODY CONSISTENCY RECOMMENDATIONS
+        # =====================================================================
+
+        # Collect all title-body inconsistencies
+        all_inconsistencies = []
+        for e in article_evals:
+            if e.title_body_inconsistencies:
+                for inc in e.title_body_inconsistencies:
+                    inc["story_raw_id"] = e.story_raw_id
+                    all_inconsistencies.append(inc)
+
+        # Check for title-specific misses in missed_manipulations
+        title_misses = []
+        for m in all_misses:
+            location = m.get("location", "")
+            if location in ("title", "both"):
+                title_misses.append(m)
+
+        if title_misses:
+            recommendations.append({
+                "prompt_name": "span_detection_prompt",
+                "issue_category": "title_detection_consistency",
+                "issue_description": f"{len(title_misses)} phrases missed in titles",
+                "suggested_change": "Emphasize that HEADLINE section should be analyzed with same rigor as body. Ensure title manipulations are detected.",
+                "priority": "high" if len(title_misses) >= 3 else "medium",
+                "affected_articles": list(set(m.get("story_raw_id") for m in title_misses if m.get("story_raw_id")))[:5],
+                "missed_title_phrases": title_misses[:5],
+            })
+
+        # Check for title-body inconsistencies (phrase in both but only flagged in one)
+        if all_inconsistencies:
+            recommendations.append({
+                "prompt_name": "span_detection_prompt",
+                "issue_category": "title_body_inconsistency",
+                "issue_description": f"{len(all_inconsistencies)} title-body inconsistencies detected",
+                "suggested_change": "If a phrase appears in BOTH the title and body, ensure BOTH occurrences are flagged.",
+                "priority": "high" if len(all_inconsistencies) >= 2 else "medium",
+                "affected_articles": list(set(inc.get("story_raw_id") for inc in all_inconsistencies))[:5],
+                "inconsistencies_sample": all_inconsistencies[:5],
             })
 
         logger.info(

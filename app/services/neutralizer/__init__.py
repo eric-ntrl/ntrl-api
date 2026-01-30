@@ -2084,7 +2084,7 @@ Do NOT add:
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
-Create a detail_brief: a calm, complete explanation of the story in 3-5 short paragraphs.
+Create a detail_brief: a calm, complete explanation of the story in 1-2 short paragraphs.
 
 This is the CORE NTRL reading experience. The brief must:
 1. Inform without pushing
@@ -2151,10 +2151,10 @@ EXPLICIT PROHIBITIONS - The following are NEVER acceptable in your narrative:
 FORMAT REQUIREMENTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-LENGTH: 3-5 short paragraphs maximum
-- Each paragraph should be 2-4 sentences
+LENGTH: 1-2 short paragraphs maximum
+- Each paragraph should be 2-3 sentences
 - Prefer shorter paragraphs over longer ones
-- Total word count typically 150-300 words (shorter for short articles)
+- Total word count typically 80-120 words (shorter for short articles)
 
 FORMAT: Plain prose only
 - NO section headers (no "What happened:", "Context:", etc.)
@@ -2169,23 +2169,15 @@ IMPLICIT STRUCTURE (Do NOT label these sections)
 
 Your brief should flow naturally through these stages WITHOUT labeling them:
 
-1. GROUNDING (Paragraph 1)
+1. GROUNDING (First paragraph)
    - What happened? Who is involved? Where and when?
    - Lead with the core fact
-   - Establish the basic situation clearly
+   - Include essential context only if critical to understanding
 
-2. CONTEXT (Paragraph 2, only if context is in the original)
-   - Background or preceding events mentioned in the article
-   - Do NOT add context that isn't in the original
-
-3. STATE OF KNOWLEDGE (Paragraph 3-4)
-   - What is confirmed vs. claimed vs. uncertain?
-   - Include key statements from officials or involved parties
-   - Present different perspectives neutrally if they exist
-
-4. UNCERTAINTY (Final paragraph, if mentioned in original)
-   - What remains unknown? (only if stated in original)
-   - What happens next (if mentioned)?
+2. OUTCOME (Second paragraph, only if needed)
+   - What is confirmed? What happens next?
+   - Key official statements if newsworthy
+   - Skip this paragraph if the story is simple enough for one paragraph
 
 ═══════════════════════════════════════════════════════════════════════════════
 QUOTE RULES
@@ -2278,7 +2270,7 @@ OUTPUT
 ═══════════════════════════════════════════════════════════════════════════════
 
 Return ONLY the brief as plain text. No JSON. No markup. No labels.
-Just 3-5 paragraphs of neutral prose."""
+Just 1-2 paragraphs of neutral prose."""
 
 
 # -----------------------------------------------------------------------------
@@ -3828,6 +3820,8 @@ def detect_spans_with_mode(
     # Adjust positions and set field based on whether span is in title or body
     if title and title_offset > 0:
         adjusted_spans = []
+        dropped_title_spans = []
+        dropped_body_spans = []
         for span in spans:
             if span.start_char < title_offset:
                 # Span is in title section
@@ -3844,6 +3838,16 @@ def detect_spans_with_mode(
                         reason=span.reason,
                         replacement_text=span.replacement_text,
                     ))
+                else:
+                    # Title span dropped due to bounds check failure
+                    dropped_title_spans.append({
+                        "phrase": span.original_text,
+                        "adjusted_start": adjusted_start,
+                        "adjusted_end": adjusted_end,
+                        "title_len": len(title),
+                        "original_start": span.start_char,
+                        "original_end": span.end_char,
+                    })
             else:
                 # Span is in body section
                 adjusted_start = span.start_char - title_offset
@@ -3859,6 +3863,29 @@ def detect_spans_with_mode(
                         reason=span.reason,
                         replacement_text=span.replacement_text,
                     ))
+                else:
+                    # Body span dropped due to bounds check failure
+                    dropped_body_spans.append({
+                        "phrase": span.original_text,
+                        "adjusted_start": adjusted_start,
+                        "adjusted_end": adjusted_end,
+                        "body_len": len(body),
+                        "original_start": span.start_char,
+                        "original_end": span.end_char,
+                    })
+
+        # Log any dropped spans for debugging
+        if dropped_title_spans:
+            logger.warning(
+                f"[SPAN_DETECTION] Dropped {len(dropped_title_spans)} title spans due to bounds check: "
+                f"{dropped_title_spans}"
+            )
+        if dropped_body_spans:
+            logger.warning(
+                f"[SPAN_DETECTION] Dropped {len(dropped_body_spans)} body spans due to bounds check: "
+                f"{dropped_body_spans}"
+            )
+
         return adjusted_spans
 
     return spans
