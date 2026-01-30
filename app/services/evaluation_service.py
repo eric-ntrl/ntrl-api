@@ -640,9 +640,9 @@ class EvaluationService:
         try:
             from app.storage.factory import get_storage_provider
             storage = get_storage_provider()
-            body_bytes = storage.get(story_raw.raw_content_uri)
-            if body_bytes:
-                return body_bytes.decode("utf-8", errors="replace")
+            result = storage.download(story_raw.raw_content_uri)
+            if result and result.exists:
+                return result.content.decode("utf-8", errors="replace")
         except Exception as e:
             logger.warning(f"[EVAL] Failed to get body for {story_raw.id}: {e}")
 
