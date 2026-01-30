@@ -46,7 +46,7 @@ ARTICLE BODY:
 \"\"\"
 
 Return JSON format:
-{"phrases": [{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}]}"""
+{{"phrases": [{{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}}]}}"""
 
 
 # Adversarial prompt for Pass 2 (GPT-4o-mini)
@@ -72,9 +72,9 @@ ARTICLE BODY:
 
 Return ONLY NEW phrases not already in the detected list above.
 Return JSON format:
-{"phrases": [{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}]}
+{{"phrases": [{{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}}]}}
 
-If no additional phrases found, return: {"phrases": []}"""
+If no additional phrases found, return: {{"phrases": []}}"""
 
 
 def upgrade() -> None:
