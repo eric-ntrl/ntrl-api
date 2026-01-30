@@ -7,6 +7,7 @@ This module provides a hardened body extraction service that:
 - Tracks detailed failure reasons for observability
 """
 
+import configparser
 import logging
 import time
 from dataclasses import dataclass
@@ -61,7 +62,13 @@ class BodyExtractor:
     )
     def _fetch_with_retry(self, url: str) -> Optional[str]:
         """Fetch URL content with retries on network errors."""
-        return trafilatura.fetch_url(url, timeout=self.TIMEOUT_SECONDS)
+        config = configparser.ConfigParser()
+        config.read_dict({
+            'DEFAULT': {
+                'DOWNLOAD_TIMEOUT': str(self.TIMEOUT_SECONDS),
+            }
+        })
+        return trafilatura.fetch_url(url, config=config)
 
     def _try_newspaper3k(self, url: str) -> Optional[str]:
         """Fallback extractor using newspaper3k."""

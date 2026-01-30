@@ -422,9 +422,9 @@ class LLMClassifier:
 
         def _fetch_one(story_id: str, uri: str) -> tuple:
             try:
-                body_bytes = storage.get(uri)
-                if body_bytes:
-                    return (story_id, body_bytes.decode("utf-8", errors="replace")[:2000])
+                storage_obj = storage.download(uri)
+                if storage_obj:
+                    return (story_id, storage_obj.content.decode("utf-8", errors="replace")[:2000])
             except Exception as e:
                 logger.warning(f"[CLASSIFY] Failed to fetch body for {story_id}: {e}")
             return (story_id, "")
