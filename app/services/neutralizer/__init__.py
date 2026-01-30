@@ -126,7 +126,7 @@ class NeutralizerProvider(ABC):
         pass
 
     @abstractmethod
-    def _neutralize_detail_full(self, body: str) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, title: str = None) -> DetailFullResult:
         """
         Filter an article body to produce detail_full (Call 1: Filter & Track).
 
@@ -135,11 +135,12 @@ class NeutralizerProvider(ABC):
 
         Args:
             body: The original article body text to filter
+            title: The original article title (for headline manipulation detection)
 
         Returns:
             DetailFullResult containing:
             - detail_full: The filtered article text
-            - spans: List of TransparencySpan objects tracking each change
+            - spans: List of TransparencySpan objects with field="title" or field="body"
         """
         pass
 
@@ -380,24 +381,35 @@ class MockNeutralizerProvider(NeutralizerProvider):
             removed_phrases=[s.original_text for s in all_spans],  # Extract from spans
         )
 
-    def _neutralize_detail_full(self, body: str) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, title: str = None) -> DetailFullResult:
         """
         Filter an article body using pattern matching (mock implementation).
 
         Uses the same pattern matching logic as neutralize() but focused on body text.
+        Now also detects spans in title for headline manipulation.
+
+        Args:
+            body: Article body text
+            title: Original article title (for headline manipulation detection)
         """
         if not body:
             return DetailFullResult(detail_full="", spans=[])
 
+        # Find spans in title if provided
+        title_spans = self._find_spans(title, "title") if title else []
+
         # Find spans in body
         body_spans = self._find_spans(body, "body")
 
-        # Apply neutralization
+        # Combine spans (title first, then body)
+        all_spans = title_spans + body_spans
+
+        # Apply neutralization to body only
         filtered_body = self._neutralize_text(body, body_spans)
 
         return DetailFullResult(
             detail_full=filtered_body,
-            spans=body_spans,
+            spans=all_spans,
         )
 
     def _neutralize_detail_brief(self, body: str) -> str:
@@ -3747,6 +3759,7 @@ def detect_spans_with_mode(
     gemini_api_key: str = None,
     openai_model: str = "gpt-4o-mini",
     anthropic_model: str = "claude-3-5-haiku-latest",
+    title: str = None,
 ) -> List[TransparencySpan]:
     """
     Detect spans using the specified detection mode.
@@ -3763,10 +3776,22 @@ def detect_spans_with_mode(
         gemini_api_key: Gemini API key (for single mode fallback)
         openai_model: OpenAI model name
         anthropic_model: Anthropic model name
+        title: Original article title (optional, for headline manipulation detection)
 
     Returns:
-        List of TransparencySpan
+        List of TransparencySpan with field="title" or field="body"
     """
+    # Combine title + body for detection if title is provided
+    title_separator = "\n\n---ARTICLE BODY---\n\n"
+    if title:
+        combined_text = f"HEADLINE: {title}{title_separator}{body}"
+        title_offset = len(f"HEADLINE: {title}{title_separator}")
+        headline_prefix_len = len("HEADLINE: ")
+    else:
+        combined_text = body
+        title_offset = 0
+        headline_prefix_len = 0
+
     if mode == "multi_pass":
         if not anthropic_api_key:
             logger.warning("[SPAN_DETECTION] multi_pass mode requires ANTHROPIC_API_KEY, falling back to single")
@@ -3777,8 +3802,8 @@ def detect_spans_with_mode(
 
     if mode == "multi_pass":
         logger.info("[SPAN_DETECTION] Using multi_pass mode (target: 99% recall)")
-        return detect_spans_multi_pass(
-            body=body,
+        spans = detect_spans_multi_pass(
+            body=combined_text,
             openai_api_key=openai_api_key,
             anthropic_api_key=anthropic_api_key,
             openai_model=openai_model,
@@ -3788,14 +3813,55 @@ def detect_spans_with_mode(
         # Single pass mode (original behavior)
         logger.info("[SPAN_DETECTION] Using single mode")
         if openai_api_key:
-            return detect_spans_via_llm_openai(body, openai_api_key, openai_model)
+            spans = detect_spans_via_llm_openai(combined_text, openai_api_key, openai_model)
         elif gemini_api_key:
-            return detect_spans_via_llm_gemini(body, gemini_api_key, "gemini-2.0-flash")
+            spans = detect_spans_via_llm_gemini(combined_text, gemini_api_key, "gemini-2.0-flash")
         elif anthropic_api_key:
-            return detect_spans_via_llm_anthropic(body, anthropic_api_key, anthropic_model)
+            spans = detect_spans_via_llm_anthropic(combined_text, anthropic_api_key, anthropic_model)
         else:
             logger.error("[SPAN_DETECTION] No API keys available")
             return []
+
+    if spans is None:
+        return []
+
+    # Adjust positions and set field based on whether span is in title or body
+    if title and title_offset > 0:
+        adjusted_spans = []
+        for span in spans:
+            if span.start_char < title_offset:
+                # Span is in title section
+                adjusted_start = span.start_char - headline_prefix_len
+                adjusted_end = span.end_char - headline_prefix_len
+                # Ensure positions are within title bounds
+                if adjusted_start >= 0 and adjusted_end <= len(title):
+                    adjusted_spans.append(TransparencySpan(
+                        field="title",
+                        start_char=adjusted_start,
+                        end_char=adjusted_end,
+                        original_text=span.original_text,
+                        action=span.action,
+                        reason=span.reason,
+                        replacement_text=span.replacement_text,
+                    ))
+            else:
+                # Span is in body section
+                adjusted_start = span.start_char - title_offset
+                adjusted_end = span.end_char - title_offset
+                # Ensure positions are within body bounds
+                if adjusted_start >= 0 and adjusted_end <= len(body):
+                    adjusted_spans.append(TransparencySpan(
+                        field="body",
+                        start_char=adjusted_start,
+                        end_char=adjusted_end,
+                        original_text=span.original_text,
+                        action=span.action,
+                        reason=span.reason,
+                        replacement_text=span.replacement_text,
+                    ))
+        return adjusted_spans
+
+    return spans
 
 
 def _detect_spans_with_config(
@@ -3803,6 +3869,7 @@ def _detect_spans_with_config(
     provider_api_key: str = None,
     provider_type: str = "openai",
     provider_model: str = "gpt-4o-mini",
+    title: str = None,
 ) -> List[TransparencySpan]:
     """
     Detect spans using the mode configured in settings.SPAN_DETECTION_MODE.
@@ -3816,9 +3883,11 @@ def _detect_spans_with_config(
         provider_api_key: The API key for the provider calling this function
         provider_type: "openai", "gemini", or "anthropic"
         provider_model: The model name (e.g., "gpt-4o-mini")
+        title: Original article title (optional, for headline manipulation detection)
 
     Returns:
-        List of TransparencySpan (may be empty if article is clean, or if detection fails)
+        List of TransparencySpan with field="title" or field="body"
+        (may be empty if article is clean, or if detection fails)
     """
     settings = get_settings()
     mode = settings.SPAN_DETECTION_MODE
@@ -3844,20 +3913,28 @@ def _detect_spans_with_config(
                 anthropic_api_key=anthropic_key,
                 openai_model=settings.ADVERSARIAL_MODEL,
                 anthropic_model=settings.HIGH_RECALL_MODEL,
+                title=title,
             )
             return spans if spans is not None else []
 
-    # Single mode - use the provider's own detection function
+    # Single mode - use detect_spans_with_mode which handles title combination
     logger.info(f"[SPAN_DETECTION] Using single mode with {provider_type}")
-    if provider_type == "openai":
-        spans = detect_spans_via_llm_openai(body, provider_api_key, provider_model)
-    elif provider_type == "gemini":
-        spans = detect_spans_via_llm_gemini(body, provider_api_key, provider_model)
-    elif provider_type == "anthropic":
-        spans = detect_spans_via_llm_anthropic(body, provider_api_key, provider_model)
-    else:
-        logger.error(f"[SPAN_DETECTION] Unknown provider type: {provider_type}")
-        spans = None
+
+    # Map provider type to API key args
+    openai_key = provider_api_key if provider_type == "openai" else None
+    gemini_key = provider_api_key if provider_type == "gemini" else None
+    anthropic_key = provider_api_key if provider_type == "anthropic" else None
+
+    spans = detect_spans_with_mode(
+        body=body,
+        mode="single",
+        openai_api_key=openai_key,
+        gemini_api_key=gemini_key,
+        anthropic_api_key=anthropic_key,
+        openai_model=provider_model,
+        anthropic_model=provider_model,
+        title=title,
+    )
 
     return spans if spans is not None else []
 
@@ -4535,7 +4612,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             logger.error(f"OpenAI neutralization failed: {e}")
             raise NeutralizationResponseError(f"OpenAI neutralization failed: {str(e)}")
 
-    def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, title: str = None, retry_count: int = 0) -> DetailFullResult:
         """
         Neutralize an article body using OpenAI with SYNTHESIS approach.
 
@@ -4546,8 +4623,13 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         Spans are detected via hybrid LLM + position matching:
         1. LLM identifies manipulative phrases with context awareness
-        2. Position matcher finds exact character positions in original body
+        2. Position matcher finds exact character positions in original body/title
         3. Returns failure status if LLM fails (no mock fallback)
+
+        Args:
+            body: Article body text
+            title: Original article title (for headline manipulation detection)
+            retry_count: Current retry attempt number
         """
         MAX_RETRIES = 2
 
@@ -4565,13 +4647,15 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
         # Uses multi_pass for 99% recall if configured, otherwise single-pass
+        # Now includes title for headline manipulation detection
         spans = _detect_spans_with_config(
             body=body,
             provider_api_key=self._api_key,
             provider_type="openai",
             provider_model=self._model,
+            title=title,
         )
-        logger.info(f"Span detection completed with {len(spans)} spans")
+        logger.info(f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})")
 
         try:
             from openai import OpenAI
@@ -4613,7 +4697,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 )
                 import time
                 time.sleep(1)
-                return self._neutralize_detail_full(body, retry_count + 1)
+                return self._neutralize_detail_full(body, title, retry_count + 1)
             else:
                 logger.error(f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
                 return DetailFullResult(
@@ -4864,13 +4948,18 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             logger.error(f"Gemini neutralization failed: {e}")
             raise NeutralizationResponseError(f"Gemini neutralization failed: {str(e)}")
 
-    def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, title: str = None, retry_count: int = 0) -> DetailFullResult:
         """
         Neutralize an article body using Gemini with SYNTHESIS approach.
 
         Uses synthesis mode (plain text output) as the primary approach.
         Spans are detected via hybrid LLM + position matching for context awareness.
         Returns failure status if synthesis fails (no mock fallback).
+
+        Args:
+            body: Article body text
+            title: Original article title (for headline manipulation detection)
+            retry_count: Current retry attempt number
         """
         MAX_RETRIES = 2
 
@@ -4888,13 +4977,15 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
         # Uses multi_pass for 99% recall if configured, otherwise single-pass
+        # Now includes title for headline manipulation detection
         spans = _detect_spans_with_config(
             body=body,
             provider_api_key=self._api_key,
             provider_type="gemini",
             provider_model=self._model,
+            title=title,
         )
-        logger.info(f"Span detection completed with {len(spans)} spans")
+        logger.info(f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})")
 
         try:
             import google.generativeai as genai
@@ -4936,7 +5027,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 )
                 import time
                 time.sleep(1)
-                return self._neutralize_detail_full(body, retry_count + 1)
+                return self._neutralize_detail_full(body, title, retry_count + 1)
             else:
                 logger.error(f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
                 return DetailFullResult(
@@ -5183,13 +5274,18 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             logger.error(f"Anthropic neutralization failed: {e}")
             raise NeutralizationResponseError(f"Anthropic neutralization failed: {str(e)}")
 
-    def _neutralize_detail_full(self, body: str, retry_count: int = 0) -> DetailFullResult:
+    def _neutralize_detail_full(self, body: str, title: str = None, retry_count: int = 0) -> DetailFullResult:
         """
         Neutralize an article body using Anthropic Claude with SYNTHESIS approach.
 
         Uses synthesis mode (plain text output) as the primary approach.
         Spans are detected via hybrid LLM + position matching for context awareness.
         Returns failure status if synthesis fails (no mock fallback).
+
+        Args:
+            body: Article body text
+            title: Original article title (for headline manipulation detection)
+            retry_count: Current retry attempt number
         """
         MAX_RETRIES = 2
 
@@ -5207,13 +5303,15 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
         # Uses multi_pass for 99% recall if configured, otherwise single-pass
+        # Now includes title for headline manipulation detection
         spans = _detect_spans_with_config(
             body=body,
             provider_api_key=self._api_key,
             provider_type="anthropic",
             provider_model=self._model,
+            title=title,
         )
-        logger.info(f"Span detection completed with {len(spans)} spans")
+        logger.info(f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})")
 
         try:
             import anthropic
@@ -5254,7 +5352,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 )
                 import time
                 time.sleep(1)
-                return self._neutralize_detail_full(body, retry_count + 1)
+                return self._neutralize_detail_full(body, title, retry_count + 1)
             else:
                 logger.error(f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
                 return DetailFullResult(
@@ -5631,8 +5729,9 @@ class NeutralizerService:
             # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
                 # Call 1: Filter & Track - produces detail_full and spans
+                # Pass title for headline manipulation detection
                 if body:
-                    detail_full_result = self.provider._neutralize_detail_full(body)
+                    detail_full_result = self.provider._neutralize_detail_full(body, title=story.original_title)
 
                     # Check for failure status (new architecture: no mock fallback)
                     if detail_full_result.status != "success":
@@ -5890,8 +5989,9 @@ class NeutralizerService:
             # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
                 # Call 1: Filter & Track - produces detail_full and spans
+                # Pass title for headline manipulation detection
                 if body:
-                    detail_full_result = self.provider._neutralize_detail_full(body)
+                    detail_full_result = self.provider._neutralize_detail_full(body, title=title)
                     transparency_spans = detail_full_result.spans
 
                     # V2 pattern-based detection disabled - produces too many false positives

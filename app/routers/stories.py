@@ -317,6 +317,7 @@ def get_story_transparency(
 
     span_responses = [
         TransparencySpanResponse(
+            field=span.field,
             start_char=span.start_char,
             end_char=span.end_char,
             original_text=span.original_text,
@@ -425,6 +426,7 @@ def get_story_debug(
 
     span_responses = [
         TransparencySpanResponse(
+            field=span.field,
             start_char=span.start_char,
             end_char=span.end_char,
             original_text=span.original_text,
@@ -559,6 +561,7 @@ def get_story_debug_spans(
 
     final_spans = [
         TransparencySpanResponse(
+            field=span.field,
             start_char=span.start_char,
             end_char=span.end_char,
             original_text=span.original_text,

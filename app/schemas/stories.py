@@ -12,6 +12,7 @@ class TransparencySpanResponse(BaseModel):
     """A single span of manipulative content that was modified."""
     model_config = ConfigDict(from_attributes=True)
 
+    field: str = Field("body", description="Which field contains this span: title, description, or body")
     start_char: int = Field(..., description="Start position in original text")
     end_char: int = Field(..., description="End position in original text")
     original_text: str = Field(..., description="The original manipulative text")
