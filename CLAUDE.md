@@ -807,8 +807,17 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 33. ✅ **Enhanced evaluation output summary** (Jan 2026): Added three new response fields to evaluation endpoints: `score_comparison` (deltas and improvement flags vs previous run), `missed_items_summary` (aggregated missed manipulations by category with top phrases), `prompt_changes_detail` (specific changes made with content diff summaries). Helps quickly assess evaluation results without parsing per-article data.
 34. ✅ **Title span detection** (Jan 2026): `_detect_spans_with_config()` now includes original title in LLM analysis. Combines title + body with position offset tracking, then separates spans by `field` attribute (`title` or `body`). Enables detection of headline manipulation (e.g., "Trump SLAMS critics"). `TransparencySpanResponse` schema updated with `field` attribute.
 35. ✅ **ntrl-view redesign** (Jan 2026): Frontend NtrlContent component now displays original title with highlights, semi-circular manipulation gauge (react-native-svg), and separated title/body transformations. ManipulationGauge shows manipulation density as percentage with color gradient (green→yellow→red).
+36. ✅ **Evaluation body retrieval fix** (Jan 30 2026): Fixed `_get_body()` in `evaluation_service.py` calling non-existent `storage.get()` method. Changed to `storage.download()` which returns `StorageObject` with `.exists` and `.content` attributes. Was causing all article bodies to appear empty during evaluation, leading teacher LLM to incorrectly report false positives.
+37. ✅ **Title-body consistency detection** (Jan 30 2026): Enhanced evaluation system to detect title-specific span detection issues:
+    - Spans passed to teacher now include `field` attribute (`title` or `body`)
+    - `SPAN_EVAL_PROMPT` updated with "TITLE-BODY CONSISTENCY CHECK" section
+    - Teacher reports `title_body_inconsistencies` when phrase appears in both but only flagged in one
+    - `missed_manipulations` now includes `location` field (`title|body|both`)
+    - `ArticleEvaluationData` has new fields: `title_spans_count`, `body_spans_count`, `title_body_inconsistencies`
+    - `_generate_recommendations()` creates `title_detection_consistency` and `title_body_inconsistency` recommendations
+38. ✅ **Dropped span logging** (Jan 30 2026): Added debug logging in `neutralizer/__init__.py` when title/body spans are dropped due to bounds check failure. Logs phrase, adjusted positions, and title/body length with `[SPAN_DETECTION]` prefix.
 
-### Current State (Jan 29 2026)
+### Current State (Jan 30 2026)
 
 **All fixes deployed and verified on Railway staging:**
 - Railway auto-deploys from `main` on push (build ~1m30s, deploy ~20s)
@@ -818,6 +827,13 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - API healthy after Alembic multiple-heads fix (was crash-looping)
 - Automated prompt optimization system deployed (enable via `enable_evaluation=true` in scheduled-run)
 
+**Evaluation results (Jan 30 2026):**
+- ✅ Evaluation body retrieval fixed — was calling non-existent `storage.get()`, now uses `storage.download()`
+- ✅ Title-body consistency detection working — identifies when phrases are flagged in wrong location
+- ✅ Auto-optimize with 5 articles: 80% classification, 7.78 neutralization, 72% precision, 38% recall
+- ✅ 3 prompts auto-updated: `classification_system_prompt` v10, `neutralization_system_prompt` v11, `span_detection_prompt` v20
+- ✅ Cost: ~$0.28 per evaluation run with auto-optimize
+
 **Classification results (Jan 27 2026):**
 - ✅ 200+ articles classified via LLM, 0 keyword fallbacks, 0 failures (100% LLM success rate)
 - ✅ Brief rebuilt with 9 populated categories (Environment empty — awaits relevant RSS content)
@@ -825,7 +841,7 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - ✅ Classification adds ~53s for 25 articles to pipeline run (classify_limit now 200, covers all ingested)
 
 **Verification results:**
-- ✅ Local E2E tests pass (27 passed, 2 xfailed)
+- ✅ Local E2E tests pass (526 passed, 7 expected failures from MockNeutralizerProvider)
 - ✅ `editorial_voice` spans stored correctly (e.g., "Border Czar", "Make no mistake")
 - ✅ Lavender highlight color renders in UI for editorial_voice spans
 - ✅ Highlight legend shows all 4 categories, collapses/expands correctly
@@ -842,6 +858,7 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 - ✅ Culture section populated (King Charles, American Idol, etc.)
 - ✅ 23/23 brief assembly unit tests passing
 - ✅ Auto-optimize endpoint returns 200 with `prompts_updated` populated (was 500 error)
+- ✅ Evaluation correctly retrieves article bodies from S3 (was empty before fix)
 
 ### Remaining Issues
 
