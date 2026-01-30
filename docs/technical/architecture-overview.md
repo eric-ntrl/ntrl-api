@@ -652,6 +652,27 @@ When the primary synthesis response is garbled (unparseable JSON, missing fields
 **Span Detection:**
 Span detection operates separately from synthesis. Pattern matching runs against the original body text to identify manipulative phrases, mapping them to the 115-type manipulation taxonomy defined in `taxonomy.py`. This separation ensures that span annotations are always grounded in the original text, not in the LLM's rewrite.
 
+**Span Detection Quality Metrics:**
+
+Span detection quality is measured using two complementary metrics:
+
+| Metric | Question Answered | Formula |
+|--------|-------------------|---------|
+| **Precision** | "When we flag a phrase, is it actually manipulative?" | True Positives / (True Positives + False Positives) |
+| **Recall** | "Of all manipulative phrases, how many did we find?" | True Positives / (True Positives + False Negatives) |
+
+*Simple analogy:* Imagine finding red balls in a pit of red and blue balls.
+- **Precision** = When you grab a ball, is it actually red? (Low precision = grabbing blue balls by mistake)
+- **Recall** = Did you find all the red balls? (Low recall = missing red balls)
+
+**The precision-recall tradeoff:**
+- Being more cautious (only flag obvious manipulation) → Precision ↑, Recall ↓
+- Being more aggressive (flag anything suspicious) → Recall ↑, Precision ↓
+
+**Target:** 99% for both metrics. This means catching nearly all manipulation while almost never making mistakes—a high bar that requires continuous prompt optimization.
+
+**Current optimization loop:** The automated evaluation system uses a teacher LLM (Claude Opus 4.5) to grade span detection quality, identify missed phrases and false positives, and auto-improve the detection prompts. See the "Automated Prompt Optimization System" section in CLAUDE.md for details.
+
 ### Model Selection
 
 Both classification and neutralization use `gpt-4o-mini` in production. This model was selected for its balance of quality, speed, and cost:

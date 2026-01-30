@@ -490,6 +490,27 @@ Check these in Expo dev tools or browser console. In production, these are no-op
 
 ## Highlight Accuracy Testing
 
+### Understanding Precision vs Recall
+
+**Simple analogy:** Imagine finding all the **red balls** in a ball pit full of red and blue balls.
+
+| Metric | Question | Meaning |
+|--------|----------|---------|
+| **Precision** | "When I grab a ball, is it actually red?" | Of all phrases we flagged, how many were actually manipulative? |
+| **Recall** | "Did I find all the red balls?" | Of all manipulative phrases in the article, how many did we find? |
+
+**In NTRL's context:**
+- **High precision** = When we highlight something, we're almost always right (few false alarms)
+- **High recall** = We catch almost all the manipulation (nothing sneaks through)
+- **Low precision** = We're flagging normal phrases by mistake ("crisis management" flagged as manipulative)
+- **Low recall** = We're missing manipulative phrases ("SHOCKING" goes undetected)
+
+**The tradeoff:**
+- Be more cautious → Precision ↑, Recall ↓ (miss subtle manipulation)
+- Be more aggressive → Recall ↑, Precision ↓ (more false alarms)
+
+**Current targets:** 99% for both precision and recall (catch nearly everything while almost never making mistakes).
+
 ### Test Framework
 - `tests/test_highlight_accuracy.py` - Main accuracy tests against gold standard corpus
 - `tests/test_span_accuracy_e2e.py` - E2E tests for specific phrase detection (must-flag/must-not-flag)
