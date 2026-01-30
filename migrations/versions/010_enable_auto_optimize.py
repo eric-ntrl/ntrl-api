@@ -5,7 +5,7 @@ This removes the "double-gate" problem where prompts had auto_optimize_enabled=F
 by default, causing the optimizer to silently skip them even when improvements
 were identified.
 
-Revision ID: 010_enable_auto_optimize_all_prompts
+Revision ID: 010_enable_auto_optimize
 Revises: 009_seed_neutralizer_prompts
 Create Date: 2026-01-29
 """
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '010_enable_auto_optimize_all_prompts'
+revision: str = '010_enable_auto_optimize'
 down_revision: Union[str, Sequence[str], None] = '009_seed_neutralizer_prompts'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
