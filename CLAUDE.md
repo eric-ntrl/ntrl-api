@@ -564,11 +564,19 @@ Tests specific phrase detection scenarios:
 ### LLM Span Detection Architecture
 
 **How it works:**
-1. LLM analyzes article and returns `{"phrases": [...]}` with manipulative phrases
-2. `find_phrase_positions()` maps phrase text to character positions in original body
-3. `filter_spans_in_quotes()` removes phrases inside quoted speech
-4. `filter_false_positives()` removes known false positive phrases
-5. Result: spans with accurate positions for highlighting in UI
+1. Title + body are combined for LLM analysis (title prefixed with `HEADLINE: `)
+2. LLM analyzes combined text and returns `{"phrases": [...]}` with manipulative phrases
+3. `find_phrase_positions()` maps phrase text to character positions
+4. Position adjustment separates spans into `field="title"` or `field="body"` based on offset
+5. `filter_spans_in_quotes()` removes phrases inside quoted speech
+6. `filter_false_positives()` removes known false positive phrases
+7. Result: spans with accurate positions and field attribution for UI highlighting
+
+**Title span detection (Jan 2026):**
+- `_detect_spans_with_config()` now accepts optional `title` parameter
+- Combined text format: `HEADLINE: {title}\n\n---ARTICLE BODY---\n\n{body}`
+- Spans with `start_char < title_offset` are attributed to `field="title"`
+- Enables headline manipulation detection (e.g., "Trump SLAMS critics")
 
 **Key files:**
 - `neutralizer/__init__.py`: `DEFAULT_SPAN_DETECTION_PROMPT` - Conservative prompt with "NEVER FLAG" guidance
@@ -618,6 +626,18 @@ Categories 9-12 added Jan 2026. Categories 13-14 added Jan 2026 for tabloid/edit
 {"phrases": [
   {"phrase": "SHOCKING", "reason": "emotional_trigger", "action": "remove", "replacement": null}
 ]}
+```
+
+**TransparencySpanResponse schema:**
+```python
+class TransparencySpanResponse(BaseModel):
+    field: str = Field("body", description="Which field: title, description, or body")
+    start_char: int
+    end_char: int
+    original_text: str
+    action: str
+    reason: str
+    replacement_text: str | None
 ```
 
 **Fallback behavior (updated Jan 2026):**
@@ -785,6 +805,8 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
 31. ✅ **Neutralizer prompts in DB** (Jan 2026): 7 model-agnostic prompts migrated from hardcoded defaults to DB. Enables auto-optimization of span detection and neutralization prompts. `PromptOptimizer` updated to handle `model=NULL` prompts.
 32. ✅ **Auto-optimize endpoint fix** (Jan 2026): Fixed internal server error when `enable_auto_optimize: true`. Bug was extending `recommendations` (list of `EvaluationRecommendation`) with `prompts_updated` (list of dicts) - incompatible types causing schema validation error. Now properly converts to `PromptUpdate` schema and populates the `prompts_updated` response field.
 33. ✅ **Enhanced evaluation output summary** (Jan 2026): Added three new response fields to evaluation endpoints: `score_comparison` (deltas and improvement flags vs previous run), `missed_items_summary` (aggregated missed manipulations by category with top phrases), `prompt_changes_detail` (specific changes made with content diff summaries). Helps quickly assess evaluation results without parsing per-article data.
+34. ✅ **Title span detection** (Jan 2026): `_detect_spans_with_config()` now includes original title in LLM analysis. Combines title + body with position offset tracking, then separates spans by `field` attribute (`title` or `body`). Enables detection of headline manipulation (e.g., "Trump SLAMS critics"). `TransparencySpanResponse` schema updated with `field` attribute.
+35. ✅ **ntrl-view redesign** (Jan 2026): Frontend NtrlContent component now displays original title with highlights, semi-circular manipulation gauge (react-native-svg), and separated title/body transformations. ManipulationGauge shows manipulation density as percentage with color gradient (green→yellow→red).
 
 ### Current State (Jan 29 2026)
 
