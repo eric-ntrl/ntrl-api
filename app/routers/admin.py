@@ -14,6 +14,7 @@ GET  /v1/status - Get system status, config, and pipeline health metrics
 import logging
 import os
 import secrets
+import uuid
 from datetime import datetime
 from typing import Dict, Optional, List
 
@@ -975,7 +976,8 @@ class PromptResponse(BaseModel):
 class PromptUpdateRequest(BaseModel):
     """Request to update a prompt."""
     content: str
-    model: str  # Required - must specify which model this prompt is for
+    model: Optional[str] = None  # Optional - None for model-agnostic prompts
+    change_reason: Optional[str] = None  # Optional reason for the change (for audit trail)
 
 
 class PromptListResponse(BaseModel):
@@ -1085,8 +1087,25 @@ def update_prompt(
 
     if prompt:
         # Update existing
+        old_version = prompt.version
+        new_version = old_version + 1
+
+        # Create version record for audit trail
+        version_entry = models.PromptVersion(
+            id=uuid.uuid4(),
+            prompt_id=prompt.id,
+            version=new_version,
+            content=request.content,
+            change_reason=request.change_reason or "Manual update",
+            change_source=models.ChangeSource.MANUAL.value,
+            parent_version_id=prompt.current_version_id,
+            avg_score_at_creation=None,
+        )
+        db.add(version_entry)
+
         prompt.content = request.content
-        prompt.version += 1
+        prompt.version = new_version
+        prompt.current_version_id = version_entry.id
         prompt.updated_at = datetime.utcnow()
     else:
         # Deactivate other prompts with same name (only one active per name)
