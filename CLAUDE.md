@@ -1165,6 +1165,40 @@ clear_classification_prompt_cache()
 - `span_detection_prompt` optimized from v1 to v10
 - Span recall improved: 20% -> 50%
 
+### Email Notifications (Jan 2026)
+
+Automated email notifications sent after each scheduled pipeline run with evaluation.
+
+**Environment Variables (Railway):**
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `RESEND_API_KEY` | Resend API key | (none) |
+| `EMAIL_FROM` | Sender address | `NTRL <notifications@ntrl.news>` |
+| `EMAIL_RECIPIENT` | Default recipient | `eric@ntrl.news` |
+| `EMAIL_ENABLED` | Enable/disable | `true` |
+
+**Email Content:**
+- Overall quality score with delta from previous run
+- 2x2 metrics grid (classification, neutralization, precision, recall)
+- Trend chart (last 10 runs) via QuickChart.io
+- Prompt changes made (if auto-optimize enabled)
+- Action items and missed manipulations summary
+
+**Manual Send:**
+```bash
+curl -X POST ".../v1/evaluation/runs/{run_id}/email" \
+  -H "X-API-Key: staging-key-123" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Key Files:**
+- `app/services/email_service.py` - EmailService class
+- `app/config.py` - RESEND_* settings
+- `app/routers/admin.py` - `/evaluation/runs/{run_id}/email` endpoint
+
+**Cost:** Free tier (Resend: 100 emails/day, QuickChart: 500 charts/month)
+
 ### Important: Database Spans vs Fresh Detection
 
 **Spans in the database are from OLD pipeline runs.** When you change span detection code:
