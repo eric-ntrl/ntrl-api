@@ -780,10 +780,22 @@ Evaluate the span detection quality (precision and recall)."""
         self,
         article_evals: List[ArticleEvaluationData],
     ) -> List[Dict]:
-        """Generate actionable recommendations from evaluation results."""
+        """Generate actionable recommendations from evaluation results.
+
+        CONTINUOUS IMPROVEMENT MODE (Jan 2026):
+        Always generates recommendations when metrics are below 99% targets,
+        not just when they fall below "failure" thresholds. This enables
+        the system to continuously improve toward 99%+ quality.
+
+        Target thresholds:
+        - Classification: 100% accuracy
+        - Neutralization: 9.5/10 average score
+        - Span precision: 99%
+        - Span recall: 99%
+        """
         recommendations = []
 
-        # Collect all suggestions
+        # Collect all suggestions from teacher LLM
         classification_suggestions = [
             e.classification_prompt_suggestion for e in article_evals
             if e.classification_prompt_suggestion
@@ -797,7 +809,46 @@ Evaluate the span detection quality (precision and recall)."""
             if e.span_prompt_suggestion
         ]
 
-        # Check for classification issues
+        # Calculate aggregate metrics
+        classification_correct_count = sum(
+            1 for e in article_evals if e.classification_correct is True
+        )
+        classification_accuracy = (
+            classification_correct_count / len(article_evals) if article_evals else 0.0
+        )
+
+        neutralization_scores = [
+            e.neutralization_score for e in article_evals
+            if e.neutralization_score is not None
+        ]
+        avg_neutralization = (
+            sum(neutralization_scores) / len(neutralization_scores)
+            if neutralization_scores else 0.0
+        )
+
+        span_precisions = [
+            e.span_precision for e in article_evals
+            if e.span_precision is not None
+        ]
+        avg_span_precision = (
+            sum(span_precisions) / len(span_precisions)
+            if span_precisions else 0.0
+        )
+
+        span_recalls = [
+            e.span_recall for e in article_evals
+            if e.span_recall is not None
+        ]
+        avg_span_recall = (
+            sum(span_recalls) / len(span_recalls)
+            if span_recalls else 0.0
+        )
+
+        # =====================================================================
+        # CLASSIFICATION RECOMMENDATIONS
+        # =====================================================================
+
+        # Critical: any misclassifications
         incorrect_classifications = [
             e for e in article_evals if e.classification_correct is False
         ]
@@ -819,7 +870,22 @@ Evaluate the span detection quality (precision and recall)."""
                         "affected_articles": article_ids,
                     })
 
-        # Check for neutralization issues
+        # Continuous improvement: any classification below 100%
+        if classification_accuracy < 1.0 and incorrect_classifications:
+            recommendations.append({
+                "prompt_name": "classification_system_prompt",
+                "issue_category": "continuous_improvement",
+                "issue_description": f"Classification accuracy at {classification_accuracy:.1%}, targeting 100%",
+                "suggested_change": classification_suggestions[0] if classification_suggestions else "Review misclassified examples and add clarifying guidance",
+                "priority": "low" if classification_accuracy >= 0.9 else "medium",
+                "affected_articles": [e.story_raw_id for e in incorrect_classifications],
+            })
+
+        # =====================================================================
+        # NEUTRALIZATION RECOMMENDATIONS
+        # =====================================================================
+
+        # Critical: articles with low neutralization scores (<7.0)
         low_neutralization_scores = [
             e for e in article_evals
             if e.neutralization_score is not None and e.neutralization_score < 7.0
@@ -834,40 +900,57 @@ Evaluate the span detection quality (precision and recall)."""
                 "affected_articles": [e.story_raw_id for e in low_neutralization_scores],
             })
 
-        # Check for span issues
+        # Continuous improvement: neutralization below 9.5/10
+        if avg_neutralization < 9.5 and neutralization_scores:
+            below_target = [
+                e for e in article_evals
+                if e.neutralization_score is not None and e.neutralization_score < 9.5
+            ]
+            if below_target:
+                recommendations.append({
+                    "prompt_name": "neutralization_system_prompt",
+                    "issue_category": "continuous_improvement",
+                    "issue_description": f"Neutralization avg {avg_neutralization:.1f}/10, targeting 9.5/10",
+                    "suggested_change": neutralization_suggestions[0] if neutralization_suggestions else "Refine neutralization rules for edge cases",
+                    "priority": "low" if avg_neutralization >= 8.0 else "medium",
+                    "affected_articles": [e.story_raw_id for e in below_target[:5]],
+                })
+
+        # =====================================================================
+        # SPAN DETECTION RECOMMENDATIONS
+        # =====================================================================
+
+        # Collect all false positives and missed manipulations
+        all_fps = []
+        all_misses = []
+        for e in article_evals:
+            if e.false_positives:
+                all_fps.extend(e.false_positives)
+            if e.missed_manipulations:
+                all_misses.extend(e.missed_manipulations)
+
+        # Critical: precision below 80%
         low_precision = [
             e for e in article_evals
             if e.span_precision is not None and e.span_precision < 0.8
         ]
-        low_recall = [
-            e for e in article_evals
-            if e.span_recall is not None and e.span_recall < 0.7
-        ]
-
         if low_precision:
-            # Collect common false positives
-            all_fps = []
-            for e in low_precision:
-                if e.false_positives:
-                    all_fps.extend(e.false_positives)
-
             recommendations.append({
                 "prompt_name": "span_detection_prompt",
                 "issue_category": "span_detection",
                 "issue_description": f"{len(low_precision)} articles with low span precision (<80%)",
                 "suggested_change": span_suggestions[0] if span_suggestions else "Add false positives to exclusion list",
-                "priority": "medium",
+                "priority": "high",
                 "affected_articles": [e.story_raw_id for e in low_precision],
                 "false_positives_sample": all_fps[:5],
             })
 
+        # Critical: recall below 70%
+        low_recall = [
+            e for e in article_evals
+            if e.span_recall is not None and e.span_recall < 0.7
+        ]
         if low_recall:
-            # Collect common misses
-            all_misses = []
-            for e in low_recall:
-                if e.missed_manipulations:
-                    all_misses.extend(e.missed_manipulations)
-
             recommendations.append({
                 "prompt_name": "span_detection_prompt",
                 "issue_category": "span_detection",
@@ -877,5 +960,35 @@ Evaluate the span detection quality (precision and recall)."""
                 "affected_articles": [e.story_raw_id for e in low_recall],
                 "missed_phrases_sample": all_misses[:5],
             })
+
+        # Continuous improvement: precision below 99%
+        if avg_span_precision < 0.99 and span_precisions and all_fps:
+            recommendations.append({
+                "prompt_name": "span_detection_prompt",
+                "issue_category": "continuous_improvement",
+                "issue_description": f"Span precision at {avg_span_precision:.1%}, targeting 99%",
+                "suggested_change": span_suggestions[0] if span_suggestions else "Review and add false positive patterns to exclusion list",
+                "priority": "low" if avg_span_precision >= 0.9 else "medium",
+                "affected_articles": [e.story_raw_id for e in article_evals if e.false_positives][:5],
+                "false_positives_sample": all_fps[:10],
+            })
+
+        # Continuous improvement: recall below 99%
+        if avg_span_recall < 0.99 and span_recalls and all_misses:
+            recommendations.append({
+                "prompt_name": "span_detection_prompt",
+                "issue_category": "continuous_improvement",
+                "issue_description": f"Span recall at {avg_span_recall:.1%}, targeting 99%",
+                "suggested_change": span_suggestions[0] if span_suggestions else "Add missed manipulation patterns to detection prompt",
+                "priority": "low" if avg_span_recall >= 0.9 else "medium",
+                "affected_articles": [e.story_raw_id for e in article_evals if e.missed_manipulations][:5],
+                "missed_phrases_sample": all_misses[:10],
+            })
+
+        logger.info(
+            f"[EVAL] Generated {len(recommendations)} recommendations "
+            f"(class_acc={classification_accuracy:.1%}, neut={avg_neutralization:.1f}, "
+            f"precision={avg_span_precision:.1%}, recall={avg_span_recall:.1%})"
+        )
 
         return recommendations

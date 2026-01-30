@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # Teacher LLM Configuration
     EVAL_MODEL: str = Field(
-        default="claude-sonnet-4-5",
+        default="claude-opus-4-5",
         description="Model for evaluation/grading (supports claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5, gpt-4o)",
     )
     OPTIMIZER_MODEL: str = Field(

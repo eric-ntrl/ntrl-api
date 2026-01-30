@@ -171,7 +171,20 @@ class PromptOptimizer:
 
                 # Check if auto-optimize is enabled for this prompt
                 if not prompt.auto_optimize_enabled and auto_apply:
-                    logger.info(f"[OPTIMIZE] Auto-optimize disabled for '{prompt_name}', skipping")
+                    logger.warning(
+                        f"[OPTIMIZE] SKIPPED: Auto-optimize disabled for '{prompt_name}'. "
+                        f"Recommendations exist but cannot be applied. "
+                        f"Enable via: POST /v1/prompts/{prompt_name}/auto-optimize with {{\"enabled\": true}}"
+                    )
+                    prompts_updated.append({
+                        "prompt_name": prompt_name,
+                        "model": prompt_model,
+                        "old_version": prompt.version,
+                        "new_version": None,
+                        "change_reason": "SKIPPED: auto_optimize_enabled=False",
+                        "applied": False,
+                        "skip_reason": "auto_optimize_disabled",
+                    })
                     continue
 
                 # Generate improvement
