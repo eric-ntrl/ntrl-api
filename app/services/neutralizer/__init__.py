@@ -1584,13 +1584,25 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
     body_lower = body.lower()
 
     for phrase_data in llm_phrases:
-        phrase = phrase_data.get("phrase", "")
-        if not phrase:
+        # Handle case where phrase_data is a string instead of a dict
+        if isinstance(phrase_data, str):
+            phrase = phrase_data
+            reason_str = "emotional_trigger"
+            action_str = "softened"
+            replacement = None
+        elif isinstance(phrase_data, dict):
+            phrase = phrase_data.get("phrase", "")
+            if not phrase:
+                continue
+            reason_str = phrase_data.get("reason", "emotional_trigger")
+            action_str = phrase_data.get("action", "softened")
+            replacement = phrase_data.get("replacement")
+        else:
+            # Skip invalid entries
             continue
 
-        reason_str = phrase_data.get("reason", "emotional_trigger")
-        action_str = phrase_data.get("action", "softened")
-        replacement = phrase_data.get("replacement")
+        if not phrase:
+            continue
 
         # Parse reason to enum
         reason = _parse_span_reason(reason_str)
@@ -3395,6 +3407,11 @@ def detect_spans_high_recall_anthropic(
             logger.warning(f"High-recall pass returned invalid JSON: {content[:200]}")
             return []
 
+        # Validate llm_phrases is a list of dicts (not a single dict or string)
+        if not isinstance(llm_phrases, list):
+            logger.warning(f"[SPAN_DETECTION] High-recall pass returned non-list phrases: {type(llm_phrases)}")
+            llm_phrases = [llm_phrases] if isinstance(llm_phrases, dict) else []
+
         logger.info(f"[SPAN_DETECTION] High-recall pass returned {len(llm_phrases)} phrases")
 
         # Position matching (no filtering yet - that happens in merge step)
@@ -3402,7 +3419,9 @@ def detect_spans_high_recall_anthropic(
         return spans
 
     except Exception as e:
-        logger.warning(f"High-recall span detection failed: {e}")
+        import traceback
+        logger.warning(f"High-recall span detection failed: {type(e).__name__}: {e}")
+        logger.debug(f"High-recall span detection traceback: {traceback.format_exc()}")
         return []
 
 
@@ -3511,6 +3530,11 @@ def detect_spans_adversarial_pass(
             logger.warning(f"Adversarial pass returned invalid JSON: {content[:200]}")
             return []
 
+        # Validate llm_phrases is a list of dicts (not a single dict or string)
+        if not isinstance(llm_phrases, list):
+            logger.warning(f"[SPAN_DETECTION] Adversarial pass returned non-list phrases: {type(llm_phrases)}")
+            llm_phrases = [llm_phrases] if isinstance(llm_phrases, dict) else []
+
         logger.info(f"[SPAN_DETECTION] Adversarial pass found {len(llm_phrases)} additional phrases")
 
         # Position matching
@@ -3525,7 +3549,9 @@ def detect_spans_adversarial_pass(
         return new_spans
 
     except Exception as e:
-        logger.warning(f"Adversarial span detection failed: {e}")
+        import traceback
+        logger.warning(f"Adversarial span detection failed: {type(e).__name__}: {e}")
+        logger.debug(f"Adversarial span detection traceback: {traceback.format_exc()}")
         return []
 
 
