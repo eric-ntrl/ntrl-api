@@ -56,6 +56,10 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         description="OpenAI model to use for neutralization",
     )
+    SPAN_DETECTION_MODEL: str = Field(
+        default="gpt-4o",
+        description="OpenAI model for span detection (can be different from neutralization model)",
+    )
 
     # Teacher LLM Configuration
     EVAL_MODEL: str = Field(

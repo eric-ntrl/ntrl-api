@@ -536,7 +536,8 @@ def get_story_debug_spans(
 
     # Run debug detection
     # IMPORTANT: Use same model as production to avoid confusing discrepancies
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    # Production uses SPAN_DETECTION_MODEL for span detection (defaults to gpt-4o)
+    model = os.environ.get("SPAN_DETECTION_MODEL", "gpt-4o")
     debug_result = detect_spans_debug_openai(original_body, api_key, model)
 
     # Convert to response schema

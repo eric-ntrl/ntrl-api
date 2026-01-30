@@ -3945,7 +3945,9 @@ def _detect_spans_with_config(
             return spans if spans is not None else []
 
     # Single mode - use detect_spans_with_mode which handles title combination
-    logger.info(f"[SPAN_DETECTION] Using single mode with {provider_type}")
+    # For OpenAI, use SPAN_DETECTION_MODEL (gpt-4o by default) for better recall
+    span_model = settings.SPAN_DETECTION_MODEL if provider_type == "openai" else provider_model
+    logger.info(f"[SPAN_DETECTION] Using single mode with {provider_type}, model={span_model}")
 
     # Map provider type to API key args
     openai_key = provider_api_key if provider_type == "openai" else None
@@ -3958,7 +3960,7 @@ def _detect_spans_with_config(
         openai_api_key=openai_key,
         gemini_api_key=gemini_key,
         anthropic_api_key=anthropic_key,
-        openai_model=provider_model,
+        openai_model=span_model,
         anthropic_model=provider_model,
         title=title,
     )
