@@ -276,7 +276,7 @@ def get_story(
         source_name=source.name,
         source_url=story_raw.original_url,
         published_at=story_raw.published_at,
-        section=story_raw.section,
+        section=story_raw.feed_category or story_raw.section or "world",
     )
 
     _story_cache[story_id] = result
