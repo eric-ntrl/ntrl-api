@@ -6029,10 +6029,11 @@ class NeutralizerService:
 
             # Invalidate transparency cache for this story
             # This ensures fresh span data is returned after re-neutralization
+            # Clear both raw_id and neutralized_id since endpoint can be accessed via either
             try:
                 from app.routers.stories import invalidate_transparency_cache
-                invalidate_transparency_cache(str(story.id))
-                logger.debug(f"[NEUTRALIZE] Invalidated transparency cache for story {story.id}")
+                invalidate_transparency_cache(str(story.id), str(neutralized.id))
+                logger.debug(f"[NEUTRALIZE] Invalidated transparency cache for story {story.id} / {neutralized.id}")
             except Exception as cache_error:
                 logger.warning(f"[NEUTRALIZE] Failed to invalidate transparency cache: {cache_error}")
 

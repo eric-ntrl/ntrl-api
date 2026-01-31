@@ -38,22 +38,29 @@ _story_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 _transparency_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
 
 
-def invalidate_transparency_cache(story_id: str) -> bool:
+def invalidate_transparency_cache(story_id: str, neutralized_id: str = None) -> bool:
     """
     Invalidate the transparency cache for a specific story.
 
     Called when an article is re-neutralized to ensure fresh data is returned.
+    Clears both the raw_id and neutralized_id cache entries since the endpoint
+    can be accessed via either ID.
 
     Args:
-        story_id: The story ID to invalidate (can be raw_id or neutralized_id)
+        story_id: The StoryRaw ID to invalidate
+        neutralized_id: The StoryNeutralized ID to invalidate (optional)
 
     Returns:
-        True if the entry was found and removed, False otherwise
+        True if any entry was found and removed, False otherwise
     """
+    found = False
     if story_id in _transparency_cache:
         del _transparency_cache[story_id]
-        return True
-    return False
+        found = True
+    if neutralized_id and neutralized_id in _transparency_cache:
+        del _transparency_cache[neutralized_id]
+        found = True
+    return found
 
 
 def _do_download(uri: str) -> Optional[str]:
