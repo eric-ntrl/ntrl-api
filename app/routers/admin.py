@@ -303,6 +303,12 @@ def debug_span_pipeline(
     llm_phrases = llm_data.get("phrases", llm_data if isinstance(llm_data, list) else [])
     llm_reasons = [p.get("reason", "N/A") for p in llm_phrases[:10]]
 
+    # Also run find_phrase_positions directly with the LLM phrases we got
+    # This isolates whether the issue is in LLM response or in find_phrase_positions
+    from app.services.neutralizer import find_phrase_positions
+    direct_spans = find_phrase_positions(body, llm_phrases)
+    direct_span_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in direct_spans] if direct_spans else []
+
     # Run _detect_spans_with_config (production path) and collect all reasons
     spans = _detect_spans_with_config(
         body=body,
@@ -335,6 +341,8 @@ def debug_span_pipeline(
         "combined_text_length": len(combined_text),
         "span_detection_model": span_detection_model,
         "llm_reasons_raw": llm_reasons,  # What LLM returned (phrase reasons)
+        "direct_find_phrase_reasons": direct_span_reasons,  # From find_phrase_positions with LLM phrases
+        "direct_find_phrase_count": len(direct_spans) if direct_spans else 0,
         "all_span_reasons": all_span_reasons,  # All reasons from _detect_spans_with_config
         "total_spans": len(spans),
         "reason_counts": dict(reason_counts),
