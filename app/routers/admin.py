@@ -282,11 +282,15 @@ def debug_span_pipeline(
     title_separator = "\n\n---ARTICLE BODY---\n\n"
     combined_text = f"HEADLINE: {story.original_title}{title_separator}{body}" if story.original_title else body
 
-    # Get raw LLM response
+    # Get raw LLM response - USE SAME MODEL as _detect_spans_with_config
+    from app.config import get_settings
+    settings = get_settings()
+    span_detection_model = settings.SPAN_DETECTION_MODEL  # Should be gpt-4o by default
+
     client = OpenAI(api_key=api_key)
     user_prompt = build_span_detection_prompt(combined_text)
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model=span_detection_model,
         messages=[
             {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
@@ -327,6 +331,7 @@ def debug_span_pipeline(
         "title": story.original_title[:80] if story.original_title else None,
         "body_length": len(body),
         "combined_text_length": len(combined_text),
+        "span_detection_model": span_detection_model,  # Model used for detection
         "llm_reasons_raw": llm_reasons,  # What the LLM actually returned
         "total_spans": len(spans),
         "reason_counts": dict(reason_counts),
