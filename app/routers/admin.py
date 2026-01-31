@@ -303,6 +303,11 @@ def debug_span_pipeline(
     llm_phrases = llm_data.get("phrases", llm_data if isinstance(llm_data, list) else [])
     llm_reasons = [p.get("reason", "N/A") for p in llm_phrases[:10]]
 
+    # ALSO run detect_spans_via_llm_openai directly to see what it returns
+    # This is what _detect_spans_with_config calls internally
+    raw_spans = detect_spans_via_llm_openai(combined_text, api_key, span_detection_model)
+    raw_span_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in raw_spans] if raw_spans else []
+
     spans = _detect_spans_with_config(
         body=body,
         provider_api_key=api_key,
@@ -331,9 +336,11 @@ def debug_span_pipeline(
         "title": story.original_title[:80] if story.original_title else None,
         "body_length": len(body),
         "combined_text_length": len(combined_text),
-        "span_detection_model": span_detection_model,  # Model used for detection
-        "llm_reasons_raw": llm_reasons,  # What the LLM actually returned
-        "total_spans": len(spans),
+        "span_detection_model": span_detection_model,
+        "llm_reasons_raw": llm_reasons,  # From direct OpenAI call
+        "raw_spans_reasons": raw_span_reasons,  # From detect_spans_via_llm_openai (before position adjustment)
+        "raw_spans_count": len(raw_spans) if raw_spans else 0,
+        "total_spans": len(spans),  # After _detect_spans_with_config
         "reason_counts": dict(reason_counts),
         "span_details": span_details,
     }
