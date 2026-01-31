@@ -303,22 +303,7 @@ def debug_span_pipeline(
     llm_phrases = llm_data.get("phrases", llm_data if isinstance(llm_data, list) else [])
     llm_reasons = [p.get("reason", "N/A") for p in llm_phrases[:10]]
 
-    # ALSO run detect_spans_via_llm_openai directly to see what it returns
-    # This is what _detect_spans_with_config calls internally
-    raw_spans = detect_spans_via_llm_openai(combined_text, api_key, span_detection_model)
-    raw_span_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in raw_spans] if raw_spans else []
-
-    # ALSO run detect_spans_with_mode directly (what _detect_spans_with_config calls)
-    from app.services.neutralizer import detect_spans_with_mode
-    mode_spans = detect_spans_with_mode(
-        body=body,
-        mode="single",
-        openai_api_key=api_key,
-        openai_model=span_detection_model,
-        title=story.original_title,
-    )
-    mode_span_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in mode_spans] if mode_spans else []
-
+    # Run _detect_spans_with_config (production path) and collect all reasons
     spans = _detect_spans_with_config(
         body=body,
         provider_api_key=api_key,
@@ -326,6 +311,7 @@ def debug_span_pipeline(
         provider_model="gpt-4o-mini",
         title=story.original_title,
     )
+    all_span_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in spans] if spans else []
 
     # Collect span reasons
     from collections import Counter
@@ -348,13 +334,9 @@ def debug_span_pipeline(
         "body_length": len(body),
         "combined_text_length": len(combined_text),
         "span_detection_model": span_detection_model,
-        "step1_llm_reasons_raw": llm_reasons,  # Direct OpenAI call
-        "step2_detect_spans_via_llm_reasons": raw_span_reasons,  # From detect_spans_via_llm_openai
-        "step2_count": len(raw_spans) if raw_spans else 0,
-        "step3_detect_spans_with_mode_reasons": mode_span_reasons,  # From detect_spans_with_mode
-        "step3_count": len(mode_spans) if mode_spans else 0,
-        "step4_detect_spans_with_config_reasons": list(dict(reason_counts).keys()),  # Final
-        "step4_count": len(spans),
+        "llm_reasons_raw": llm_reasons,  # What LLM returned (phrase reasons)
+        "all_span_reasons": all_span_reasons,  # All reasons from _detect_spans_with_config
+        "total_spans": len(spans),
         "reason_counts": dict(reason_counts),
         "span_details": span_details,
     }
