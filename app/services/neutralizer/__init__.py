@@ -3365,7 +3365,16 @@ ARTICLE BODY:
 \"\"\"
 
 Return JSON format:
-{{"phrases": [{{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}}]}}"""
+{{"phrases": [{{"phrase": "EXACT text", "reason": "CATEGORY", "action": "remove|replace", "replacement": "text or null"}}]}}
+
+IMPORTANT - Use ONLY these 7 reason values:
+- clickbait
+- urgency_inflation
+- emotional_trigger
+- selling
+- agenda_signaling
+- rhetorical_framing
+- editorial_voice"""
 
 
 def detect_spans_high_recall_anthropic(
@@ -3490,7 +3499,16 @@ ARTICLE BODY:
 
 Return ONLY NEW phrases not already in the detected list above.
 Return JSON format:
-{{"phrases": [{{"phrase": "EXACT text", "reason": "category", "action": "remove|replace", "replacement": "text or null"}}]}}
+{{"phrases": [{{"phrase": "EXACT text", "reason": "CATEGORY", "action": "remove|replace", "replacement": "text or null"}}]}}
+
+IMPORTANT - Use ONLY these 7 reason values:
+- clickbait
+- urgency_inflation
+- emotional_trigger
+- selling
+- agenda_signaling
+- rhetorical_framing
+- editorial_voice
 
 If no additional phrases found, return: {{"phrases": []}}"""
 
