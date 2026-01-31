@@ -1618,8 +1618,8 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
 
         # Parse reason to enum
         reason = _parse_span_reason(reason_str)
-        # DEBUG: Log reason mapping to trace span diversity issue
-        logger.debug(f"[SPAN_REASON_DEBUG] Input: '{reason_str}' → Output: '{reason.value}'")
+        # DEBUG: Log reason mapping at INFO level to trace span diversity issue
+        logger.info(f"[SPAN_REASON_TRACE] Phrase: '{phrase[:30]}...' | Input reason: '{reason_str}' → Output: '{reason.value}'")
 
         # Parse action to enum
         action = _parse_span_action(action_str)
@@ -3032,6 +3032,9 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
             else:
                 llm_phrases = []
             logger.info(f"[SPAN_DETECTION] LLM returned {len(llm_phrases)} phrases")
+            # Log the raw reason values from LLM for debugging
+            raw_reasons = [p.get("reason", "N/A") for p in llm_phrases if isinstance(p, dict)]
+            logger.info(f"[SPAN_DETECTION] Raw LLM reasons: {raw_reasons}")
         except json.JSONDecodeError:
             logger.warning(f"LLM span detection returned invalid JSON: {content[:200]}")
             return []
