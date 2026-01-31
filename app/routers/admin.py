@@ -272,6 +272,33 @@ def debug_span_pipeline(
 
     # Run production span detection
     api_key = os.environ.get("OPENAI_API_KEY")
+
+    # Also run raw LLM call to see what reasons it returns
+    from app.services.neutralizer import detect_spans_via_llm_openai, SPAN_DETECTION_SYSTEM_PROMPT, build_span_detection_prompt
+    import json
+    from openai import OpenAI
+
+    # Prepare combined text like production does
+    title_separator = "\n\n---ARTICLE BODY---\n\n"
+    combined_text = f"HEADLINE: {story.original_title}{title_separator}{body}" if story.original_title else body
+
+    # Get raw LLM response
+    client = OpenAI(api_key=api_key)
+    user_prompt = build_span_detection_prompt(combined_text)
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        response_format={"type": "json_object"},
+    )
+    llm_raw = response.choices[0].message.content.strip()
+    llm_data = json.loads(llm_raw)
+    llm_phrases = llm_data.get("phrases", llm_data if isinstance(llm_data, list) else [])
+    llm_reasons = [p.get("reason", "N/A") for p in llm_phrases[:10]]
+
     spans = _detect_spans_with_config(
         body=body,
         provider_api_key=api_key,
@@ -299,6 +326,8 @@ def debug_span_pipeline(
         "story_id": story_id,
         "title": story.original_title[:80] if story.original_title else None,
         "body_length": len(body),
+        "combined_text_length": len(combined_text),
+        "llm_reasons_raw": llm_reasons,  # What the LLM actually returned
         "total_spans": len(spans),
         "reason_counts": dict(reason_counts),
         "span_details": span_details,
