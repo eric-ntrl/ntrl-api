@@ -240,6 +240,71 @@ def get_status(
 # Debug endpoint for reason mapping verification
 # -----------------------------------------------------------------------------
 
+@router.get("/debug/span-pipeline")
+def debug_span_pipeline(
+    story_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> dict:
+    """
+    Debug endpoint to trace the full span detection pipeline.
+
+    Runs the PRODUCTION span detection path (not debug) and returns
+    detailed info about what reasons are assigned at each stage.
+    """
+    import os
+    from app import models
+    from app.services.neutralizer import _detect_spans_with_config
+
+    # Get the story
+    story = db.query(models.StoryRaw).filter(models.StoryRaw.id == story_id).first()
+    if not story:
+        return {"error": f"Story {story_id} not found"}
+
+    # Get body from storage
+    from app.storage.factory import get_storage_provider
+    storage = get_storage_provider()
+    result = storage.download(story.raw_content_uri) if story.raw_content_uri else None
+    body = result.content.decode("utf-8") if result and result.exists else None
+
+    if not body:
+        return {"error": "Could not retrieve article body"}
+
+    # Run production span detection
+    api_key = os.environ.get("OPENAI_API_KEY")
+    spans = _detect_spans_with_config(
+        body=body,
+        provider_api_key=api_key,
+        provider_type="openai",
+        provider_model="gpt-4o-mini",
+        title=story.original_title,
+    )
+
+    # Collect span reasons
+    from collections import Counter
+    reason_values = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in spans]
+    reason_counts = Counter(reason_values)
+
+    span_details = [
+        {
+            "phrase": s.original_text[:50],
+            "reason": s.reason.value if hasattr(s.reason, 'value') else str(s.reason),
+            "field": s.field,
+        }
+        for s in spans[:15]
+    ]
+
+    return {
+        "code_version": CODE_VERSION,
+        "story_id": story_id,
+        "title": story.original_title[:80] if story.original_title else None,
+        "body_length": len(body),
+        "total_spans": len(spans),
+        "reason_counts": dict(reason_counts),
+        "span_details": span_details,
+    }
+
+
 @router.get("/debug/reason-mapping")
 def debug_reason_mapping(
     _: None = Depends(require_admin_key),
