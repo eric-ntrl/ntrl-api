@@ -3960,6 +3960,8 @@ def _detect_spans_with_config(
     """
     settings = get_settings()
     mode = settings.SPAN_DETECTION_MODE
+    # DEBUG: Log the config values being used
+    logger.info(f"[SPAN_DETECTION_CONFIG] mode={mode}, SPAN_DETECTION_MODEL={settings.SPAN_DETECTION_MODEL}, provider_type={provider_type}")
 
     if mode == "multi_pass":
         # Multi-pass requires both OpenAI and Anthropic keys

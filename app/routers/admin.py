@@ -333,6 +333,7 @@ def debug_span_pipeline(
         "body_length": len(body),
         "combined_text_length": len(combined_text),
         "span_detection_model": span_detection_model,
+        "span_detection_mode": settings.SPAN_DETECTION_MODE,
         "test1_body_only_llm": body_only_reasons,  # detect_spans_via_llm_openai with body only
         "test1_count": len(body_only_spans) if body_only_spans else 0,
         "test2_mode_with_title": mode_reasons,  # detect_spans_with_mode (with title combination)
