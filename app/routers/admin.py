@@ -287,14 +287,20 @@ def debug_span_pipeline(
     settings = get_settings()
     span_detection_model = settings.SPAN_DETECTION_MODEL  # Should be gpt-4o by default
 
-    # Call detect_spans_via_llm_openai directly with BODY ONLY (like debug/spans does)
-    # This tests the same code path as production but without title combination
+    # Call detect_spans_via_llm_openai directly with BODY ONLY
     body_only_spans = detect_spans_via_llm_openai(body, api_key, span_detection_model)
     body_only_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in body_only_spans] if body_only_spans else []
 
-    # Also call detect_spans_via_llm_openai with COMBINED_TEXT (like production)
-    combined_spans = detect_spans_via_llm_openai(combined_text, api_key, span_detection_model)
-    combined_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in combined_spans] if combined_spans else []
+    # Call detect_spans_with_mode directly (isolate the position adjustment)
+    from app.services.neutralizer import detect_spans_with_mode
+    mode_spans = detect_spans_with_mode(
+        body=body,
+        mode="single",
+        openai_api_key=api_key,
+        openai_model=span_detection_model,
+        title=story.original_title,
+    )
+    mode_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in mode_spans] if mode_spans else []
 
     # Run _detect_spans_with_config (production path) and collect all reasons
     spans = _detect_spans_with_config(
@@ -327,12 +333,12 @@ def debug_span_pipeline(
         "body_length": len(body),
         "combined_text_length": len(combined_text),
         "span_detection_model": span_detection_model,
-        "test_body_only_reasons": body_only_reasons,  # detect_spans_via_llm_openai with body only
-        "test_body_only_count": len(body_only_spans) if body_only_spans else 0,
-        "test_combined_reasons": combined_reasons,  # detect_spans_via_llm_openai with combined text
-        "test_combined_count": len(combined_spans) if combined_spans else 0,
-        "final_config_reasons": all_span_reasons,  # _detect_spans_with_config (production path)
-        "final_config_count": len(spans),
+        "test1_body_only_llm": body_only_reasons,  # detect_spans_via_llm_openai with body only
+        "test1_count": len(body_only_spans) if body_only_spans else 0,
+        "test2_mode_with_title": mode_reasons,  # detect_spans_with_mode (with title combination)
+        "test2_count": len(mode_spans) if mode_spans else 0,
+        "test3_config": all_span_reasons,  # _detect_spans_with_config
+        "test3_count": len(spans),
         "reason_counts": dict(reason_counts),
         "span_details": span_details,
     }
