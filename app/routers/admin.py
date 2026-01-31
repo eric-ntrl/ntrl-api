@@ -282,32 +282,19 @@ def debug_span_pipeline(
     title_separator = "\n\n---ARTICLE BODY---\n\n"
     combined_text = f"HEADLINE: {story.original_title}{title_separator}{body}" if story.original_title else body
 
-    # Get raw LLM response - USE SAME MODEL as _detect_spans_with_config
+    # Get settings
     from app.config import get_settings
     settings = get_settings()
     span_detection_model = settings.SPAN_DETECTION_MODEL  # Should be gpt-4o by default
 
-    client = OpenAI(api_key=api_key)
-    user_prompt = build_span_detection_prompt(combined_text)
-    response = client.chat.completions.create(
-        model=span_detection_model,
-        messages=[
-            {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
-    llm_raw = response.choices[0].message.content.strip()
-    llm_data = json.loads(llm_raw)
-    llm_phrases = llm_data.get("phrases", llm_data if isinstance(llm_data, list) else [])
-    llm_reasons = [p.get("reason", "N/A") for p in llm_phrases[:10]]
+    # Call detect_spans_via_llm_openai directly with BODY ONLY (like debug/spans does)
+    # This tests the same code path as production but without title combination
+    body_only_spans = detect_spans_via_llm_openai(body, api_key, span_detection_model)
+    body_only_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in body_only_spans] if body_only_spans else []
 
-    # Also run find_phrase_positions directly with the LLM phrases we got
-    # This isolates whether the issue is in LLM response or in find_phrase_positions
-    from app.services.neutralizer import find_phrase_positions
-    direct_spans = find_phrase_positions(body, llm_phrases)
-    direct_span_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in direct_spans] if direct_spans else []
+    # Also call detect_spans_via_llm_openai with COMBINED_TEXT (like production)
+    combined_spans = detect_spans_via_llm_openai(combined_text, api_key, span_detection_model)
+    combined_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in combined_spans] if combined_spans else []
 
     # Run _detect_spans_with_config (production path) and collect all reasons
     spans = _detect_spans_with_config(
@@ -340,11 +327,12 @@ def debug_span_pipeline(
         "body_length": len(body),
         "combined_text_length": len(combined_text),
         "span_detection_model": span_detection_model,
-        "llm_reasons_raw": llm_reasons,  # What LLM returned (phrase reasons)
-        "direct_find_phrase_reasons": direct_span_reasons,  # From find_phrase_positions with LLM phrases
-        "direct_find_phrase_count": len(direct_spans) if direct_spans else 0,
-        "all_span_reasons": all_span_reasons,  # All reasons from _detect_spans_with_config
-        "total_spans": len(spans),
+        "test_body_only_reasons": body_only_reasons,  # detect_spans_via_llm_openai with body only
+        "test_body_only_count": len(body_only_spans) if body_only_spans else 0,
+        "test_combined_reasons": combined_reasons,  # detect_spans_via_llm_openai with combined text
+        "test_combined_count": len(combined_spans) if combined_spans else 0,
+        "final_config_reasons": all_span_reasons,  # _detect_spans_with_config (production path)
+        "final_config_count": len(spans),
         "reason_counts": dict(reason_counts),
         "span_details": span_details,
     }

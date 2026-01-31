@@ -116,7 +116,7 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
         "framing": SpanReason.RHETORICAL_FRAMING,
     }
 
-    result = reason_map.get(reason_str.lower())
+    result = reason_map.get(reason_str.lower().strip())
     if result is None:
         logger.warning(
             f"[SPAN_DETECTION] Unknown reason '{reason_str}', "

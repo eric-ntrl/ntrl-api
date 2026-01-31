@@ -2921,7 +2921,7 @@ def _parse_span_reason(reason: str) -> SpanReason:
     Maps both the 7 canonical categories AND defensive aliases for
     any category names that might appear in LLM output or DB prompts.
     """
-    reason_lower = reason.lower()
+    reason_lower = reason.lower().strip()  # Strip whitespace to handle LLM formatting variations
     mapping = {
         # 7 canonical categories
         "clickbait": SpanReason.CLICKBAIT,
