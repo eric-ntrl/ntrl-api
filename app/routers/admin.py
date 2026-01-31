@@ -79,7 +79,7 @@ class AlertThresholds(BaseModel):
 
 # Code version for deployment verification
 # Increment this when making changes to verify Railway deploys new code
-CODE_VERSION = "2026.01.26.8"
+CODE_VERSION = "2026.01.31.1"
 
 
 class StatusResponse(BaseModel):
@@ -234,6 +234,60 @@ def get_status(
         latest_pipeline_run=pipeline_health,
         thresholds=AlertThresholds(),
     )
+
+
+# -----------------------------------------------------------------------------
+# Debug endpoint for reason mapping verification
+# -----------------------------------------------------------------------------
+
+@router.get("/debug/reason-mapping")
+def debug_reason_mapping(
+    _: None = Depends(require_admin_key),
+) -> dict:
+    """
+    Debug endpoint to verify span reason mapping is working correctly.
+
+    Tests that all canonical reasons and aliases map to the correct SpanReason enum.
+    Use this to verify deployment after code changes.
+    """
+    from app.services.neutralizer import _parse_span_reason
+    from app.models import SpanReason
+
+    test_cases = {
+        # Canonical reasons
+        "agenda_signaling": "agenda_signaling",
+        "editorial_voice": "editorial_voice",
+        "emotional_trigger": "emotional_trigger",
+        "rhetorical_framing": "rhetorical_framing",
+        "clickbait": "clickbait",
+        "urgency_inflation": "urgency_inflation",
+        "selling": "selling",
+        # Aliases that should map correctly
+        "loaded_verbs": "rhetorical_framing",
+        "agenda_framing": "agenda_signaling",
+        "emotional": "emotional_trigger",
+    }
+
+    results = {}
+    all_correct = True
+
+    for input_reason, expected_output in test_cases.items():
+        result = _parse_span_reason(input_reason)
+        actual_output = result.value if hasattr(result, 'value') else str(result)
+        is_correct = actual_output == expected_output
+        if not is_correct:
+            all_correct = False
+        results[input_reason] = {
+            "expected": expected_output,
+            "actual": actual_output,
+            "correct": is_correct,
+        }
+
+    return {
+        "code_version": CODE_VERSION,
+        "all_tests_passed": all_correct,
+        "reason_mapping_tests": results,
+    }
 
 
 # -----------------------------------------------------------------------------
