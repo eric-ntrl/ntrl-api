@@ -5996,6 +5996,15 @@ class NeutralizerService:
                 )
                 db.add(span_record)
 
+            # Invalidate transparency cache for this story
+            # This ensures fresh span data is returned after re-neutralization
+            try:
+                from app.routers.stories import invalidate_transparency_cache
+                invalidate_transparency_cache(str(story.id))
+                logger.debug(f"[NEUTRALIZE] Invalidated transparency cache for story {story.id}")
+            except Exception as cache_error:
+                logger.warning(f"[NEUTRALIZE] Failed to invalidate transparency cache: {cache_error}")
+
             # Log success
             self._log_pipeline(
                 db,
