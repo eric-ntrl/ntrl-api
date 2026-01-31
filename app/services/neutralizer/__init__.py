@@ -1618,6 +1618,8 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
 
         # Parse reason to enum
         reason = _parse_span_reason(reason_str)
+        # DEBUG: Log reason mapping to trace span diversity issue
+        logger.debug(f"[SPAN_REASON_DEBUG] Input: '{reason_str}' → Output: '{reason.value}'")
 
         # Parse action to enum
         action = _parse_span_action(action_str)
@@ -5973,6 +5975,13 @@ class NeutralizerService:
             db.flush()
 
             # Save transparency spans for detail_full
+            # DEBUG: Log span reasons being stored
+            if transparency_spans:
+                reasons_summary = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in transparency_spans]
+                from collections import Counter
+                reason_counts = Counter(reasons_summary)
+                logger.info(f"[SPAN_STORAGE_DEBUG] Storing {len(transparency_spans)} spans with reasons: {dict(reason_counts)}")
+
             for span in transparency_spans:
                 span_record = models.TransparencySpan(
                     id=uuid.uuid4(),
