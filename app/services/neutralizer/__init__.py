@@ -3853,6 +3853,10 @@ def detect_spans_with_mode(
 
     # Adjust positions and set field based on whether span is in title or body
     if title and title_offset > 0:
+        # DEBUG: Log reasons BEFORE adjustment
+        pre_adjust_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in spans] if spans else []
+        logger.info(f"[SPAN_DETECTION] Pre-adjustment reasons: {pre_adjust_reasons}")
+
         adjusted_spans = []
         dropped_title_spans = []
         dropped_body_spans = []
@@ -3919,6 +3923,10 @@ def detect_spans_with_mode(
                 f"[SPAN_DETECTION] Dropped {len(dropped_body_spans)} body spans due to bounds check: "
                 f"{dropped_body_spans}"
             )
+
+        # DEBUG: Log reasons AFTER adjustment
+        post_adjust_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in adjusted_spans] if adjusted_spans else []
+        logger.info(f"[SPAN_DETECTION] Post-adjustment reasons: {post_adjust_reasons}")
 
         return adjusted_spans
 
