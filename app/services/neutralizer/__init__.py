@@ -4068,7 +4068,7 @@ def _extract_spans_from_diff(
                     end_char=i2,
                     original_text=original_text,
                     action=SpanAction.REPLACED,
-                    reason=SpanReason.EMOTIONAL_MANIPULATION,  # Default, could be refined
+                    reason=SpanReason.EMOTIONAL_TRIGGER,  # Default for replacements
                     replacement_text=replacement_text,
                 ))
         elif tag == 'delete':
@@ -4254,7 +4254,7 @@ def _convert_v2_detection_to_transparency_span(detection) -> TransparencySpan:
         category = type_id.split('.')[0] if '.' in type_id else type_id[0]
         category_mapping = {
             'A': SpanReason.URGENCY_INFLATION,  # Attention/clickbait
-            'B': SpanReason.EMOTIONAL_MANIPULATION,  # Emotional
+            'B': SpanReason.EMOTIONAL_TRIGGER,  # Emotional
             'C': SpanReason.RHETORICAL_FRAMING,  # Cognitive
             'D': SpanReason.RHETORICAL_FRAMING,  # Linguistic
             'E': SpanReason.RHETORICAL_FRAMING,  # Structural

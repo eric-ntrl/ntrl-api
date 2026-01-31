@@ -83,8 +83,13 @@ def _parse_span_action(action_str: str) -> SpanAction:
 
 
 def _parse_span_reason(reason_str: str) -> SpanReason:
-    """Parse a span reason string to SpanReason enum."""
+    """Parse a span reason string to SpanReason enum.
+
+    Maps both the 7 canonical categories AND defensive aliases for
+    any category names that might appear in LLM output or DB prompts.
+    """
     reason_map = {
+        # 7 canonical categories (from prompt line 1318)
         "clickbait": SpanReason.CLICKBAIT,
         "urgency_inflation": SpanReason.URGENCY_INFLATION,
         "emotional_trigger": SpanReason.EMOTIONAL_TRIGGER,
@@ -92,8 +97,33 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
         "agenda_signaling": SpanReason.AGENDA_SIGNALING,
         "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
         "editorial_voice": SpanReason.EDITORIAL_VOICE,
+
+        # Defensive aliases (prompt categories 6-14 that might appear)
+        "loaded_verbs": SpanReason.RHETORICAL_FRAMING,
+        "loaded_idioms": SpanReason.RHETORICAL_FRAMING,
+        "loaded_personal_descriptors": SpanReason.EMOTIONAL_TRIGGER,
+        "hyperbolic_adjectives": SpanReason.EMOTIONAL_TRIGGER,
+        "sports_event_hype": SpanReason.SELLING,
+        "entertainment_celebrity_hype": SpanReason.SELLING,
+        "agenda_framing": SpanReason.AGENDA_SIGNALING,
+
+        # Old/alternative names that might exist in prompts
+        "emotional_manipulation": SpanReason.EMOTIONAL_TRIGGER,
+        "emotional": SpanReason.EMOTIONAL_TRIGGER,
+        "urgency": SpanReason.URGENCY_INFLATION,
+        "hype": SpanReason.SELLING,
+        "selling_hype": SpanReason.SELLING,
+        "framing": SpanReason.RHETORICAL_FRAMING,
     }
-    return reason_map.get(reason_str.lower(), SpanReason.RHETORICAL_FRAMING)
+
+    result = reason_map.get(reason_str.lower())
+    if result is None:
+        logger.warning(
+            f"[SPAN_DETECTION] Unknown reason '{reason_str}', "
+            "defaulting to RHETORICAL_FRAMING"
+        )
+        return SpanReason.RHETORICAL_FRAMING
+    return result
 
 
 def find_phrase_positions(body: str, llm_phrases: list) -> list:
