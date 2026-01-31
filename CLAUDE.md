@@ -816,6 +816,8 @@ These failures confirm why we removed MockNeutralizerProvider as a fallback - it
     - `ArticleEvaluationData` has new fields: `title_spans_count`, `body_spans_count`, `title_body_inconsistencies`
     - `_generate_recommendations()` creates `title_detection_consistency` and `title_body_inconsistency` recommendations
 38. ✅ **Dropped span logging** (Jan 30 2026): Added debug logging in `neutralizer/__init__.py` when title/body spans are dropped due to bounds check failure. Logs phrase, adjusted positions, and title/body length with `[SPAN_DETECTION]` prefix.
+39. ✅ **Multi-pass span detection prompt fix** (Jan 31 2026): Root cause: `HIGH_RECALL_USER_PROMPT` and `ADVERSARIAL_USER_PROMPT` said `"reason": "category"` without specifying valid values. Fix: Added explicit list of 7 valid reason categories to both prompts (in DB). Prompts updated: `high_recall_prompt` v2, `adversarial_prompt` v2.
+40. ✅ **Transparency cache invalidation fix** (Jan 31 2026): Root cause: Cache keyed by URL `story_id` (could be `StoryNeutralized.id`) but invalidation only cleared `StoryRaw.id`. Fix: `invalidate_transparency_cache()` now accepts optional `neutralized_id` and clears both entries. Files changed: `app/routers/stories.py`, `app/services/neutralizer/__init__.py`.
 
 ### Current State (Jan 30 2026)
 
