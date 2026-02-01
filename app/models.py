@@ -169,6 +169,27 @@ class PipelineJobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class ArchiveStatus(str, Enum):
+    """Status of content archival to cold storage."""
+    PENDING = "pending"
+    ARCHIVING = "archiving"
+    ARCHIVED = "archived"
+    FAILED = "failed"
+
+
+class LifecycleEventType(str, Enum):
+    """Types of content lifecycle events for audit trail."""
+    INGESTED = "ingested"
+    ARCHIVED = "archived"
+    ARCHIVE_FAILED = "archive_failed"
+    RESTORED = "restored"
+    SOFT_DELETED = "soft_deleted"
+    HARD_DELETED = "hard_deleted"
+    LEGAL_HOLD_SET = "legal_hold_set"
+    LEGAL_HOLD_RELEASED = "legal_hold_released"
+    GDPR_ERASURE = "gdpr_erasure"
+
+
 class NeutralizationStatus(str, Enum):
     """Status of neutralization processing."""
     SUCCESS = "success"
@@ -263,6 +284,15 @@ class StoryRaw(Base):
     raw_content_available = Column(Boolean, default=True, nullable=False)
     raw_content_expired_at = Column(DateTime, nullable=True)
 
+    # Retention & archival (3-tier system)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    deletion_reason = Column(String(64), nullable=True)  # 'retention', 'gdpr_request', 'admin'
+    archived_at = Column(DateTime, nullable=True)
+    archive_status = Column(String(20), nullable=True)  # ArchiveStatus enum value
+    archive_reference = Column(String(512), nullable=True)  # S3 Glacier URI
+    preserve_until = Column(DateTime, nullable=True)  # Overrides retention policy (saved articles)
+    legal_hold = Column(Boolean, default=False, nullable=False)  # Cannot delete if True
+
     # Normalized fields for processing
     url_hash = Column(String(64), nullable=False)  # SHA256 of URL for dedupe
     title_hash = Column(String(64), nullable=False)  # SHA256 of normalized title
@@ -293,6 +323,35 @@ class StoryRaw(Base):
                                order_by="desc(StoryNeutralized.version)")
     duplicate_of = relationship("StoryRaw", remote_side=[id])
 
+    @property
+    def retention_tier(self) -> str:
+        """
+        Compute retention tier from timestamps - no column needed.
+
+        Returns:
+            'deleted' - Already soft deleted
+            'preserved' - Under legal hold or user saved
+            'active' - Within active retention window (default 7 days)
+            'compliance' - In compliance archive (7d-12mo)
+            'pending_deletion' - Ready for hard delete (>12mo)
+        """
+        if self.deleted_at:
+            return 'deleted'
+        if self.legal_hold or (self.preserve_until and self.preserve_until > datetime.utcnow()):
+            return 'preserved'
+
+        age_days = (datetime.utcnow() - self.ingested_at).days
+
+        # Default retention windows (can be overridden by RetentionPolicy)
+        active_days = 7
+        compliance_days = 365
+
+        if age_days <= active_days:
+            return 'active'
+        if age_days <= compliance_days:
+            return 'compliance'
+        return 'pending_deletion'
+
     __table_args__ = (
         Index("ix_stories_raw_url_hash", "url_hash"),
         Index("ix_stories_raw_title_hash", "title_hash"),
@@ -304,6 +363,10 @@ class StoryRaw(Base):
         Index("ix_stories_raw_feed_category", "feed_category"),
         Index("ix_stories_raw_classified_at", "classified_at"),
         Index("ix_stories_raw_classification_method", "classification_method"),
+        # Retention indexes for efficient queries
+        Index("ix_stories_raw_deleted_at", "deleted_at"),
+        Index("ix_stories_raw_archived_at", "archived_at"),
+        Index("ix_stories_raw_legal_hold", "legal_hold"),
     )
 
 
@@ -1034,4 +1097,84 @@ class ArticleEvaluation(Base):
     __table_args__ = (
         Index("ix_article_evaluations_evaluation_run_id", "evaluation_run_id"),
         Index("ix_article_evaluations_story_raw_id", "story_raw_id"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# RetentionPolicy
+# -----------------------------------------------------------------------------
+
+class RetentionPolicy(Base):
+    """
+    Configurable retention policy for data lifecycle management.
+
+    Policies define how long content stays in each tier:
+    - Tier 1 (Active): Full access, all features work
+    - Tier 2 (Compliance): Metadata + neutralized content, raw archived to Glacier
+    - Tier 3 (Deleted): Permanent removal
+
+    Only one policy can be active at a time. Switch between 'development'
+    (hard delete, no Glacier) and 'production' (archive to Glacier).
+    """
+    __tablename__ = "retention_policies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(64), unique=True, nullable=False)  # 'development', 'production'
+
+    # Tier windows (days)
+    active_days = Column(Integer, default=7, nullable=False)       # Tier 1: full access
+    compliance_days = Column(Integer, default=365, nullable=False)  # Tier 2: compliance archive
+
+    # Behavior
+    auto_archive = Column(Boolean, default=True, nullable=False)
+    hard_delete_mode = Column(Boolean, default=False, nullable=False)  # True = skip archival
+
+    # Activation
+    is_active = Column(Boolean, default=False, nullable=False)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_retention_policies_is_active", "is_active"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# ContentLifecycleEvent
+# -----------------------------------------------------------------------------
+
+class ContentLifecycleEvent(Base):
+    """
+    Immutable audit trail for content lifecycle events.
+
+    Event sourcing pattern - never delete, never update. Every lifecycle
+    action (archive, restore, delete, legal hold) creates a new event.
+    Enables full compliance audit and potential replay/reconstruction.
+
+    Note: story_raw_id does NOT have FK constraint to allow events to
+    persist after the story is hard-deleted.
+    """
+    __tablename__ = "content_lifecycle_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    story_raw_id = Column(UUID(as_uuid=True), nullable=False, index=True)  # No FK - persists after delete
+
+    # Event details
+    event_type = Column(String(32), nullable=False)  # LifecycleEventType enum
+    event_timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    initiated_by = Column(String(64), nullable=False)  # 'scheduler', 'admin', 'gdpr_request', 'api'
+
+    # Idempotency (prevents duplicate processing)
+    idempotency_key = Column(String(128), unique=True, nullable=True)
+
+    # Event metadata (varies by event type)
+    event_metadata = Column(JSONB, nullable=True)  # Details, error info, metrics
+
+    __table_args__ = (
+        Index("ix_lifecycle_events_story_raw_id", "story_raw_id"),
+        Index("ix_lifecycle_events_event_type", "event_type"),
+        Index("ix_lifecycle_events_timestamp", "event_timestamp"),
+        Index("ix_lifecycle_events_idempotency", "idempotency_key"),
     )

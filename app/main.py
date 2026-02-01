@@ -23,7 +23,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.routers import brief_router, stories_router, admin_router, sources_router, pipeline_router
+from app.routers import brief_router, stories_router, admin_router, sources_router, pipeline_router, admin_retention_router
 
 # Configure logging based on environment
 _use_json_logging = os.getenv("ENVIRONMENT", "development").lower() in ("production", "staging")
@@ -159,6 +159,7 @@ app.include_router(stories_router)
 app.include_router(admin_router)
 app.include_router(sources_router)
 app.include_router(pipeline_router)  # NTRL Filter v2 pipeline
+app.include_router(admin_retention_router)  # Retention management
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from app.routers.stories import router as stories_router
 from app.routers.admin import router as admin_router
 from app.routers.sources import router as sources_router
 from app.routers.pipeline import router as pipeline_router
+from app.routers.admin_retention import router as admin_retention_router
 
 __all__ = [
     "brief_router",
@@ -15,4 +16,5 @@ __all__ = [
     "admin_router",
     "sources_router",
     "pipeline_router",
+    "admin_retention_router",
 ]
