@@ -36,6 +36,20 @@ INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE
 
 **After prompt changes**: `/classify force` → `/brief rebuild` → `/evaluate`
 
+## Railway MCP Tools
+
+Native Railway integration available via MCP:
+
+| Tool | Purpose |
+|------|---------|
+| `railway_status` | Get service status and deploy state |
+| `railway_logs` | Fetch logs (with optional filter) |
+| `railway_deploys` | List recent deployments |
+| `railway_deploy_wait` | Wait for deploy to complete |
+| `railway_deploy_verify` | Wait + smoke test endpoints |
+| `railway_env_get/set` | Manage environment variables |
+| `railway_restart` | Restart the service |
+
 ## Key Gotchas
 
 - **Spans**: Always reference `original_body`, not `detail_full`
