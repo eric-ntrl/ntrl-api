@@ -506,6 +506,25 @@ class AsyncPipelineOrchestrator:
                 # Store for optimization stage
                 self._eval_result = result
 
+                # Send email notification
+                if hasattr(result, 'evaluation_run_id') and result.evaluation_run_id:
+                    try:
+                        from app.services.email_service import EmailService
+                        email_service = EmailService()
+                        email_result = await loop.run_in_executor(
+                            None,
+                            lambda: email_service.send_evaluation_results(
+                                self.db, str(result.evaluation_run_id)
+                            )
+                        )
+                        if email_result.get("status") == "sent":
+                            logger.info(f"Evaluation email sent: {email_result.get('message_id')}")
+                        else:
+                            logger.warning(f"Email not sent: {email_result}")
+                    except Exception as email_error:
+                        logger.error(f"Failed to send evaluation email: {email_error}")
+                        # Don't fail the stage for email errors
+
                 PipelineJobManager.update_job_stage(
                     self.db, self.job_id, stage_name,
                     progress=self.stage_results[stage_name].metrics
