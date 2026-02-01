@@ -118,7 +118,7 @@ class AsyncPipelineOrchestrator:
         Returns:
             Dict containing status, summary_id, stage_progress, and errors
         """
-        started_at = datetime.utcnow()
+        self._started_at = datetime.utcnow()
         logger.info(
             f"Pipeline orchestrator starting for job {self.job_id}",
             extra={
@@ -173,7 +173,7 @@ class AsyncPipelineOrchestrator:
             self.db.commit()
 
             finished_at = datetime.utcnow()
-            duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+            duration_ms = int((finished_at - self._started_at).total_seconds() * 1000)
 
             logger.info(
                 f"Pipeline orchestrator completed with status {overall_status}",
@@ -202,7 +202,7 @@ class AsyncPipelineOrchestrator:
             })
 
             finished_at = datetime.utcnow()
-            duration_ms = int((finished_at - started_at).total_seconds() * 1000)
+            duration_ms = int((finished_at - self._started_at).total_seconds() * 1000)
 
             return PipelineResult(
                 status=PipelineJobStatus.FAILED.value,
@@ -637,7 +637,7 @@ class AsyncPipelineOrchestrator:
         summary = PipelineRunSummary(
             id=uuid.uuid4(),
             trace_id=self.trace_id,
-            started_at=datetime.utcnow(),  # Will be updated
+            started_at=self._started_at,
             finished_at=datetime.utcnow(),
             duration_ms=total_duration,
             ingest_total=ingest.metrics.get("total", 0),
