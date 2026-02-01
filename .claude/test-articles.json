@@ -1,0 +1,68 @@
+{
+  "description": "Curated test articles for span detection validation and quality testing",
+  "updated": "2026-01-31",
+  "usage": {
+    "quick_test": "Use high_manipulation IDs for fast quality checks",
+    "full_test": "Use articles from each category for comprehensive testing",
+    "regression": "Run all IDs after prompt changes to catch regressions"
+  },
+  "articles": {
+    "high_manipulation": {
+      "description": "Tabloid articles with 10+ spans expected. Good for testing detection coverage.",
+      "sources": ["The Sun", "Daily Mail", "NY Post"],
+      "expected_spans": "10+",
+      "ids": [
+        "f0e37cb5-ad2f-4af2-a66d-aed25c601e57"
+      ]
+    },
+    "editorial_voice": {
+      "description": "Articles with editorial commentary, opinion-style language. Tests editorial_voice category.",
+      "sources": ["Opinion sections", "Analysis pieces"],
+      "expected_spans": "5-10",
+      "ids": []
+    },
+    "clean": {
+      "description": "Factual articles with minimal manipulation. 0-2 spans expected. Wire services, straight news.",
+      "sources": ["AP", "Reuters", "BBC"],
+      "expected_spans": "0-2",
+      "ids": [
+        "b13b32c9-f4c8-4fed-b12d-d024ac9ab26d"
+      ]
+    },
+    "quoted_speech": {
+      "description": "Articles with extensive direct quotes. Tests quote filtering - spans inside quotes should be filtered.",
+      "sources": ["Interview articles", "Statement coverage"],
+      "expected_spans": "Varies - quoted phrases should NOT be flagged",
+      "ids": []
+    },
+    "urgency_inflation": {
+      "description": "Articles with BREAKING, urgent language, crisis framing. Tests urgency_inflation category.",
+      "sources": ["Breaking news coverage"],
+      "expected_spans": "3-8",
+      "ids": []
+    },
+    "clickbait_headlines": {
+      "description": "Articles with clickbait titles but moderate body. Tests title span detection.",
+      "sources": ["Digital-first outlets"],
+      "expected_spans": "1-3 in title, few in body",
+      "ids": []
+    },
+    "long_form": {
+      "description": "Articles over 8000 characters. Known limitation - may have incomplete span detection.",
+      "sources": ["Longform journalism"],
+      "expected_spans": "May be incomplete - tests chunking edge case",
+      "ids": []
+    },
+    "sports_hype": {
+      "description": "Sports articles with hype language. Tests sports/event hype category.",
+      "sources": ["ESPN", "Sports sections"],
+      "expected_spans": "3-8",
+      "ids": []
+    }
+  },
+  "notes": {
+    "adding_articles": "Add article UUIDs as you encounter good test cases during development",
+    "id_source": "Get IDs from /v1/stories or /v1/brief responses",
+    "updating": "Update the 'updated' field when adding new IDs"
+  }
+}
