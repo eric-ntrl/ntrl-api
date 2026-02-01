@@ -9,10 +9,12 @@ No personalization, trending, or recommendations.
 No urgency language or "breaking" alerts.
 """
 
+import asyncio
 import logging
 import os
 import uuid
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -23,10 +25,60 @@ from slowapi.util import get_remote_address
 
 from app.routers import brief_router, stories_router, admin_router, sources_router, pipeline_router
 
+# Configure logging based on environment
+_use_json_logging = os.getenv("ENVIRONMENT", "development").lower() in ("production", "staging")
+_log_level = os.getenv("LOG_LEVEL", "INFO")
+
+if _use_json_logging:
+    from app.logging_config import configure_logging
+    configure_logging(json_format=True, level=_log_level)
+else:
+    logging.basicConfig(
+        level=getattr(logging, _log_level.upper()),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
 logger = logging.getLogger(__name__)
 
 # Rate limiter — in-memory store (upgrade to Redis for multi-instance)
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan handler for startup/shutdown events.
+
+    On startup:
+    - Clean up stale pipeline jobs that may have been orphaned
+    - Log server startup
+
+    On shutdown:
+    - Log server shutdown
+    """
+    # Startup
+    logger.info("NTRL API starting up")
+
+    # Clean up any stale pipeline jobs from previous runs
+    try:
+        from app.database import SessionLocal
+        from app.services.pipeline_job_manager import PipelineJobManager
+
+        db = SessionLocal()
+        try:
+            stale_count = await PipelineJobManager.cleanup_stale_jobs(db, stale_hours=2)
+            if stale_count > 0:
+                logger.warning(f"Cleaned up {stale_count} stale pipeline jobs on startup")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Failed to cleanup stale jobs on startup: {e}")
+
+    yield
+
+    # Shutdown
+    logger.info("NTRL API shutting down")
+
 
 # Create app
 app = FastAPI(
@@ -35,6 +87,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Attach rate limiter to app

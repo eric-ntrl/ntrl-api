@@ -22,12 +22,20 @@ class AlertCode(str, Enum):
     INGESTION_ZERO = "ingestion_zero"
     CLASSIFY_FALLBACK_RATE_HIGH = "classify_fallback_rate_high"
 
+    # Async pipeline alerts
+    LLM_LATENCY_HIGH = "llm_latency_high"
+    PIPELINE_DURATION_HIGH = "pipeline_duration_high"
+    TOKEN_USAGE_HIGH = "token_usage_high"
+
 
 # Alert thresholds (can be made configurable via env vars in the future)
 ALERT_THRESHOLDS = {
     AlertCode.BODY_DOWNLOAD_RATE_LOW: 70,  # Alert if <70% body download success
     AlertCode.NEUTRALIZATION_RATE_LOW: 90,  # Alert if <90% neutralization success
     AlertCode.BRIEF_STORY_COUNT_LOW: 10,  # Alert if brief has <10 stories
+    AlertCode.LLM_LATENCY_HIGH: 5000,  # Alert if avg LLM latency > 5s
+    AlertCode.PIPELINE_DURATION_HIGH: 600000,  # Alert if pipeline > 10 min (600s)
+    AlertCode.TOKEN_USAGE_HIGH: 500000,  # Alert if > 500k tokens per run
 }
 
 
@@ -91,5 +99,44 @@ def get_alert_description(alert_code: str) -> str:
         AlertCode.PIPELINE_FAILED.value: "Pipeline run failed",
         AlertCode.INGESTION_ZERO.value: "No articles were ingested",
         AlertCode.CLASSIFY_FALLBACK_RATE_HIGH.value: "LLM classification fallback rate exceeded 1%",
+        AlertCode.LLM_LATENCY_HIGH.value: (
+            f"Average LLM latency exceeded {ALERT_THRESHOLDS[AlertCode.LLM_LATENCY_HIGH]}ms"
+        ),
+        AlertCode.PIPELINE_DURATION_HIGH.value: (
+            f"Pipeline duration exceeded {ALERT_THRESHOLDS[AlertCode.PIPELINE_DURATION_HIGH] // 1000}s"
+        ),
+        AlertCode.TOKEN_USAGE_HIGH.value: (
+            f"Token usage exceeded {ALERT_THRESHOLDS[AlertCode.TOKEN_USAGE_HIGH]:,} tokens"
+        ),
     }
     return descriptions.get(alert_code, f"Unknown alert: {alert_code}")
+
+
+def check_performance_alerts(
+    duration_ms: int,
+    avg_llm_latency_ms: int = 0,
+    total_tokens: int = 0,
+) -> list[str]:
+    """
+    Check performance-related alerts for async pipeline runs.
+
+    Args:
+        duration_ms: Total pipeline duration in milliseconds
+        avg_llm_latency_ms: Average LLM call latency in milliseconds
+        total_tokens: Total tokens used (input + output)
+
+    Returns:
+        List of alert code strings that were triggered
+    """
+    alerts = []
+
+    if duration_ms > ALERT_THRESHOLDS[AlertCode.PIPELINE_DURATION_HIGH]:
+        alerts.append(AlertCode.PIPELINE_DURATION_HIGH.value)
+
+    if avg_llm_latency_ms > ALERT_THRESHOLDS[AlertCode.LLM_LATENCY_HIGH]:
+        alerts.append(AlertCode.LLM_LATENCY_HIGH.value)
+
+    if total_tokens > ALERT_THRESHOLDS[AlertCode.TOKEN_USAGE_HIGH]:
+        alerts.append(AlertCode.TOKEN_USAGE_HIGH.value)
+
+    return alerts

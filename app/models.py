@@ -159,6 +159,16 @@ class PipelineStatus(str, Enum):
     SKIPPED = "skipped"
 
 
+class PipelineJobStatus(str, Enum):
+    """Async pipeline job status."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIAL = "partial"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class NeutralizationStatus(str, Enum):
     """Status of neutralization processing."""
     SUCCESS = "success"
@@ -741,6 +751,69 @@ class PipelineRunSummary(Base):
     __table_args__ = (
         Index("ix_pipeline_run_summaries_finished_at", "finished_at"),
         Index("ix_pipeline_run_summaries_status", "status"),
+    )
+
+
+# -----------------------------------------------------------------------------
+# PipelineJob
+# -----------------------------------------------------------------------------
+
+class PipelineJob(Base):
+    """
+    Async pipeline job for background execution.
+
+    A PipelineJob is created when the /v1/pipeline/scheduled-run-async endpoint
+    is called. The endpoint returns immediately with a job ID (202 Accepted),
+    and the pipeline executes in the background. Clients can poll the job status
+    or subscribe to SSE updates.
+
+    The job tracks progress through each pipeline stage (ingest, classify,
+    neutralize, brief, evaluate, optimize) with detailed stage_progress JSONB
+    containing per-stage metrics and timing.
+
+    Relationships:
+        pipeline_run_summary -> PipelineRunSummary: The summary created when
+            the job completes successfully.
+    """
+    __tablename__ = "pipeline_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trace_id = Column(String(36), nullable=False, unique=True, index=True)
+
+    # Configuration (ScheduledRunRequest serialized)
+    config = Column(JSONB, nullable=False)
+
+    # Status tracking
+    status = Column(String(20), nullable=False, default=PipelineJobStatus.PENDING.value)
+    current_stage = Column(String(32), nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+
+    # Progress tracking (per-stage details)
+    stage_progress = Column(JSONB, default={}, nullable=False)
+
+    # Error tracking
+    errors = Column(JSONB, default=[], nullable=False)
+
+    # Link to final summary
+    pipeline_run_summary_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("pipeline_run_summaries.id"),
+        nullable=True
+    )
+
+    # Cancellation support
+    cancel_requested = Column(Boolean, default=False, nullable=False)
+
+    # Relationships
+    pipeline_run_summary = relationship("PipelineRunSummary", backref="jobs")
+
+    __table_args__ = (
+        Index("ix_pipeline_jobs_created_at", "created_at"),
+        Index("ix_pipeline_jobs_status", "status"),
     )
 
 

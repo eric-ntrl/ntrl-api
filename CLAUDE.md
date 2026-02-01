@@ -15,10 +15,43 @@ Neutral news backend: removes manipulative language, creates calm news briefs.
 ## Pipeline Overview
 
 ```
-INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE
+INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE [→ EVALUATE → OPTIMIZE]
 ```
 
 **Core principle**: Original article body is the single source of truth. All outputs derive from `original_body`.
+
+## Async Pipeline (Recommended for Production)
+
+The pipeline now supports async execution via background jobs to avoid HTTP timeouts:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /v1/pipeline/scheduled-run-async` | Start async job (returns 202 immediately) |
+| `GET /v1/pipeline/jobs/{id}` | Check job status and progress |
+| `GET /v1/pipeline/jobs/{id}/stream` | SSE stream of job progress |
+| `POST /v1/pipeline/jobs/{id}/cancel` | Cancel a running job |
+| `GET /v1/pipeline/jobs` | List recent jobs |
+
+### Running Async Pipeline
+
+```bash
+# Start job (returns immediately with job_id)
+curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run-async" \
+  -H "X-API-Key: staging-key-123" \
+  -H "Content-Type: application/json" \
+  -d '{"enable_evaluation": true}'
+
+# Poll status
+curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
+  -H "X-API-Key: staging-key-123"
+```
+
+### Key Benefits
+
+- **No timeouts**: Returns 202 immediately, processes in background
+- **Progress tracking**: Real-time stage progress via polling or SSE
+- **Cancellation**: Can cancel running jobs gracefully
+- **Parallel execution**: Stages run with internal parallelism for speed
 
 ## Slash Commands
 

@@ -2130,3 +2130,236 @@ def configure_auto_optimize(
         current_version=prompt.version,
         updated_at=prompt.updated_at,
     )
+
+
+# -----------------------------------------------------------------------------
+# Async Pipeline endpoints
+# -----------------------------------------------------------------------------
+
+class AsyncPipelineResponse(BaseModel):
+    """Response from starting an async pipeline job."""
+    job_id: str
+    trace_id: str
+    status: str
+    status_url: str
+    stream_url: str
+
+
+class PipelineJobStatusResponse(BaseModel):
+    """Status of a pipeline job."""
+    id: str
+    trace_id: str
+    status: str
+    current_stage: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    stage_progress: dict = Field(default_factory=dict)
+    errors: List[dict] = Field(default_factory=list)
+    pipeline_run_summary_id: Optional[str] = None
+
+
+class PipelineJobListResponse(BaseModel):
+    """List of pipeline jobs."""
+    jobs: List[PipelineJobStatusResponse]
+    total: int
+    running_count: int
+
+
+@router.post("/pipeline/scheduled-run-async", status_code=202, response_model=AsyncPipelineResponse)
+async def start_async_pipeline(
+    request: ScheduledRunRequest = ScheduledRunRequest(),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> AsyncPipelineResponse:
+    """
+    Start an async pipeline job, return immediately with job_id (202 Accepted).
+
+    This endpoint starts the pipeline in the background and returns immediately.
+    Use GET /v1/pipeline/jobs/{job_id} to poll for status, or
+    GET /v1/pipeline/jobs/{job_id}/stream for SSE progress updates.
+
+    This solves the timeout issue with the synchronous /scheduled-run endpoint
+    by not blocking the HTTP request while the pipeline runs.
+    """
+    from app.services.pipeline_job_manager import PipelineJobManager
+    from app.services.async_pipeline_orchestrator import create_orchestrator
+
+    # Convert request to dict for serialization
+    config = request.model_dump()
+
+    # Start the job
+    job = await PipelineJobManager.start_job(
+        db,
+        config=config,
+        orchestrator_factory=create_orchestrator,
+    )
+
+    admin_logger.info(
+        f"[ASYNC-PIPELINE] Started job {job.id} with trace_id {job.trace_id}",
+        extra={"job_id": str(job.id), "trace_id": job.trace_id}
+    )
+
+    return AsyncPipelineResponse(
+        job_id=str(job.id),
+        trace_id=job.trace_id,
+        status="pending",
+        status_url=f"/v1/pipeline/jobs/{job.id}",
+        stream_url=f"/v1/pipeline/jobs/{job.id}/stream",
+    )
+
+
+@router.get("/pipeline/jobs/{job_id}", response_model=PipelineJobStatusResponse)
+def get_job_status(
+    job_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> PipelineJobStatusResponse:
+    """
+    Get the status of a pipeline job.
+
+    Returns the current status, progress through stages, and any errors.
+    """
+    from app.services.pipeline_job_manager import PipelineJobManager
+
+    job = PipelineJobManager.get_job_status(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+    return PipelineJobStatusResponse(
+        id=str(job.id),
+        trace_id=job.trace_id,
+        status=job.status,
+        current_stage=job.current_stage,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        finished_at=job.finished_at,
+        stage_progress=job.stage_progress or {},
+        errors=job.errors or [],
+        pipeline_run_summary_id=str(job.pipeline_run_summary_id) if job.pipeline_run_summary_id else None,
+    )
+
+
+@router.get("/pipeline/jobs/{job_id}/stream")
+async def stream_job_progress(
+    job_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+):
+    """
+    SSE stream of job progress.
+
+    Sends events as the job progresses through stages:
+    - stage_start: When a stage begins
+    - stage_progress: Periodic updates during a stage
+    - stage_complete: When a stage finishes
+    - job_complete: When the entire job finishes
+
+    The stream closes automatically when the job completes.
+    """
+    from fastapi.responses import StreamingResponse
+    from app.services.pipeline_job_manager import PipelineJobManager
+    import json
+    import asyncio
+
+    async def generate_events():
+        """Generate SSE events for job progress."""
+        last_stage = None
+        last_progress = {}
+
+        while True:
+            # Refresh the job status from DB
+            job = PipelineJobManager.get_job_status(db, job_id)
+
+            if not job:
+                yield f"event: error\ndata: {json.dumps({'error': 'Job not found'})}\n\n"
+                break
+
+            # Check for stage change
+            if job.current_stage and job.current_stage != last_stage:
+                yield f"event: stage_start\ndata: {json.dumps({'stage': job.current_stage})}\n\n"
+                last_stage = job.current_stage
+
+            # Check for progress update
+            if job.stage_progress and job.stage_progress != last_progress:
+                yield f"event: stage_progress\ndata: {json.dumps({'progress': job.stage_progress})}\n\n"
+                last_progress = job.stage_progress.copy()
+
+            # Check for completion
+            if job.status in ["completed", "partial", "failed", "cancelled"]:
+                yield f"event: job_complete\ndata: {json.dumps({'status': job.status, 'stage_progress': job.stage_progress, 'errors': job.errors})}\n\n"
+                break
+
+            await asyncio.sleep(2)  # Poll every 2 seconds
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
+
+
+@router.post("/pipeline/jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> dict:
+    """
+    Request cancellation of a running job.
+
+    The job will be cancelled at the next safe point (between stages).
+    Returns immediately with the cancellation request status.
+    """
+    from app.services.pipeline_job_manager import PipelineJobManager
+
+    success = await PipelineJobManager.cancel_job(db, job_id)
+
+    if not success:
+        job = PipelineJobManager.get_job_status(db, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        return {"cancelled": False, "reason": f"Job is already {job.status}"}
+
+    return {"cancelled": True, "message": "Cancellation requested"}
+
+
+@router.get("/pipeline/jobs", response_model=PipelineJobListResponse)
+def list_jobs(
+    limit: int = 10,
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> PipelineJobListResponse:
+    """
+    List recent pipeline jobs.
+
+    Optionally filter by status (pending, running, completed, partial, failed, cancelled).
+    """
+    from app.services.pipeline_job_manager import PipelineJobManager
+
+    jobs = PipelineJobManager.list_recent_jobs(db, limit=limit, status=status)
+
+    return PipelineJobListResponse(
+        jobs=[
+            PipelineJobStatusResponse(
+                id=str(job.id),
+                trace_id=job.trace_id,
+                status=job.status,
+                current_stage=job.current_stage,
+                created_at=job.created_at,
+                started_at=job.started_at,
+                finished_at=job.finished_at,
+                stage_progress=job.stage_progress or {},
+                errors=job.errors or [],
+                pipeline_run_summary_id=str(job.pipeline_run_summary_id) if job.pipeline_run_summary_id else None,
+            )
+            for job in jobs
+        ],
+        total=len(jobs),
+        running_count=PipelineJobManager.get_running_job_count(),
+    )
