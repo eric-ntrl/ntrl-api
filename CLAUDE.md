@@ -10,6 +10,8 @@ Neutral news backend: removes manipulative language, creates calm news briefs.
 | Admin Key | `staging-key-123` (header: `X-API-Key`) |
 | Dev Server | `pipenv run uvicorn app.main:app --reload --port 8000` |
 | Tests | `pipenv run pytest tests/` |
+| Unit Tests | `pipenv run pytest tests/unit/` (48 tests) |
+| E2E Tests | `pipenv run pytest tests/e2e/` (13 tests) |
 | Migrations | `pipenv run alembic upgrade head` |
 
 ## Pipeline Overview
@@ -52,6 +54,17 @@ curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
 - **Progress tracking**: Real-time stage progress via polling or SSE
 - **Cancellation**: Can cancel running jobs gracefully
 - **Parallel execution**: Stages run with internal parallelism for speed
+- **Resilience**: Circuit breaker, retry with backoff, rate limiting
+
+### Performance (Verified)
+
+| Stage | Duration | Notes |
+|-------|----------|-------|
+| Ingest | ~20s | Parallel RSS fetches |
+| Classify | ~2.5 min | LLM classification |
+| Neutralize | ~5.5 min | LLM neutralization |
+| Brief | ~125ms | Assembly |
+| **Total** | **~8.5 min** | vs 9-14 min sequential |
 
 ## Slash Commands
 
@@ -82,6 +95,26 @@ Native Railway integration available via MCP:
 | `railway_deploy_verify` | Wait + smoke test endpoints |
 | `railway_env_get/set` | Manage environment variables |
 | `railway_restart` | Restart the service |
+
+## Async Pipeline Architecture
+
+Key components:
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `PipelineJob` | `app/models.py` | Job state persistence |
+| `PipelineJobManager` | `app/services/pipeline_job_manager.py` | Job lifecycle |
+| `AsyncPipelineOrchestrator` | `app/services/async_pipeline_orchestrator.py` | Stage execution |
+| `CircuitBreaker` | `app/services/resilience.py` | Failure protection |
+| `PipelineLogger` | `app/logging_config.py` | Structured JSON logging |
+
+### Alerts
+
+| Alert Code | Threshold | Trigger |
+|------------|-----------|---------|
+| `llm_latency_high` | >5s avg | LLM calls slow |
+| `pipeline_duration_high` | >10 min | Pipeline too slow |
+| `token_usage_high` | >500k tokens | Cost concern |
 
 ## Key Gotchas
 
