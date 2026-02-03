@@ -12,6 +12,7 @@ from app.services.evaluation_service import EvaluationService
 from app.services.prompt_optimizer import PromptOptimizer
 from app.services.rollback_service import RollbackService
 from app.services.llm_classifier import LLMClassifier, clear_classification_prompt_cache
+from app.services.search_service import SearchService
 
 __all__ = [
     "IngestionService",
@@ -25,4 +26,5 @@ __all__ = [
     "RollbackService",
     "LLMClassifier",
     "clear_classification_prompt_cache",
+    "SearchService",
 ]

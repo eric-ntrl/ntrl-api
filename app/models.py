@@ -19,6 +19,7 @@ import uuid
 from sqlalchemy import (
     Boolean,
     Column,
+    Computed,
     DateTime,
     Float,
     ForeignKey,
@@ -28,7 +29,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY, TSVECTOR
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -431,6 +432,19 @@ class StoryNeutralized(Base):
     neutralization_status = Column(String(50), default="success", nullable=False)
     failure_reason = Column(Text, nullable=True)
 
+    # Full-text search vector (generated column in PostgreSQL)
+    # Weighted: title (A) > summary (B) > brief (C)
+    search_vector = Column(
+        TSVECTOR,
+        Computed(
+            "setweight(to_tsvector('english', coalesce(feed_title, '')), 'A') || "
+            "setweight(to_tsvector('english', coalesce(feed_summary, '')), 'B') || "
+            "setweight(to_tsvector('english', coalesce(detail_brief, '')), 'C')",
+            persisted=True
+        ),
+        nullable=True
+    )
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -448,6 +462,7 @@ class StoryNeutralized(Base):
         UniqueConstraint("story_raw_id", "version", name="uq_story_version"),
         Index("ix_stories_neutralized_is_current", "is_current"),
         Index("ix_stories_neutralized_status", "neutralization_status"),
+        Index("ix_stories_neutralized_search", "search_vector", postgresql_using="gin"),
     )
 
 

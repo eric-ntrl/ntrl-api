@@ -37,6 +37,13 @@ from app.schemas.evaluation import (
     AutoOptimizeConfigResponse,
     ScheduledRunEvaluationConfig,
 )
+from app.schemas.search import (
+    SearchResultItem,
+    FacetCount,
+    SearchFacets,
+    SearchSuggestion,
+    SearchResponse,
+)
 
 __all__ = [
     "StoryDetail",
@@ -66,4 +73,10 @@ __all__ = [
     "AutoOptimizeConfigRequest",
     "AutoOptimizeConfigResponse",
     "ScheduledRunEvaluationConfig",
+    # Search schemas
+    "SearchResultItem",
+    "FacetCount",
+    "SearchFacets",
+    "SearchSuggestion",
+    "SearchResponse",
 ]
