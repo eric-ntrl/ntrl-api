@@ -189,6 +189,16 @@ pipenv run python -m app.cli.retention set-policy production
 | Fixes Log | `docs/claude/fixes-log.md` |
 | Pipeline Details | `.claude/reference/pipeline-details.md` |
 
+## Architecture Diagrams
+
+Visual documentation for complex flows:
+
+| Diagram | Location | Description |
+|---------|----------|-------------|
+| Async Pipeline States | `docs/async-pipeline-states.md` | Job state machine, transitions, cancellation flow |
+| NTRL Filter v2 Pipeline | `docs/ntrl-filter-v2-pipeline.md` | Detection + fix phases, parallel execution |
+| Article Content Fields | `docs/article-content-fields.md` | Data flow from source to app tabs |
+
 ## Full Documentation
 
 | Document | Description |
