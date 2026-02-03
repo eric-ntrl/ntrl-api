@@ -62,8 +62,8 @@ class SearchService:
     def search(
         self,
         query: str,
-        category: Optional[str] = None,
-        source: Optional[str] = None,
+        categories: Optional[List[str]] = None,
+        sources: Optional[List[str]] = None,
         published_after: Optional[datetime] = None,
         published_before: Optional[datetime] = None,
         sort: str = "relevance",
@@ -75,8 +75,8 @@ class SearchService:
 
         Args:
             query: Search query string (min 2 chars)
-            category: Filter by feed_category
-            source: Filter by source slug
+            categories: Filter by feed_category (list for multi-select)
+            sources: Filter by source slug (list for multi-select)
             published_after: Filter by publish date
             published_before: Filter by publish date
             sort: "relevance" or "recency"
@@ -121,11 +121,11 @@ class SearchService:
         )
 
         # Apply filters
-        if category:
-            base_query = base_query.filter(models.StoryRaw.feed_category == category)
+        if categories:
+            base_query = base_query.filter(models.StoryRaw.feed_category.in_(categories))
 
-        if source:
-            base_query = base_query.filter(models.Source.slug == source)
+        if sources:
+            base_query = base_query.filter(models.Source.slug.in_(sources))
 
         if published_after:
             base_query = base_query.filter(models.StoryRaw.published_at >= published_after)
