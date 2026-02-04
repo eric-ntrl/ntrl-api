@@ -54,7 +54,7 @@ class NewsDataFetcher(BaseFetcher):
     """
 
     BASE_URL = "https://newsdata.io/api/1"
-    DEFAULT_PAGE_SIZE = 50  # NewsData.io max per request
+    DEFAULT_PAGE_SIZE = 10  # NewsData.io free plan max per request
     DEFAULT_TIMEOUT = 30.0
 
     def __init__(
@@ -105,50 +105,66 @@ class NewsDataFetcher(BaseFetcher):
         """
         start_time = time.time()
         articles: List[NormalizedEntry] = []
+        page_size = min(max_results, self.DEFAULT_PAGE_SIZE)
+        next_page: Optional[str] = None
 
         try:
-            # Build query parameters
-            params: Dict[str, Any] = {
-                "apikey": self.api_key,
-                "language": language,
-                "size": min(max_results, self.DEFAULT_PAGE_SIZE),
-            }
+            while len(articles) < max_results:
+                # Build query parameters
+                params: Dict[str, Any] = {
+                    "apikey": self.api_key,
+                    "language": language,
+                    "size": page_size,
+                }
 
-            # Request full content if enabled (Professional plan required)
-            if self.request_full_content:
-                params["full_content"] = 1
+                # Request full content if enabled (Professional plan required)
+                if self.request_full_content:
+                    params["full_content"] = 1
 
-            if categories:
-                # NewsData.io expects comma-separated categories
-                params["category"] = ",".join(categories)
+                if categories:
+                    params["category"] = ",".join(categories)
 
-            if from_date:
-                # NewsData.io uses from_date parameter (YYYY-MM-DD format)
-                params["from_date"] = from_date.strftime("%Y-%m-%d")
+                if from_date:
+                    params["from_date"] = from_date.strftime("%Y-%m-%d")
 
-            # Fetch articles from latest news endpoint
-            response = await self.client.get(
-                f"{self.BASE_URL}/latest",
-                params=params,
-            )
-            response.raise_for_status()
-            data = response.json()
+                if next_page:
+                    params["page"] = next_page
 
-            # Check for API errors
-            if data.get("status") != "success":
-                error_msg = data.get("results", {}).get("message", "Unknown error")
-                logger.error(f"NewsData.io API error: {error_msg}")
-                raise ValueError(f"NewsData.io API error: {error_msg}")
+                # Fetch articles from latest news endpoint
+                response = await self.client.get(
+                    f"{self.BASE_URL}/latest",
+                    params=params,
+                )
+                response.raise_for_status()
+                data = response.json()
 
-            # Normalize each article
-            for article in data.get("results", []):
-                try:
-                    normalized = self._normalize_article(article, start_time)
-                    if normalized:
-                        articles.append(normalized)
-                except Exception as e:
-                    logger.warning(f"Failed to normalize NewsData.io article: {e}")
-                    continue
+                # Check for API errors
+                if data.get("status") != "success":
+                    error_msg = data.get("results", {}).get("message", "Unknown error")
+                    logger.error(f"NewsData.io API error: {error_msg}")
+                    raise ValueError(f"NewsData.io API error: {error_msg}")
+
+                # Normalize each article
+                results = data.get("results", [])
+                if not results:
+                    break
+
+                for article in results:
+                    try:
+                        normalized = self._normalize_article(article, start_time)
+                        if normalized:
+                            articles.append(normalized)
+                    except Exception as e:
+                        logger.warning(f"Failed to normalize NewsData.io article: {e}")
+                        continue
+
+                # Check for next page
+                next_page = data.get("nextPage")
+                if not next_page:
+                    break
+
+            # Trim to max_results
+            articles = articles[:max_results]
 
             logger.info(
                 f"NewsData.io fetched {len(articles)} articles in "
