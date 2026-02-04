@@ -583,7 +583,7 @@ class IngestionService:
                 name=source_name,
                 slug=slug,
                 rss_url=f"https://{source_type.value}-api.internal",  # placeholder
-                is_active=True,
+                is_active=False,  # Don't include in RSS ingestion loop
                 default_section=None,
             )
             db.add(source)
