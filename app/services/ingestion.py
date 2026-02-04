@@ -693,7 +693,7 @@ class IngestionService:
         }
 
         try:
-            async with NewsDataFetcher(api_key) as fetcher:
+            async with NewsDataFetcher(api_key, request_full_content=False) as fetcher:
                 articles = await fetcher.fetch_articles(
                     language="en",
                     max_results=max_items,
