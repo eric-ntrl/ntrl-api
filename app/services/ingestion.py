@@ -514,7 +514,7 @@ class IngestionService:
         if settings.PERIGON_ENABLED and settings.PERIGON_API_KEY:
             try:
                 import asyncio
-                api_result = asyncio.get_event_loop().run_until_complete(
+                api_result = asyncio.run(
                     self._ingest_from_perigon(
                         db,
                         api_key=settings.PERIGON_API_KEY,
@@ -538,7 +538,7 @@ class IngestionService:
         if settings.NEWSDATA_ENABLED and settings.NEWSDATA_API_KEY:
             try:
                 import asyncio
-                api_result = asyncio.get_event_loop().run_until_complete(
+                api_result = asyncio.run(
                     self._ingest_from_newsdata(
                         db,
                         api_key=settings.NEWSDATA_API_KEY,
