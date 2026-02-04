@@ -140,6 +140,24 @@ class Settings(BaseSettings):
         description="Enable email notifications after evaluations",
     )
 
+    # News API Sources (additive to RSS)
+    PERIGON_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Perigon News API key for article ingestion",
+    )
+    PERIGON_ENABLED: bool = Field(
+        default=False,
+        description="Enable Perigon News API ingestion",
+    )
+    NEWSDATA_API_KEY: Optional[str] = Field(
+        default=None,
+        description="NewsData.io API key for article ingestion",
+    )
+    NEWSDATA_ENABLED: bool = Field(
+        default=False,
+        description="Enable NewsData.io API ingestion",
+    )
+
     @field_validator("DATABASE_URL")
     @classmethod
     def fix_database_url(cls, v: str) -> str:

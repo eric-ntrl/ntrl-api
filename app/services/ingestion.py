@@ -1,15 +1,17 @@
 # app/services/ingestion.py
 """
-RSS ingestion service.
+Multi-source ingestion service.
 
 Pipeline:
-1. Fetch RSS feeds from configured sources
-2. Normalize entries
+1. Fetch articles from RSS feeds and/or News APIs (Perigon, NewsData.io)
+2. Normalize entries to common format
 3. Deduplicate against existing stories
 4. Classify into sections
 5. Store raw content in S3
 6. Store metadata in Postgres
 7. Log pipeline steps
+
+Supports additive sources: RSS (default) + Perigon (primary API) + NewsData.io (backup)
 """
 
 import hashlib
@@ -17,7 +19,7 @@ import logging
 import os
 import ssl
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.request import Request, urlopen
 
@@ -25,12 +27,13 @@ import feedparser
 from sqlalchemy.orm import Session
 
 from app import models
-from app.models import PipelineStage, PipelineStatus
+from app.models import PipelineStage, PipelineStatus, SourceType
 from app.services.deduper import Deduper
 from app.services.classifier import SectionClassifier
 from app.services.body_extractor import BodyExtractor, ExtractionResult
 from app.storage.factory import get_storage_provider
 from app.storage.base import ContentType
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +507,57 @@ class IngestionService:
             if source_result['errors']:
                 result['errors'].extend(source_result['errors'])
 
+        # Ingest from News APIs (additive to RSS)
+        settings = get_settings()
+
+        # Perigon API (primary)
+        if settings.PERIGON_ENABLED and settings.PERIGON_API_KEY:
+            try:
+                import asyncio
+                api_result = asyncio.get_event_loop().run_until_complete(
+                    self._ingest_from_perigon(
+                        db,
+                        api_key=settings.PERIGON_API_KEY,
+                        max_items=max_items_per_source,
+                        trace_id=trace_id,
+                    )
+                )
+                result['source_results'].append(api_result)
+                result['sources_processed'] += 1
+                result['total_ingested'] += api_result['ingested']
+                result['total_skipped_duplicate'] += api_result['skipped_duplicate']
+                result['total_body_downloaded'] += api_result.get('body_downloaded', 0)
+                result['total_body_failed'] += api_result.get('body_failed', 0)
+                if api_result['errors']:
+                    result['errors'].extend(api_result['errors'])
+            except Exception as e:
+                logger.error(f"Perigon ingestion failed: {e}")
+                result['errors'].append(f"Perigon: {e}")
+
+        # NewsData.io API (backup)
+        if settings.NEWSDATA_ENABLED and settings.NEWSDATA_API_KEY:
+            try:
+                import asyncio
+                api_result = asyncio.get_event_loop().run_until_complete(
+                    self._ingest_from_newsdata(
+                        db,
+                        api_key=settings.NEWSDATA_API_KEY,
+                        max_items=max_items_per_source,
+                        trace_id=trace_id,
+                    )
+                )
+                result['source_results'].append(api_result)
+                result['sources_processed'] += 1
+                result['total_ingested'] += api_result['ingested']
+                result['total_skipped_duplicate'] += api_result['skipped_duplicate']
+                result['total_body_downloaded'] += api_result.get('body_downloaded', 0)
+                result['total_body_failed'] += api_result.get('body_failed', 0)
+                if api_result['errors']:
+                    result['errors'].extend(api_result['errors'])
+            except Exception as e:
+                logger.error(f"NewsData.io ingestion failed: {e}")
+                result['errors'].append(f"NewsData.io: {e}")
+
         finished_at = datetime.utcnow()
         result['finished_at'] = finished_at
         result['duration_ms'] = int((finished_at - started_at).total_seconds() * 1000)
@@ -513,4 +567,277 @@ class IngestionService:
         elif result['errors']:
             result['status'] = 'partial'
 
+        return result
+
+    async def _ingest_from_perigon(
+        self,
+        db: Session,
+        api_key: str,
+        max_items: int = 100,
+        trace_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Ingest articles from Perigon News API.
+
+        Args:
+            db: Database session
+            api_key: Perigon API key
+            max_items: Maximum articles to fetch
+            trace_id: Pipeline trace ID
+
+        Returns:
+            Dict with ingestion results
+        """
+        from app.services.api_fetchers.perigon_fetcher import PerigonFetcher
+
+        started_at = datetime.utcnow()
+        result = {
+            'source_slug': 'perigon',
+            'source_name': 'Perigon News API',
+            'source_type': SourceType.PERIGON.value,
+            'ingested': 0,
+            'skipped_duplicate': 0,
+            'body_downloaded': 0,
+            'body_failed': 0,
+            'errors': [],
+        }
+
+        try:
+            async with PerigonFetcher(api_key) as fetcher:
+                # Fetch articles from last 24 hours
+                from_date = datetime.utcnow() - timedelta(hours=24)
+                articles = await fetcher.fetch_articles(
+                    language="en",
+                    max_results=max_items,
+                    from_date=from_date,
+                )
+
+                result = self._process_api_articles(
+                    db=db,
+                    articles=articles,
+                    source_type=SourceType.PERIGON,
+                    source_name='Perigon News API',
+                    trace_id=trace_id,
+                    started_at=started_at,
+                    result=result,
+                )
+
+        except Exception as e:
+            logger.error(f"Perigon fetch failed: {e}")
+            result['errors'].append(str(e))
+            self._log_pipeline(
+                db,
+                stage=PipelineStage.INGEST,
+                status=PipelineStatus.FAILED,
+                started_at=started_at,
+                trace_id=trace_id,
+                error_message=str(e),
+                metadata={'source': 'perigon', 'source_type': SourceType.PERIGON.value},
+            )
+            db.commit()
+
+        return result
+
+    async def _ingest_from_newsdata(
+        self,
+        db: Session,
+        api_key: str,
+        max_items: int = 50,
+        trace_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Ingest articles from NewsData.io API.
+
+        Args:
+            db: Database session
+            api_key: NewsData.io API key
+            max_items: Maximum articles to fetch
+            trace_id: Pipeline trace ID
+
+        Returns:
+            Dict with ingestion results
+        """
+        from app.services.api_fetchers.newsdata_fetcher import NewsDataFetcher
+
+        started_at = datetime.utcnow()
+        result = {
+            'source_slug': 'newsdata',
+            'source_name': 'NewsData.io',
+            'source_type': SourceType.NEWSDATA.value,
+            'ingested': 0,
+            'skipped_duplicate': 0,
+            'body_downloaded': 0,
+            'body_failed': 0,
+            'errors': [],
+        }
+
+        try:
+            async with NewsDataFetcher(api_key) as fetcher:
+                articles = await fetcher.fetch_articles(
+                    language="en",
+                    max_results=max_items,
+                )
+
+                result = self._process_api_articles(
+                    db=db,
+                    articles=articles,
+                    source_type=SourceType.NEWSDATA,
+                    source_name='NewsData.io',
+                    trace_id=trace_id,
+                    started_at=started_at,
+                    result=result,
+                )
+
+        except Exception as e:
+            logger.error(f"NewsData.io fetch failed: {e}")
+            result['errors'].append(str(e))
+            self._log_pipeline(
+                db,
+                stage=PipelineStage.INGEST,
+                status=PipelineStatus.FAILED,
+                started_at=started_at,
+                trace_id=trace_id,
+                error_message=str(e),
+                metadata={'source': 'newsdata', 'source_type': SourceType.NEWSDATA.value},
+            )
+            db.commit()
+
+        return result
+
+    def _process_api_articles(
+        self,
+        db: Session,
+        articles: List[Dict[str, Any]],
+        source_type: SourceType,
+        source_name: str,
+        trace_id: Optional[str],
+        started_at: datetime,
+        result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """
+        Process articles from an API source through the pipeline.
+
+        Handles deduplication, classification, storage, and logging
+        for articles from any API source.
+
+        Args:
+            db: Database session
+            articles: List of normalized article entries
+            source_type: Source type enum value
+            source_name: Human-readable source name
+            trace_id: Pipeline trace ID
+            started_at: Processing start time
+            result: Result dict to update
+
+        Returns:
+            Updated result dict
+        """
+        for article in articles:
+            entry_started_at = datetime.utcnow()
+            entry_url = article.get('url', '')
+
+            try:
+                # Track body metrics
+                if article.get('body_downloaded'):
+                    result['body_downloaded'] += 1
+                elif article.get('extraction_failure_reason'):
+                    result['body_failed'] += 1
+
+                # Check for duplicates
+                is_dup, original = self.deduper.is_duplicate(
+                    db,
+                    url=entry_url,
+                    title=article.get('title', ''),
+                )
+
+                if is_dup:
+                    result['skipped_duplicate'] += 1
+                    continue
+
+                # Classify section
+                section = self.classifier.classify(
+                    title=article.get('title', ''),
+                    description=article.get('description', ''),
+                    body=article.get('body', ''),
+                    source_slug=source_type.value,
+                )
+
+                # Create story
+                story_id = uuid.uuid4()
+
+                # Upload body to object storage
+                body = article.get('body', '')
+                if body:
+                    body = self._deduplicate_paragraphs(body)
+
+                storage_meta = self._upload_body_to_storage(
+                    story_id=str(story_id),
+                    body=body,
+                    published_at=article.get('published_at', datetime.utcnow()),
+                )
+
+                # Create StoryRaw record
+                story = models.StoryRaw(
+                    id=story_id,
+                    source_id=None,  # No Source FK for API articles
+                    original_url=entry_url,
+                    original_title=article.get('title', ''),
+                    original_description=article.get('description', ''),
+                    original_author=article.get('author'),
+                    url_hash=self.deduper.hash_url(entry_url),
+                    title_hash=self.deduper.hash_title(article.get('title', '')),
+                    published_at=article.get('published_at', datetime.utcnow()),
+                    ingested_at=datetime.utcnow(),
+                    section=section.value,
+                    is_duplicate=False,
+                    feed_entry_id=article.get('api_article_id'),
+                    # Source tracking
+                    source_type=source_type.value,
+                    api_source_id=article.get('api_article_id'),
+                    # S3 storage references
+                    raw_content_uri=storage_meta['uri'] if storage_meta else None,
+                    raw_content_hash=storage_meta['hash'] if storage_meta else None,
+                    raw_content_type=storage_meta['type'] if storage_meta else None,
+                    raw_content_encoding=storage_meta['encoding'] if storage_meta else None,
+                    raw_content_size=storage_meta['size'] if storage_meta else None,
+                    raw_content_available=storage_meta is not None,
+                )
+                db.add(story)
+                db.flush()
+                result['ingested'] += 1
+
+                # Log successful ingest
+                self._log_pipeline(
+                    db,
+                    stage=PipelineStage.INGEST,
+                    status=PipelineStatus.COMPLETED,
+                    story_raw_id=story.id,
+                    started_at=entry_started_at,
+                    trace_id=trace_id,
+                    entry_url=entry_url,
+                    metadata={
+                        'source': source_type.value,
+                        'source_type': source_type.value,
+                        'source_name': article.get('source_name'),
+                        'body_downloaded': article.get('body_downloaded', False),
+                        'extractor_used': article.get('extractor_used'),
+                        'extraction_duration_ms': article.get('extraction_duration_ms', 0),
+                    },
+                )
+
+            except Exception as e:
+                logger.error(f"Error processing {source_type.value} article: {e}")
+                result['errors'].append(str(e))
+                self._log_pipeline(
+                    db,
+                    stage=PipelineStage.INGEST,
+                    status=PipelineStatus.FAILED,
+                    started_at=entry_started_at,
+                    trace_id=trace_id,
+                    entry_url=entry_url,
+                    error_message=str(e),
+                    metadata={'source': source_type.value, 'source_type': source_type.value},
+                )
+
+        db.commit()
         return result

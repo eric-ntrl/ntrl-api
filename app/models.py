@@ -200,6 +200,13 @@ class NeutralizationStatus(str, Enum):
     SKIPPED = "skipped"                 # Audit verdict SKIP
 
 
+class SourceType(str, Enum):
+    """Source type for article ingestion."""
+    RSS = "rss"              # Traditional RSS feed
+    PERIGON = "perigon"      # Perigon News API
+    NEWSDATA = "newsdata"    # NewsData.io API
+
+
 # -----------------------------------------------------------------------------
 # Source
 # -----------------------------------------------------------------------------
@@ -318,6 +325,10 @@ class StoryRaw(Base):
     # Minimal metadata (no full raw_payload to save space)
     feed_entry_id = Column(String(512), nullable=True)  # RSS entry ID if available
 
+    # Source tracking (RSS, Perigon, NewsData.io, etc.)
+    source_type = Column(String(32), nullable=False, server_default="rss")  # SourceType enum
+    api_source_id = Column(String(255), nullable=True)  # External article ID from API
+
     # Relationships
     source = relationship("Source", back_populates="stories")
     neutralized = relationship("StoryNeutralized", back_populates="story_raw",
@@ -368,6 +379,8 @@ class StoryRaw(Base):
         Index("ix_stories_raw_deleted_at", "deleted_at"),
         Index("ix_stories_raw_archived_at", "archived_at"),
         Index("ix_stories_raw_legal_hold", "legal_hold"),
+        # API source tracking
+        Index("ix_stories_raw_source_type", "source_type"),
     )
 
 
