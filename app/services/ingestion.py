@@ -753,6 +753,12 @@ class IngestionService:
         Returns:
             Updated result dict
         """
+        # Get or create API source record once for all articles
+        api_source = self._get_or_create_api_source(
+            db, source_type, source_name
+        )
+        db.commit()
+
         for article in articles:
             entry_started_at = datetime.utcnow()
             entry_url = article.get('url', '')
@@ -797,10 +803,10 @@ class IngestionService:
                     published_at=article.get('published_at', datetime.utcnow()),
                 )
 
-                # Get or create API source record
-                api_source = self._get_or_create_api_source(
-                    db, source_type, source_name
-                )
+                # Truncate author to fit varchar(255)
+                author = article.get('author')
+                if author and len(author) > 255:
+                    author = author[:255]
 
                 # Create StoryRaw record
                 story = models.StoryRaw(
@@ -809,7 +815,7 @@ class IngestionService:
                     original_url=entry_url,
                     original_title=article.get('title', ''),
                     original_description=article.get('description', ''),
-                    original_author=article.get('author'),
+                    original_author=author,
                     url_hash=self.deduper.hash_url(entry_url),
                     title_hash=self.deduper.hash_title(article.get('title', '')),
                     published_at=article.get('published_at', datetime.utcnow()),
@@ -852,18 +858,9 @@ class IngestionService:
                 )
 
             except Exception as e:
-                logger.error(f"Error processing {source_type.value} article: {e}")
-                result['errors'].append(str(e))
-                self._log_pipeline(
-                    db,
-                    stage=PipelineStage.INGEST,
-                    status=PipelineStatus.FAILED,
-                    started_at=entry_started_at,
-                    trace_id=trace_id,
-                    entry_url=entry_url,
-                    error_message=str(e),
-                    metadata={'source': source_type.value, 'source_type': source_type.value},
-                )
+                db.rollback()  # Reset session so next article can proceed
+                logger.error(f"Error processing {source_type.value} article {entry_url}: {e}")
+                result['body_failed'] += 1
 
         db.commit()
         return result
