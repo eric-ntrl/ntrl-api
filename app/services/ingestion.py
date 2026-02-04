@@ -569,6 +569,27 @@ class IngestionService:
 
         return result
 
+    def _get_or_create_api_source(
+        self,
+        db: Session,
+        source_type: SourceType,
+        source_name: str,
+    ) -> models.Source:
+        """Get or create a Source record for an API source."""
+        slug = f"api-{source_type.value}"
+        source = db.query(models.Source).filter(models.Source.slug == slug).first()
+        if not source:
+            source = models.Source(
+                name=source_name,
+                slug=slug,
+                rss_url=f"https://{source_type.value}-api.internal",  # placeholder
+                is_active=True,
+                default_section=None,
+            )
+            db.add(source)
+            db.flush()
+        return source
+
     async def _ingest_from_perigon(
         self,
         db: Session,
@@ -776,10 +797,15 @@ class IngestionService:
                     published_at=article.get('published_at', datetime.utcnow()),
                 )
 
+                # Get or create API source record
+                api_source = self._get_or_create_api_source(
+                    db, source_type, source_name
+                )
+
                 # Create StoryRaw record
                 story = models.StoryRaw(
                     id=story_id,
-                    source_id=None,  # No Source FK for API articles
+                    source_id=api_source.id,
                     original_url=entry_url,
                     original_title=article.get('title', ''),
                     original_description=article.get('description', ''),
