@@ -588,6 +588,10 @@ class IngestionService:
             )
             db.add(source)
             db.flush()
+        elif source.is_active:
+            # Ensure API sources stay out of RSS loop
+            source.is_active = False
+            db.flush()
         return source
 
     async def _ingest_from_perigon(
