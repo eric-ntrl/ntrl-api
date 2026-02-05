@@ -594,6 +594,48 @@ class IngestionService:
             db.flush()
         return source
 
+    @staticmethod
+    def _slugify_publisher(publisher_name: str, source_type: SourceType) -> str:
+        """Create a URL-safe slug for a publisher name, prefixed by source type."""
+        import re
+        slug = publisher_name.lower().strip()
+        slug = re.sub(r'[^a-z0-9]+', '-', slug)
+        slug = slug.strip('-')
+        return f"{source_type.value}-{slug}"
+
+    def _get_or_create_publisher_source(
+        self,
+        db: Session,
+        source_type: SourceType,
+        publisher_name: str,
+        cache: Dict[str, models.Source],
+    ) -> models.Source:
+        """Get or create a Source record for a specific publisher.
+
+        Uses an in-memory cache to avoid repeated DB lookups within a batch.
+        """
+        slug = self._slugify_publisher(publisher_name, source_type)
+
+        # Check local cache first
+        if slug in cache:
+            return cache[slug]
+
+        # Check database
+        source = db.query(models.Source).filter(models.Source.slug == slug).first()
+        if not source:
+            source = models.Source(
+                name=publisher_name,
+                slug=slug,
+                rss_url=f"https://{source_type.value}-api.internal/{slug}",
+                is_active=False,
+                default_section=None,
+            )
+            db.add(source)
+            db.flush()
+
+        cache[slug] = source
+        return source
+
     async def _ingest_from_perigon(
         self,
         db: Session,
@@ -757,11 +799,14 @@ class IngestionService:
         Returns:
             Updated result dict
         """
-        # Get or create API source record once for all articles
+        # Fallback API source for articles without a publisher name
         api_source = self._get_or_create_api_source(
             db, source_type, source_name
         )
         db.commit()
+
+        # Cache for per-publisher Source records within this batch
+        publisher_source_cache: Dict[str, models.Source] = {}
 
         for article in articles:
             entry_started_at = datetime.utcnow()
@@ -812,10 +857,20 @@ class IngestionService:
                 if author and len(author) > 255:
                     author = author[:255]
 
+                # Resolve per-publisher Source (fall back to API source)
+                publisher_name = article.get('source_name')
+                if publisher_name and publisher_name.strip():
+                    article_source = self._get_or_create_publisher_source(
+                        db, source_type, publisher_name.strip(),
+                        publisher_source_cache,
+                    )
+                else:
+                    article_source = api_source
+
                 # Create StoryRaw record
                 story = models.StoryRaw(
                     id=story_id,
-                    source_id=api_source.id,
+                    source_id=article_source.id,
                     original_url=entry_url,
                     original_title=article.get('title', ''),
                     original_description=article.get('description', ''),
