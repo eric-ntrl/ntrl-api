@@ -78,13 +78,38 @@ FALSE_POSITIVE_PHRASES = {
 
     # Product and feature descriptions (factual)
     "quickly sync", "not unlike",
+
+    # Crime reporting — factual legal/police terminology
+    "suspicion of attempted murder", "suspicion of murder",
+    "suspicion of assault", "suspicion of robbery",
+    "arrested on suspicion", "detained on suspicion",
+    "attempted murder", "attempted robbery",
+
+    # Real estate / property descriptions (factual specs)
+    "square-foot house", "square-foot home", "square-foot property",
+    "oversaw significant changes", "significant changes",
+
+    # Entertainment industry terms (neutral)
+    "to star in", "to co-star in", "set to star",
+
+    # Career/professional transitions (factual)
+    "departing to make a transition", "longest-tenured",
+    "make a transition",
 }
 
 # Patterns that match false positives (case-insensitive partial matches)
 # Be SPECIFIC to avoid filtering legitimate manipulative language
 FALSE_POSITIVE_PATTERNS: list = [
-    # Don't use broad patterns like "cancer" - too aggressive
-    # Only add very specific false positives here
+    # Legal/crime reporting — "suspicion of [any charge]"
+    "suspicion of ",
+    # Real estate specs — "[N]-bedroom" or "square-foot"
+    "-bedroom",
+    "square-foot",
+    # Financial facts with hedging qualifiers (not manipulative)
+    "just under $",
+    "nearly $",
+    "roughly $",
+    "approximately $",
 ]
 
 
