@@ -145,7 +145,12 @@ class AsyncPipelineOrchestrator:
                 return self._build_cancelled_result()
             await self._run_neutralize()
 
-            # Stage 4: Brief Assembly
+            # Stage 4: Quality Check
+            if await self._check_cancelled():
+                return self._build_cancelled_result()
+            await self._run_quality_check()
+
+            # Stage 5: Brief Assembly
             if await self._check_cancelled():
                 return self._build_cancelled_result()
             await self._run_brief_assembly()
@@ -398,6 +403,56 @@ class AsyncPipelineOrchestrator:
             self.errors.append({"stage": stage_name, "message": str(e)})
             logger.exception(f"Neutralize stage failed: {e}")
 
+    async def _run_quality_check(self) -> None:
+        """Run the quality control gate stage."""
+        from app.services.quality_gate import QualityGateService
+
+        stage_name = "quality_check"
+        PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
+
+        started_at = datetime.utcnow()
+
+        try:
+            with log_stage(stage_name, self.trace_id):
+                service = QualityGateService()
+
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: service.run_batch(self.db, trace_id=self.trace_id)
+                )
+
+                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                self.metrics.record_stage_timing(stage_name, duration_ms)
+
+                self.stage_results[stage_name] = StageResult(
+                    stage=stage_name,
+                    status="completed",
+                    duration_ms=duration_ms,
+                    metrics={
+                        "total": result.get("total_checked", 0),
+                        "passed": result.get("passed", 0),
+                        "failed": result.get("failed", 0),
+                    },
+                    errors=[],
+                )
+
+                PipelineJobManager.update_job_stage(
+                    self.db, self.job_id, stage_name,
+                    progress=self.stage_results[stage_name].metrics
+                )
+
+        except Exception as e:
+            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            self.stage_results[stage_name] = StageResult(
+                stage=stage_name,
+                status="failed",
+                duration_ms=duration_ms,
+                errors=[str(e)],
+            )
+            self.errors.append({"stage": stage_name, "message": str(e)})
+            logger.exception(f"Quality check stage failed: {e}")
+
     async def _run_brief_assembly(self) -> None:
         """Run the brief assembly stage."""
         from app.services.brief_assembly import BriefAssemblyService
@@ -629,6 +684,7 @@ class AsyncPipelineOrchestrator:
         ingest = self.stage_results.get("ingest", StageResult("ingest", "skipped", 0))
         classify = self.stage_results.get("classify", StageResult("classify", "skipped", 0))
         neutralize = self.stage_results.get("neutralize", StageResult("neutralize", "skipped", 0))
+        qc = self.stage_results.get("quality_check", StageResult("quality_check", "skipped", 0))
         brief = self.stage_results.get("brief", StageResult("brief", "skipped", 0))
 
         # Calculate overall timing
@@ -654,6 +710,9 @@ class AsyncPipelineOrchestrator:
             neutralize_success=neutralize.metrics.get("success", 0),
             neutralize_skipped_no_body=neutralize.metrics.get("skipped_no_body", 0),
             neutralize_failed=neutralize.metrics.get("failed", 0),
+            qc_total=qc.metrics.get("total", 0),
+            qc_passed=qc.metrics.get("passed", 0),
+            qc_failed=qc.metrics.get("failed", 0),
             brief_story_count=brief.metrics.get("story_count", 0),
             brief_section_count=brief.metrics.get("section_count", 0),
             status="pending",  # Will be updated

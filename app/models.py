@@ -149,6 +149,7 @@ class PipelineStage(str, Enum):
     DEDUPE = "dedupe"
     NEUTRALIZE = "neutralize"
     CLASSIFY = "classify"
+    QUALITY_CHECK = "quality_check"
     BRIEF_ASSEMBLE = "brief_assemble"
 
 
@@ -458,6 +459,11 @@ class StoryNeutralized(Base):
         nullable=True
     )
 
+    # Quality control gate
+    qc_status = Column(String(20), nullable=True)  # "passed", "failed", None
+    qc_failures = Column(JSONB, nullable=True)  # [{check, category, reason, details}]
+    qc_checked_at = Column(DateTime(timezone=True), nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -475,6 +481,7 @@ class StoryNeutralized(Base):
         UniqueConstraint("story_raw_id", "version", name="uq_story_version"),
         Index("ix_stories_neutralized_is_current", "is_current"),
         Index("ix_stories_neutralized_status", "neutralization_status"),
+        Index("ix_stories_neutralized_qc_status", "qc_status"),
         Index("ix_stories_neutralized_search", "search_vector", postgresql_using="gin"),
     )
 
@@ -825,6 +832,11 @@ class PipelineRunSummary(Base):
     neutralize_success = Column(Integer, default=0, nullable=False)
     neutralize_skipped_no_body = Column(Integer, default=0, nullable=False)
     neutralize_failed = Column(Integer, default=0, nullable=False)
+
+    # Quality control stats
+    qc_total = Column(Integer, default=0, nullable=False)
+    qc_passed = Column(Integer, default=0, nullable=False)
+    qc_failed = Column(Integer, default=0, nullable=False)
 
     # Brief stats
     brief_story_count = Column(Integer, default=0, nullable=False)

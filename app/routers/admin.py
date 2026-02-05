@@ -2328,6 +2328,114 @@ async def cancel_job(
     return {"cancelled": True, "message": "Cancellation requested"}
 
 
+# -----------------------------------------------------------------------------
+# Quality Control failures endpoint
+# -----------------------------------------------------------------------------
+
+class QCFailureItem(BaseModel):
+    """A single QC failure record for debugging."""
+    story_neutralized_id: str
+    story_raw_id: str
+    feed_title: Optional[str] = None
+    source_name: Optional[str] = None
+    original_url: Optional[str] = None
+    published_at: Optional[datetime] = None
+    qc_status: str
+    qc_checked_at: Optional[datetime] = None
+    qc_failures: Optional[List[dict]] = None
+
+
+class QCFailuresResponse(BaseModel):
+    """Response listing QC failures for debugging."""
+    total: int
+    failures: List[QCFailureItem]
+    filters: dict = Field(default_factory=dict)
+
+
+@router.get("/admin/qc/failures", response_model=QCFailuresResponse)
+def get_qc_failures(
+    check: Optional[str] = None,
+    category: Optional[str] = None,
+    since: Optional[str] = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> QCFailuresResponse:
+    """
+    Query QC failures for debugging.
+
+    Filters:
+    - check: Filter by specific check name (e.g., 'min_body_length')
+    - category: Filter by category (e.g., 'content_quality')
+    - since: ISO datetime string to filter by qc_checked_at
+    - limit: Max results (default 50, max 200)
+    """
+    from app import models
+    from sqlalchemy import cast, String
+
+    limit = min(limit, 200)
+
+    query = (
+        db.query(models.StoryNeutralized, models.StoryRaw, models.Source)
+        .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
+        .outerjoin(models.Source, models.StoryRaw.source_id == models.Source.id)
+        .filter(
+            models.StoryNeutralized.is_current == True,
+            models.StoryNeutralized.qc_status == "failed",
+        )
+    )
+
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            query = query.filter(models.StoryNeutralized.qc_checked_at >= since_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid 'since' datetime: {since}")
+
+    # Filter by check or category using JSONB containment
+    if check:
+        query = query.filter(
+            models.StoryNeutralized.qc_failures.op("@>")(
+                f'[{{"check": "{check}"}}]'
+            )
+        )
+    if category:
+        query = query.filter(
+            models.StoryNeutralized.qc_failures.op("@>")(
+                f'[{{"category": "{category}"}}]'
+            )
+        )
+
+    query = query.order_by(models.StoryNeutralized.qc_checked_at.desc())
+
+    results = query.limit(limit).all()
+
+    items = []
+    for neutralized, raw, source in results:
+        items.append(QCFailureItem(
+            story_neutralized_id=str(neutralized.id),
+            story_raw_id=str(raw.id),
+            feed_title=neutralized.feed_title,
+            source_name=source.name if source else None,
+            original_url=raw.original_url,
+            published_at=raw.published_at,
+            qc_status=neutralized.qc_status or "unknown",
+            qc_checked_at=neutralized.qc_checked_at,
+            qc_failures=neutralized.qc_failures,
+        ))
+
+    return QCFailuresResponse(
+        total=len(items),
+        failures=items,
+        filters={
+            "check": check,
+            "category": category,
+            "since": since,
+            "limit": limit,
+        },
+    )
+
+
 @router.get("/pipeline/jobs", response_model=PipelineJobListResponse)
 def list_jobs(
     limit: int = 10,

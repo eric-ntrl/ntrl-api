@@ -79,6 +79,28 @@ class AlertThresholds:
     CLASSIFY_FALLBACK_RATE_MAX_PCT = 1   # Max keyword fallback rate
 
 
+class QualityGateDefaults:
+    """Configurable thresholds for quality control checks."""
+
+    # Content length minimums (word counts)
+    MIN_DETAIL_BRIEF_WORDS = 50         # detail_brief must have at least this many words
+    MIN_DETAIL_FULL_WORDS = 100         # detail_full must have at least this many words
+
+    # Feed title bounds (character counts)
+    MIN_FEED_TITLE_CHARS = 5            # Minimum meaningful title
+    MAX_FEED_TITLE_CHARS = 80           # Beyond this, likely garbled
+
+    # Feed summary bounds (character counts)
+    MIN_FEED_SUMMARY_CHARS = 20         # Minimum meaningful summary
+    MAX_FEED_SUMMARY_CHARS = 300        # Beyond this, likely garbled
+
+    # Timestamp validation
+    FUTURE_PUBLISH_BUFFER_HOURS = 1     # Allow published_at up to 1h in future
+
+    # Garbled output detection
+    REPEATED_WORD_RUN_THRESHOLD = 3     # Flag if same word appears N+ times consecutively
+
+
 class CacheConfig:
     """Cache TTL and size constants."""
 

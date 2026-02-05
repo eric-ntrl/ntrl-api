@@ -116,6 +116,7 @@ class BriefAssemblyService:
         Qualifying means:
         - Not a duplicate
         - Has current neutralization (status=success)
+        - Passed quality control gate (qc_status=passed)
         - Published after cutoff
         - Has been classified (feed_category is not null)
         """
@@ -127,6 +128,7 @@ class BriefAssemblyService:
             .filter(
                 models.StoryNeutralized.is_current == True,
                 models.StoryNeutralized.neutralization_status == "success",
+                models.StoryNeutralized.qc_status == "passed",
                 models.StoryRaw.is_duplicate == False,
                 models.StoryRaw.published_at >= cutoff_time,
             )
