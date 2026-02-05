@@ -264,7 +264,7 @@ class EvaluationService:
         self,
         db: Session,
         pipeline_run_id: str,
-        sample_size: int = 10,
+        sample_size: int = 30,
     ) -> EvaluationResult:
         """
         Run a complete evaluation for a pipeline run.
@@ -891,14 +891,15 @@ Evaluate the span detection quality (precision and recall)."""
                         "affected_articles": article_ids,
                     })
 
-        # Continuous improvement: any classification below 100%
-        if classification_accuracy < 1.0 and incorrect_classifications:
+        # Continuous improvement: classification below 90% (was 100% — too aggressive)
+        # Only trigger optimization when there's meaningful room for improvement
+        if classification_accuracy < 0.90 and incorrect_classifications:
             recommendations.append({
                 "prompt_name": "classification_system_prompt",
                 "issue_category": "continuous_improvement",
-                "issue_description": f"Classification accuracy at {classification_accuracy:.1%}, targeting 100%",
+                "issue_description": f"Classification accuracy at {classification_accuracy:.1%}, targeting 90%+",
                 "suggested_change": classification_suggestions[0] if classification_suggestions else "Review misclassified examples and add clarifying guidance",
-                "priority": "low" if classification_accuracy >= 0.9 else "medium",
+                "priority": "low" if classification_accuracy >= 0.8 else "medium",
                 "affected_articles": [e.story_raw_id for e in incorrect_classifications],
             })
 
@@ -921,19 +922,20 @@ Evaluate the span detection quality (precision and recall)."""
                 "affected_articles": [e.story_raw_id for e in low_neutralization_scores],
             })
 
-        # Continuous improvement: neutralization below 9.5/10
-        if avg_neutralization < 9.5 and neutralization_scores:
+        # Continuous improvement: neutralization below 8.0/10 (was 9.5 — too aggressive)
+        # Only optimize when clearly below acceptable quality
+        if avg_neutralization < 8.0 and neutralization_scores:
             below_target = [
                 e for e in article_evals
-                if e.neutralization_score is not None and e.neutralization_score < 9.5
+                if e.neutralization_score is not None and e.neutralization_score < 8.0
             ]
             if below_target:
                 recommendations.append({
                     "prompt_name": "neutralization_system_prompt",
                     "issue_category": "continuous_improvement",
-                    "issue_description": f"Neutralization avg {avg_neutralization:.1f}/10, targeting 9.5/10",
+                    "issue_description": f"Neutralization avg {avg_neutralization:.1f}/10, targeting 8.0+/10",
                     "suggested_change": neutralization_suggestions[0] if neutralization_suggestions else "Refine neutralization rules for edge cases",
-                    "priority": "low" if avg_neutralization >= 8.0 else "medium",
+                    "priority": "low" if avg_neutralization >= 7.5 else "medium",
                     "affected_articles": [e.story_raw_id for e in below_target[:5]],
                 })
 
@@ -988,26 +990,26 @@ Evaluate the span detection quality (precision and recall)."""
                 "missed_phrases_sample": all_misses[:5],
             })
 
-        # Continuous improvement: precision below 99%
-        if avg_span_precision < 0.99 and span_precisions and all_fps:
+        # Continuous improvement: precision below 80% (was 99% — too aggressive)
+        if avg_span_precision < 0.80 and span_precisions and all_fps:
             recommendations.append({
                 "prompt_name": "span_detection_prompt",
                 "issue_category": "continuous_improvement",
-                "issue_description": f"Span precision at {avg_span_precision:.1%}, targeting 99%",
+                "issue_description": f"Span precision at {avg_span_precision:.1%}, targeting 80%+",
                 "suggested_change": span_suggestions[0] if span_suggestions else "Review and add false positive patterns to exclusion list",
-                "priority": "low" if avg_span_precision >= 0.9 else "medium",
+                "priority": "low" if avg_span_precision >= 0.7 else "medium",
                 "affected_articles": [e.story_raw_id for e in article_evals if e.false_positives][:5],
                 "false_positives_sample": all_fps[:10],
             })
 
-        # Continuous improvement: recall below 99%
-        if avg_span_recall < 0.99 and span_recalls and all_misses:
+        # Continuous improvement: recall below 80% (was 99% — too aggressive)
+        if avg_span_recall < 0.80 and span_recalls and all_misses:
             recommendations.append({
                 "prompt_name": "span_detection_prompt",
                 "issue_category": "continuous_improvement",
-                "issue_description": f"Span recall at {avg_span_recall:.1%}, targeting 99%",
+                "issue_description": f"Span recall at {avg_span_recall:.1%}, targeting 80%+",
                 "suggested_change": span_suggestions[0] if span_suggestions else "Add missed manipulation patterns to detection prompt",
-                "priority": "low" if avg_span_recall >= 0.9 else "medium",
+                "priority": "low" if avg_span_recall >= 0.7 else "medium",
                 "affected_articles": [e.story_raw_id for e in article_evals if e.missed_manipulations][:5],
                 "missed_phrases_sample": all_misses[:10],
             })

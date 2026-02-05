@@ -32,6 +32,18 @@ ROLLBACK_TRIGGERS = {
     "span_recall_drop": 0.15,              # 15% recall drop
 }
 
+# Map degradation triggers to the prompt most likely responsible
+TRIGGER_TO_PROMPT = {
+    "overall_score_drop": None,  # Roll back all changed prompts
+    "classification_accuracy_drop": "classification_system_prompt",
+    "neutralization_score_drop": "neutralization_system_prompt",
+    "span_precision_drop": "span_detection_prompt",
+    "span_recall_drop": "span_detection_prompt",
+}
+
+# Number of recent evaluation runs to consider for best-known-good baseline
+BASELINE_LOOKBACK_RUNS = 5
+
 
 @dataclass
 class DegradationCheck:
@@ -42,6 +54,7 @@ class DegradationCheck:
     previous_value: Optional[float] = None
     threshold: Optional[float] = None
     drop_amount: Optional[float] = None
+    all_triggers: Optional[List[str]] = None  # All triggers that fired
 
 
 @dataclass
@@ -76,13 +89,17 @@ class RollbackService:
         """
         Check for degradation and optionally perform rollback.
 
+        Rolls back ALL changed prompts when degradation is detected (not just one).
+        Uses metric-to-prompt correlation to prioritize rollbacks, and compares
+        against the best-known-good baseline (not just previous run).
+
         Args:
             db: Database session
             current_eval_id: ID of the current EvaluationRun
             auto_rollback: If True, automatically rollback on degradation
 
         Returns:
-            RollbackResult if rollback was triggered, None otherwise
+            RollbackResult for the first rollback if triggered, None otherwise
         """
         logger.info(f"[ROLLBACK] Checking evaluation {current_eval_id} for degradation")
 
@@ -108,8 +125,12 @@ class RollbackService:
             logger.info("[ROLLBACK] No previous evaluation for comparison")
             return None
 
-        # Check for degradation
+        # Check for degradation vs previous run
         degradation = self._calculate_degradation(current_eval, previous_eval)
+
+        # Also check against best-known-good baseline
+        if not degradation.degraded:
+            degradation = self._check_baseline_degradation(db, current_eval)
 
         if not degradation.degraded:
             logger.info("[ROLLBACK] No degradation detected")
@@ -120,6 +141,8 @@ class RollbackService:
             f"({degradation.previous_value:.2f} → {degradation.current_value:.2f}, "
             f"drop={degradation.drop_amount:.2f}, threshold={degradation.threshold:.2f})"
         )
+        if degradation.all_triggers:
+            logger.warning(f"[ROLLBACK] All triggered: {degradation.all_triggers}")
 
         # Find prompts updated since previous evaluation
         changed_prompts = self._find_changed_prompts(db, previous_eval, current_eval)
@@ -128,118 +151,116 @@ class RollbackService:
             logger.warning("[ROLLBACK] Degradation detected but no prompts changed")
             return None
 
-        # Select the most recently changed prompt to rollback
-        prompt_to_rollback = changed_prompts[0]  # Most recent first
+        # Determine which prompts to roll back using metric-to-prompt mapping
+        prompts_to_rollback = self._select_prompts_to_rollback(
+            changed_prompts, degradation
+        )
 
         if not auto_rollback:
+            prompt_names = [p.name for p in prompts_to_rollback]
             logger.info(
-                f"[ROLLBACK] Would rollback '{prompt_to_rollback.name}' "
-                f"(auto_rollback=False)"
+                f"[ROLLBACK] Would rollback {prompt_names} (auto_rollback=False)"
             )
+            first = prompts_to_rollback[0]
             return RollbackResult(
                 success=False,
-                prompt_name=prompt_to_rollback.name,
-                from_version=prompt_to_rollback.version,
-                to_version=prompt_to_rollback.version - 1,
+                prompt_name=first.name,
+                from_version=first.version,
+                to_version=first.version - 1,
                 reason=f"Degradation: {degradation.trigger_name}",
                 error="auto_rollback=False",
             )
 
-        # Execute rollback
-        result = self.execute_rollback(
-            db,
-            prompt_name=prompt_to_rollback.name,
-            model=prompt_to_rollback.model,
-            reason=f"Auto-rollback: {degradation.trigger_name} exceeded threshold",
-        )
+        # Execute rollback for ALL targeted prompts
+        results = []
+        for prompt in prompts_to_rollback:
+            result = self.execute_rollback(
+                db,
+                prompt_name=prompt.name,
+                model=prompt.model,
+                reason=f"Auto-rollback: {degradation.trigger_name} exceeded threshold",
+            )
+            results.append(result)
+            if result.success:
+                logger.info(
+                    f"[ROLLBACK] Rolled back '{prompt.name}' "
+                    f"v{result.from_version} → v{result.to_version}"
+                )
+            else:
+                logger.error(
+                    f"[ROLLBACK] Failed to rollback '{prompt.name}': {result.error}"
+                )
 
-        if result.success:
-            # Update evaluation run with rollback info
+        # Update evaluation run with rollback info
+        successful_rollbacks = [r for r in results if r.success]
+        if successful_rollbacks:
             current_eval.rollback_triggered = True
             current_eval.rollback_details = {
-                "prompt_name": result.prompt_name,
-                "from_version": result.from_version,
-                "to_version": result.to_version,
-                "reason": result.reason,
+                "prompts_rolled_back": [
+                    {
+                        "prompt_name": r.prompt_name,
+                        "from_version": r.from_version,
+                        "to_version": r.to_version,
+                    }
+                    for r in successful_rollbacks
+                ],
+                "reason": successful_rollbacks[0].reason,
                 "trigger": degradation.trigger_name,
+                "all_triggers": degradation.all_triggers,
                 "drop_amount": degradation.drop_amount,
+                # Keep backwards-compatible fields
+                "prompt_name": successful_rollbacks[0].prompt_name,
+                "from_version": successful_rollbacks[0].from_version,
+                "to_version": successful_rollbacks[0].to_version,
             }
             db.commit()
 
-        return result
+        # Return the first successful result (or last failed one)
+        return successful_rollbacks[0] if successful_rollbacks else results[-1]
 
     def _calculate_degradation(
         self,
         current: models.EvaluationRun,
         previous: models.EvaluationRun,
     ) -> DegradationCheck:
-        """Check all degradation triggers."""
-        # Overall quality score
-        if current.overall_quality_score is not None and previous.overall_quality_score is not None:
-            drop = previous.overall_quality_score - current.overall_quality_score
-            if drop >= self.triggers["overall_score_drop"]:
-                return DegradationCheck(
-                    degraded=True,
-                    trigger_name="overall_score_drop",
-                    current_value=current.overall_quality_score,
-                    previous_value=previous.overall_quality_score,
-                    threshold=self.triggers["overall_score_drop"],
-                    drop_amount=drop,
-                )
+        """Check all degradation triggers.
 
-        # Classification accuracy
-        if current.classification_accuracy is not None and previous.classification_accuracy is not None:
-            drop = previous.classification_accuracy - current.classification_accuracy
-            if drop >= self.triggers["classification_accuracy_drop"]:
-                return DegradationCheck(
-                    degraded=True,
-                    trigger_name="classification_accuracy_drop",
-                    current_value=current.classification_accuracy,
-                    previous_value=previous.classification_accuracy,
-                    threshold=self.triggers["classification_accuracy_drop"],
-                    drop_amount=drop,
-                )
+        Returns the worst trigger as the primary, but also collects all
+        triggered metrics in `all_triggers` for comprehensive rollback.
+        """
+        triggered = []
 
-        # Neutralization score
-        if current.avg_neutralization_score is not None and previous.avg_neutralization_score is not None:
-            drop = previous.avg_neutralization_score - current.avg_neutralization_score
-            if drop >= self.triggers["neutralization_score_drop"]:
-                return DegradationCheck(
-                    degraded=True,
-                    trigger_name="neutralization_score_drop",
-                    current_value=current.avg_neutralization_score,
-                    previous_value=previous.avg_neutralization_score,
-                    threshold=self.triggers["neutralization_score_drop"],
-                    drop_amount=drop,
-                )
+        # Check each metric pair
+        checks = [
+            ("overall_score_drop", current.overall_quality_score, previous.overall_quality_score),
+            ("classification_accuracy_drop", current.classification_accuracy, previous.classification_accuracy),
+            ("neutralization_score_drop", current.avg_neutralization_score, previous.avg_neutralization_score),
+            ("span_precision_drop", current.avg_span_precision, previous.avg_span_precision),
+            ("span_recall_drop", current.avg_span_recall, previous.avg_span_recall),
+        ]
 
-        # Span precision
-        if current.avg_span_precision is not None and previous.avg_span_precision is not None:
-            drop = previous.avg_span_precision - current.avg_span_precision
-            if drop >= self.triggers["span_precision_drop"]:
-                return DegradationCheck(
-                    degraded=True,
-                    trigger_name="span_precision_drop",
-                    current_value=current.avg_span_precision,
-                    previous_value=previous.avg_span_precision,
-                    threshold=self.triggers["span_precision_drop"],
-                    drop_amount=drop,
-                )
+        for trigger_name, current_val, previous_val in checks:
+            if current_val is not None and previous_val is not None:
+                drop = previous_val - current_val
+                if drop >= self.triggers[trigger_name]:
+                    triggered.append((trigger_name, current_val, previous_val, drop))
 
-        # Span recall
-        if current.avg_span_recall is not None and previous.avg_span_recall is not None:
-            drop = previous.avg_span_recall - current.avg_span_recall
-            if drop >= self.triggers["span_recall_drop"]:
-                return DegradationCheck(
-                    degraded=True,
-                    trigger_name="span_recall_drop",
-                    current_value=current.avg_span_recall,
-                    previous_value=previous.avg_span_recall,
-                    threshold=self.triggers["span_recall_drop"],
-                    drop_amount=drop,
-                )
+        if not triggered:
+            return DegradationCheck(degraded=False)
 
-        return DegradationCheck(degraded=False)
+        # Use the worst trigger (largest relative drop) as the primary
+        worst = max(triggered, key=lambda t: t[3] / max(self.triggers[t[0]], 0.001))
+        trigger_name, current_val, previous_val, drop = worst
+
+        return DegradationCheck(
+            degraded=True,
+            trigger_name=trigger_name,
+            current_value=current_val,
+            previous_value=previous_val,
+            threshold=self.triggers[trigger_name],
+            drop_amount=drop,
+            all_triggers=[t[0] for t in triggered],
+        )
 
     def _find_changed_prompts(
         self,
@@ -247,7 +268,10 @@ class RollbackService:
         previous_eval: models.EvaluationRun,
         current_eval: models.EvaluationRun,
     ) -> List[models.Prompt]:
-        """Find prompts that were updated between evaluations."""
+        """Find prompts that were updated between evaluations.
+
+        Returns prompts in deterministic order (most recently changed first).
+        """
         # Find prompt versions created between the two evaluations
         changed_versions = (
             db.query(models.PromptVersion)
@@ -258,16 +282,124 @@ class RollbackService:
             .all()
         )
 
-        # Get unique prompts
-        prompt_ids = list(set(v.prompt_id for v in changed_versions))
+        # Get unique prompt IDs preserving order (most recently changed first)
+        seen = set()
+        prompt_ids = []
+        for v in changed_versions:
+            if v.prompt_id not in seen:
+                seen.add(v.prompt_id)
+                prompt_ids.append(v.prompt_id)
 
+        if not prompt_ids:
+            return []
+
+        # Fetch prompts and preserve the ordering from prompt_ids
         prompts = (
             db.query(models.Prompt)
             .filter(models.Prompt.id.in_(prompt_ids))
             .all()
         )
 
-        return prompts
+        # Re-order to match prompt_ids ordering
+        prompt_by_id = {p.id: p for p in prompts}
+        return [prompt_by_id[pid] for pid in prompt_ids if pid in prompt_by_id]
+
+    def _select_prompts_to_rollback(
+        self,
+        changed_prompts: List[models.Prompt],
+        degradation: DegradationCheck,
+    ) -> List[models.Prompt]:
+        """Select which prompts to roll back based on metric-to-prompt mapping.
+
+        If a specific metric triggered (e.g., neutralization_score_drop),
+        prioritize the corresponding prompt. If overall_score_drop triggered
+        or multiple triggers fired, roll back ALL changed prompts.
+        """
+        triggers = degradation.all_triggers or [degradation.trigger_name]
+
+        # If overall score dropped or multiple metrics triggered,
+        # roll back everything
+        if "overall_score_drop" in triggers or len(triggers) > 1:
+            logger.info(
+                f"[ROLLBACK] Rolling back ALL {len(changed_prompts)} changed prompts "
+                f"(triggers: {triggers})"
+            )
+            return changed_prompts
+
+        # Single specific metric trigger - find the corresponding prompt
+        trigger = triggers[0]
+        target_prompt_name = TRIGGER_TO_PROMPT.get(trigger)
+
+        if target_prompt_name:
+            # Try to find the specific prompt in the changed list
+            target = [p for p in changed_prompts if p.name == target_prompt_name]
+            if target:
+                logger.info(
+                    f"[ROLLBACK] Targeting '{target_prompt_name}' for {trigger}"
+                )
+                return target
+
+        # Fallback: roll back all changed prompts
+        logger.info(
+            f"[ROLLBACK] Target prompt not in changed list, "
+            f"rolling back ALL {len(changed_prompts)} changed prompts"
+        )
+        return changed_prompts
+
+    def _check_baseline_degradation(
+        self,
+        db: Session,
+        current_eval: models.EvaluationRun,
+    ) -> DegradationCheck:
+        """Check current eval against the best-known-good score.
+
+        Catches gradual decline that per-run comparison misses. If the current
+        score is significantly below the best score from recent runs, trigger
+        a rollback even though each individual step was small.
+        """
+        recent_evals = (
+            db.query(models.EvaluationRun)
+            .filter(models.EvaluationRun.id != current_eval.id)
+            .filter(models.EvaluationRun.status == "completed")
+            .filter(models.EvaluationRun.overall_quality_score.isnot(None))
+            .order_by(models.EvaluationRun.finished_at.desc())
+            .limit(BASELINE_LOOKBACK_RUNS)
+            .all()
+        )
+
+        if not recent_evals:
+            return DegradationCheck(degraded=False)
+
+        # Find the best overall score in recent history
+        best_eval = max(recent_evals, key=lambda e: e.overall_quality_score or 0)
+        best_score = best_eval.overall_quality_score
+        current_score = current_eval.overall_quality_score
+
+        if best_score is None or current_score is None:
+            return DegradationCheck(degraded=False)
+
+        # Use a larger threshold for baseline comparison (1.0 point)
+        # to avoid false positives from normal variance
+        baseline_threshold = 1.0
+        drop = best_score - current_score
+
+        if drop >= baseline_threshold:
+            logger.warning(
+                f"[ROLLBACK] Baseline degradation: best={best_score:.2f} "
+                f"current={current_score:.2f} drop={drop:.2f} "
+                f"threshold={baseline_threshold}"
+            )
+            return DegradationCheck(
+                degraded=True,
+                trigger_name="baseline_overall_score_drop",
+                current_value=current_score,
+                previous_value=best_score,
+                threshold=baseline_threshold,
+                drop_amount=drop,
+                all_triggers=["baseline_overall_score_drop"],
+            )
+
+        return DegradationCheck(degraded=False)
 
     def execute_rollback(
         self,

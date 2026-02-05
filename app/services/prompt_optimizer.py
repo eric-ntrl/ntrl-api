@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 # Prompt improvement generation
 # ---------------------------------------------------------------------------
 
+MAX_PROMPT_LENGTH = 8000  # chars - reject prompts that grow beyond this
+
 PROMPT_IMPROVEMENT_SYSTEM = """You are an expert prompt engineer improving LLM prompts for a news neutralization pipeline.
 
 Given:
@@ -39,11 +41,14 @@ Generate an improved prompt that:
 - Adds specific examples where helpful
 - Keeps the prompt concise and focused
 
-IMPORTANT:
-- Make targeted changes, not wholesale rewrites
-- Add explicit guidance for the failure cases
-- Include concrete examples when patterns emerge
-- Do NOT change unrelated parts of the prompt
+CRITICAL RULES:
+- Integrate fixes into the existing prompt structure by rewriting the affected section
+- Do NOT append "NEW INSTRUCTION" or "ADDITIONAL INSTRUCTION" blocks
+- Do NOT add new sections at the end — modify existing sections in place
+- The improved prompt should be approximately the same length or shorter than the original
+- Remove any redundant, contradictory, or repetitive instructions
+- If the prompt has accumulated cruft (duplicate rules, conflicting guidance), clean it up
+- Focus changes on the specific failure cases identified
 
 Respond with JSON:
 {
@@ -147,9 +152,28 @@ class PromptOptimizer:
                 key = (prompt_name, prompt_model)
                 by_prompt.setdefault(key, []).append(rec)
 
+        # Compute per-metric scores to decide which prompts actually need optimization
+        metric_scores = self._compute_metric_scores(eval_run)
+
         # Process each prompt with issues
         for (prompt_name, prompt_model), issues in by_prompt.items():
             try:
+                # Skip prompts where the corresponding metric is already at target
+                if self._should_skip_optimization(prompt_name, metric_scores):
+                    logger.info(
+                        f"[OPTIMIZE] SKIPPED '{prompt_name}': metric already at target"
+                    )
+                    prompts_updated.append({
+                        "prompt_name": prompt_name,
+                        "model": prompt_model,
+                        "old_version": None,
+                        "new_version": None,
+                        "change_reason": "SKIPPED: metric already at target",
+                        "applied": False,
+                        "skip_reason": "metric_at_target",
+                    })
+                    continue
+
                 # Get current prompt from DB
                 # Handle model-agnostic prompts (model=NULL) vs model-specific ones
                 query = db.query(models.Prompt).filter(
@@ -192,6 +216,23 @@ class PromptOptimizer:
 
                 if not improvement:
                     logger.warning(f"[OPTIMIZE] Failed to generate improvement for '{prompt_name}'")
+                    continue
+
+                # Quality gate: reject improvements that fail safety checks
+                rejection = self._check_quality_gate(prompt, improvement)
+                if rejection:
+                    logger.warning(
+                        f"[OPTIMIZE] REJECTED improvement for '{prompt_name}': {rejection}"
+                    )
+                    prompts_updated.append({
+                        "prompt_name": prompt_name,
+                        "model": prompt_model,
+                        "old_version": prompt.version,
+                        "new_version": None,
+                        "change_reason": f"REJECTED: {rejection}",
+                        "applied": False,
+                        "skip_reason": "quality_gate_rejected",
+                    })
                     continue
 
                 # Apply if requested
@@ -238,6 +279,87 @@ class PromptOptimizer:
             estimated_cost_usd=estimated_cost,
             status="completed",
         )
+
+    def _compute_metric_scores(self, eval_run: models.EvaluationRun) -> Dict[str, float]:
+        """Extract metric scores from an evaluation run."""
+        return {
+            "classification_accuracy": eval_run.classification_accuracy or 0.0,
+            "avg_neutralization_score": eval_run.avg_neutralization_score or 0.0,
+            "avg_span_precision": eval_run.avg_span_precision or 0.0,
+            "avg_span_recall": eval_run.avg_span_recall or 0.0,
+        }
+
+    def _should_skip_optimization(
+        self, prompt_name: str, metric_scores: Dict[str, float]
+    ) -> bool:
+        """Check if a prompt's corresponding metric is already at target.
+
+        Skip optimization for prompts where the metric is already excellent
+        to prevent unnecessary churn on already-good prompts.
+        """
+        # Thresholds above which we skip optimization
+        skip_thresholds = {
+            "classification_system_prompt": ("classification_accuracy", 1.0),
+            "neutralization_system_prompt": ("avg_neutralization_score", 9.5),
+            "span_detection_prompt": None,  # Check both precision and recall
+        }
+
+        threshold_config = skip_thresholds.get(prompt_name)
+        if threshold_config is None and prompt_name == "span_detection_prompt":
+            # Both precision and recall must be at target to skip
+            precision = metric_scores.get("avg_span_precision", 0.0)
+            recall = metric_scores.get("avg_span_recall", 0.0)
+            return precision >= 0.99 and recall >= 0.99
+
+        if threshold_config is None:
+            return False  # Unknown prompt, don't skip
+
+        metric_key, target = threshold_config
+        current = metric_scores.get(metric_key, 0.0)
+        return current >= target
+
+    def _check_quality_gate(
+        self,
+        prompt: models.Prompt,
+        improvement: "PromptImprovement",
+    ) -> Optional[str]:
+        """Check if an improvement passes quality gates.
+
+        Returns a rejection reason string, or None if it passes.
+        """
+        new_content = improvement.improved_content
+
+        # Gate 1: Reject if prompt exceeds max length
+        if len(new_content) > MAX_PROMPT_LENGTH:
+            return (
+                f"Prompt would grow to {len(new_content)} chars "
+                f"(max {MAX_PROMPT_LENGTH})"
+            )
+
+        # Gate 2: Reject if prompt grew by more than 30%
+        original_len = len(prompt.content)
+        if original_len > 0:
+            growth_ratio = len(new_content) / original_len
+            if growth_ratio > 1.3:
+                return (
+                    f"Prompt grew by {(growth_ratio - 1) * 100:.0f}% "
+                    f"({original_len} → {len(new_content)} chars, max 30% growth)"
+                )
+
+        # Gate 3: Reject if it contains "NEW INSTRUCTION" / "ADDITIONAL INSTRUCTION" appends
+        append_patterns = [
+            "NEW INSTRUCTION",
+            "ADDITIONAL INSTRUCTION",
+            "ADDED INSTRUCTION",
+            "NEW RULE:",
+            "ADDITIONAL RULE:",
+        ]
+        new_content_upper = new_content.upper()
+        for pattern in append_patterns:
+            if pattern in new_content_upper and pattern not in prompt.content.upper():
+                return f"Contains appended block: '{pattern}'"
+
+        return None
 
     def _generate_improvement(
         self,

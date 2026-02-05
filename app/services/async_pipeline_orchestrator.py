@@ -632,20 +632,35 @@ class AsyncPipelineOrchestrator:
                 prompts_updated = 0
 
                 if not rollback_triggered:
-                    # Run optimization
-                    optimizer = PromptOptimizer(teacher_model=settings.OPTIMIZER_MODEL)
-
-                    loop = asyncio.get_event_loop()
-                    opt_result = await loop.run_in_executor(
-                        None,
-                        lambda: optimizer.analyze_and_improve(
-                            self.db,
-                            evaluation_run_id=self._eval_result.evaluation_run_id,
-                            auto_apply=True,
-                        )
+                    # Check minimum run count before optimizing
+                    # Don't optimize until we have at least 3 eval runs with
+                    # the current prompt versions to avoid knee-jerk reactions
+                    min_runs = self.config.get("min_runs_before_optimize", 3)
+                    runs_since_change = self._count_runs_since_last_prompt_change(
+                        self.db
                     )
 
-                    prompts_updated = len([p for p in opt_result.prompts_updated if p.get("applied")])
+                    if runs_since_change < min_runs:
+                        logger.info(
+                            f"[OPTIMIZE] Skipping: only {runs_since_change}/{min_runs} "
+                            f"runs since last prompt change"
+                        )
+                        prompts_updated = 0
+                    else:
+                        # Run optimization
+                        optimizer = PromptOptimizer(teacher_model=settings.OPTIMIZER_MODEL)
+
+                        loop = asyncio.get_event_loop()
+                        opt_result = await loop.run_in_executor(
+                            None,
+                            lambda: optimizer.analyze_and_improve(
+                                self.db,
+                                evaluation_run_id=self._eval_result.evaluation_run_id,
+                                auto_apply=True,
+                            )
+                        )
+
+                        prompts_updated = len([p for p in opt_result.prompts_updated if p.get("applied")])
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
@@ -676,6 +691,36 @@ class AsyncPipelineOrchestrator:
             )
             self.errors.append({"stage": stage_name, "message": str(e)})
             logger.exception(f"Optimization stage failed: {e}")
+
+    def _count_runs_since_last_prompt_change(self, db: Session) -> int:
+        """Count evaluation runs since the last prompt change.
+
+        Returns the number of completed evaluation runs that occurred
+        after the most recent auto-optimize prompt version was created.
+        """
+        from app.models import PromptVersion, EvaluationRun, ChangeSource
+
+        # Find the most recent auto-optimize version
+        latest_change = (
+            db.query(PromptVersion)
+            .filter(PromptVersion.change_source == ChangeSource.AUTO_OPTIMIZE.value)
+            .order_by(PromptVersion.created_at.desc())
+            .first()
+        )
+
+        if not latest_change:
+            # No auto-optimize changes ever — safe to optimize
+            return 999
+
+        # Count completed eval runs since that change
+        count = (
+            db.query(EvaluationRun)
+            .filter(EvaluationRun.status == "completed")
+            .filter(EvaluationRun.finished_at > latest_change.created_at)
+            .count()
+        )
+
+        return count
 
     def _create_summary(self) -> PipelineRunSummary:
         """Create a PipelineRunSummary from stage results."""
