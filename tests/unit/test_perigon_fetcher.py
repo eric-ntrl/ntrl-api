@@ -264,6 +264,116 @@ class TestPerigonFetcher:
             mock_close.assert_called_once()
 
 
+class TestPerigonSourceNameFallback:
+    """Tests for source name fallback when Perigon omits source.name."""
+
+    @pytest.fixture
+    def fetcher(self):
+        return PerigonFetcher(api_key="test-api-key")
+
+    def test_missing_source_name_uses_domain(self, fetcher):
+        """When source.name is null but source.domain exists, derive from domain."""
+        article = {
+            "url": "https://www.reuters.com/article/123",
+            "title": "Test Article",
+            "content": "Full body text here.",
+            "pubDate": "2024-01-15T12:00:00Z",
+            "source": {"name": None, "domain": "reuters.com"},
+        }
+        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        assert result is not None
+        assert result["source_name"] == "reuters.com"
+
+    def test_missing_source_name_strips_www(self, fetcher):
+        """Domain with www. prefix should be stripped."""
+        article = {
+            "url": "https://www.nytimes.com/article/123",
+            "title": "Test Article",
+            "content": "Full body text here.",
+            "pubDate": "2024-01-15T12:00:00Z",
+            "source": {"name": None, "domain": "www.nytimes.com"},
+        }
+        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        assert result is not None
+        assert result["source_name"] == "nytimes.com"
+
+    def test_missing_source_name_and_domain_uses_url(self, fetcher):
+        """When both source.name and source.domain are null, extract from URL."""
+        article = {
+            "url": "https://www.apnews.com/article/election-2024",
+            "title": "Test Article",
+            "content": "Full body text here.",
+            "pubDate": "2024-01-15T12:00:00Z",
+            "source": {},
+        }
+        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        assert result is not None
+        assert result["source_name"] == "apnews.com"
+
+    def test_source_name_present_not_overridden(self, fetcher):
+        """When source.name is present, it should be used as-is."""
+        article = {
+            "url": "https://reuters.com/article/123",
+            "title": "Test Article",
+            "content": "Full body text here.",
+            "pubDate": "2024-01-15T12:00:00Z",
+            "source": {"name": "Reuters", "domain": "reuters.com"},
+        }
+        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        assert result is not None
+        assert result["source_name"] == "Reuters"
+
+
+class TestPerigonTruncationDetection:
+    """Tests for Perigon content truncation detection."""
+
+    @pytest.fixture
+    def fetcher(self):
+        return PerigonFetcher(api_key="test-api-key")
+
+    def test_detects_symbols_marker(self, fetcher):
+        """Body with ...[1811 symbols] should be detected as truncated."""
+        body = "Some article text that ends abruptly...[1811 symbols]"
+        assert fetcher._is_body_truncated(body) is True
+
+    def test_detects_chars_marker(self, fetcher):
+        """Body with ...[234 chars] should be detected as truncated."""
+        body = "Article beginning...[234 chars]"
+        assert fetcher._is_body_truncated(body) is True
+
+    def test_detects_characters_marker(self, fetcher):
+        """Body with ...[500 characters] should be detected as truncated."""
+        body = "Article text...[500 characters]"
+        assert fetcher._is_body_truncated(body) is True
+
+    def test_normal_body_not_truncated(self, fetcher):
+        """Normal article body should not be flagged as truncated."""
+        body = "This is a normal article body with multiple paragraphs."
+        assert fetcher._is_body_truncated(body) is False
+
+    def test_empty_body_not_truncated(self, fetcher):
+        """Empty body should not be flagged as truncated."""
+        assert fetcher._is_body_truncated("") is False
+        assert fetcher._is_body_truncated(None) is False
+
+    def test_truncated_body_flags_correctly(self, fetcher):
+        """Truncated body should set body_downloaded=False and extraction_failure_reason."""
+        article = {
+            "url": "https://example.com/article",
+            "title": "Test Article",
+            "content": "Some text that ends...[1811 symbols]",
+            "pubDate": "2024-01-15T12:00:00Z",
+            "source": {"name": "Example News", "domain": "example.com"},
+        }
+        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        assert result is not None
+        assert result["body_downloaded"] is False
+        assert result["extraction_failure_reason"] == "truncated_content"
+        assert result["extractor_used"] is None
+        # Truncated body is still stored as fallback
+        assert result["body"] == "Some text that ends...[1811 symbols]"
+
+
 class TestPerigonCategoryMapping:
     """Tests for Perigon category to NTRL mapping."""
 

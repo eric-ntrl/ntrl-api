@@ -9,9 +9,11 @@ API Documentation: https://docs.perigon.io
 """
 
 import logging
+import re
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -40,6 +42,9 @@ PERIGON_CATEGORY_MAP = {
     # Default
     "General": "world",
 }
+
+# Regex to detect Perigon content truncation markers like "...[1811 symbols]"
+TRUNCATION_PATTERN = re.compile(r'\.\.\.\[\d+\s*(?:symbols?|chars?|characters?)\]')
 
 
 class PerigonFetcher(BaseFetcher):
@@ -193,6 +198,13 @@ class PerigonFetcher(BaseFetcher):
 
         return data.get("stories", [])
 
+    @staticmethod
+    def _is_body_truncated(body: str) -> bool:
+        """Check if Perigon body text contains truncation markers."""
+        if not body:
+            return False
+        return bool(TRUNCATION_PATTERN.search(body))
+
     def _normalize_article(
         self,
         article: Dict[str, Any],
@@ -213,6 +225,13 @@ class PerigonFetcher(BaseFetcher):
         title = article.get("title")
         body = article.get("content")  # Full body text
 
+        # Check for truncation markers in Perigon content
+        body_is_truncated = self._is_body_truncated(body) if body else False
+        if body_is_truncated:
+            logger.info(
+                f"Perigon article body truncated, will need web scraping: {url}"
+            )
+
         if not url or not title:
             return None
 
@@ -232,6 +251,23 @@ class PerigonFetcher(BaseFetcher):
         source = article.get("source", {})
         source_name = source.get("name")
         source_domain = source.get("domain")
+
+        # Fallback: derive publisher name from domain if source.name is missing
+        if not source_name and source_domain:
+            source_name = source_domain.lower().removeprefix("www.")
+            logger.debug(
+                f"Perigon article missing source.name, derived from domain: {source_name}"
+            )
+        elif not source_name and url:
+            try:
+                parsed = urlparse(url)
+                if parsed.netloc:
+                    source_name = parsed.netloc.lower().removeprefix("www.")
+                    logger.debug(
+                        f"Perigon article missing source.name, derived from URL: {source_name}"
+                    )
+            except Exception:
+                pass
 
         # Extract categories and map to NTRL
         categories = []
@@ -267,9 +303,12 @@ class PerigonFetcher(BaseFetcher):
             api_article_id=article.get("articleId"),
             categories=categories,
             entities=entities,
-            body_downloaded=bool(body),
-            extractor_used="perigon_api",
-            extraction_failure_reason=None if body else "no_content",
+            body_downloaded=bool(body) and not body_is_truncated,
+            extractor_used="perigon_api" if (body and not body_is_truncated) else None,
+            extraction_failure_reason=(
+                "truncated_content" if body_is_truncated
+                else (None if body else "no_content")
+            ),
             extraction_duration_ms=duration_ms,
         )
 

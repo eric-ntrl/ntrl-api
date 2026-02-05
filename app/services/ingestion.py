@@ -843,6 +843,40 @@ class IngestionService:
 
                 # Upload body to object storage
                 body = article.get('body', '')
+
+                # If body is missing or was flagged as truncated, try web scraping
+                needs_scraping = (
+                    not body
+                    or article.get('extraction_failure_reason') == 'truncated_content'
+                )
+                if needs_scraping and entry_url:
+                    logger.info(
+                        f"API article body {'truncated' if body else 'missing'}, "
+                        f"attempting web scraping: {entry_url}"
+                    )
+                    try:
+                        extraction_result = self._extract_article_body(entry_url)
+                        if extraction_result.success and extraction_result.body:
+                            if len(extraction_result.body) > len(body):
+                                body = extraction_result.body
+                                logger.info(
+                                    f"Web scraping successful for {entry_url}: "
+                                    f"{extraction_result.char_count} chars via "
+                                    f"{extraction_result.extractor_used}"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Web scraping returned shorter content than API for "
+                                    f"{entry_url} ({extraction_result.char_count} vs {len(body)} chars)"
+                                )
+                        else:
+                            logger.warning(
+                                f"Web scraping failed for {entry_url}: "
+                                f"{extraction_result.failure_reason}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Web scraping error for {entry_url}: {e}")
+
                 if body:
                     body = self._deduplicate_paragraphs(body)
 
