@@ -2086,7 +2086,7 @@ Do NOT add:
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
-Create a detail_brief: a calm, complete explanation of the story in 1-2 short paragraphs.
+Create a detail_brief: a calm, complete explanation of the story in 3-5 paragraphs.
 
 This is the CORE NTRL reading experience. The brief must:
 1. Inform without pushing
@@ -2135,8 +2135,10 @@ FORBIDDEN:
 - Speculating about uncertainties not mentioned in the original
 - Adding information about "long-term effects" or "implementation" not in source
 
-CRITICAL: If the original article is SHORT, your brief must also be SHORT.
-- A 3-paragraph original → 2-3 paragraph brief (NOT 4 paragraphs)
+CRITICAL: Scale with the original article length.
+- A 3-paragraph original → 2-3 paragraph brief
+- A 10-paragraph original → 4-5 paragraph brief
+- A 20+ paragraph original → 5 paragraph brief (cap)
 - Do NOT pad with general knowledge, assumed context, or speculation
 - If there's nothing to say about "uncertainty", don't add an uncertainty paragraph
 - The brief should be SMALLER than the original, not larger
@@ -2153,10 +2155,9 @@ EXPLICIT PROHIBITIONS - The following are NEVER acceptable in your narrative:
 FORMAT REQUIREMENTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-LENGTH: 1-2 short paragraphs maximum
-- Each paragraph should be 2-3 sentences
-- Prefer shorter paragraphs over longer ones
-- Total word count typically 80-120 words (shorter for short articles)
+LENGTH: 3-5 paragraphs
+- Each paragraph should be 2-4 sentences
+- Total word count typically 200-350 words (shorter for short articles, but never below 100 words for articles with substantial content)
 
 FORMAT: Plain prose only
 - NO section headers (no "What happened:", "Context:", etc.)
@@ -2176,10 +2177,19 @@ Your brief should flow naturally through these stages WITHOUT labeling them:
    - Lead with the core fact
    - Include essential context only if critical to understanding
 
-2. OUTCOME (Second paragraph, only if needed)
+2. DETAILS (Second paragraph)
+   - Key facts, evidence, data that support the lead
+   - Important statistics, figures, or specifics from the original
+
+3. CONTEXT (Third paragraph, if needed)
+   - Relevant background ONLY from the source article
+   - Do NOT add your own background knowledge
+   - Skip if the article provides no additional context
+
+4. OUTCOME (Final paragraph, if needed)
    - What is confirmed? What happens next?
    - Key official statements if newsworthy
-   - Skip this paragraph if the story is simple enough for one paragraph
+   - Skip if there's no clear outcome or next step stated in the source
 
 ═══════════════════════════════════════════════════════════════════════════════
 QUOTE RULES
@@ -2272,7 +2282,7 @@ OUTPUT
 ═══════════════════════════════════════════════════════════════════════════════
 
 Return ONLY the brief as plain text. No JSON. No markup. No labels.
-Just 1-2 paragraphs of neutral prose."""
+Just 3-5 paragraphs of neutral prose."""
 
 
 # -----------------------------------------------------------------------------
