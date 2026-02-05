@@ -100,16 +100,10 @@ FALSE_POSITIVE_PHRASES = {
 # Patterns that match false positives (case-insensitive partial matches)
 # Be SPECIFIC to avoid filtering legitimate manipulative language
 FALSE_POSITIVE_PATTERNS: list = [
-    # Legal/crime reporting — "suspicion of [any charge]"
-    "suspicion of ",
-    # Real estate specs — "[N]-bedroom" or "square-foot"
-    "-bedroom",
-    "square-foot",
-    # Financial facts with hedging qualifiers (not manipulative)
-    "just under $",
-    "nearly $",
-    "roughly $",
-    "approximately $",
+    # CAUTION: Patterns match ANYWHERE in span text, so they can filter
+    # legitimate manipulative spans. Only add patterns that are NEVER
+    # part of manipulative language.
+    # Prefer exact phrases in FALSE_POSITIVE_PHRASES over patterns.
 ]
 
 
