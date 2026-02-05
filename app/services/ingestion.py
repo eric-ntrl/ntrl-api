@@ -877,6 +877,15 @@ class IngestionService:
                     except Exception as e:
                         logger.warning(f"Web scraping error for {entry_url}: {e}")
 
+                # Check if body still has truncation markers after scraping fallback
+                from app.utils.content_sanitizer import has_truncation_markers, strip_truncation_markers
+                body_is_truncated = has_truncation_markers(body)
+                if body_is_truncated:
+                    body = strip_truncation_markers(body)
+                    logger.info(
+                        f"Body still truncated after scraping fallback for {entry_url}"
+                    )
+
                 if body:
                     body = self._deduplicate_paragraphs(body)
 
@@ -919,6 +928,8 @@ class IngestionService:
                     # Source tracking
                     source_type=source_type.value,
                     api_source_id=article.get('api_article_id'),
+                    # Content completeness
+                    body_is_truncated=body_is_truncated,
                     # S3 storage references
                     raw_content_uri=storage_meta['uri'] if storage_meta else None,
                     raw_content_hash=storage_meta['hash'] if storage_meta else None,

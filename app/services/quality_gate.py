@@ -131,7 +131,12 @@ class QualityGateService:
         self._register("required_feed_category", QCCategory.REQUIRED_FIELDS,
                         "Feed category is set and valid", self._check_required_feed_category)
 
+        self._register("source_name_not_generic", QCCategory.REQUIRED_FIELDS,
+                        "Source is a real publisher name", self._check_source_name_not_generic)
+
         # B. Content Quality
+        self._register("original_body_complete", QCCategory.CONTENT_QUALITY,
+                        "Original body is complete (not truncated)", self._check_original_body_complete)
         self._register("min_body_length", QCCategory.CONTENT_QUALITY,
                         "Neutralized content meets minimum length", self._check_min_body_length)
         self._register("feed_title_bounds", QCCategory.CONTENT_QUALITY,
@@ -412,6 +417,55 @@ class QualityGateService:
         return QCCheckResult(
             check="required_feed_category", passed=True,
             category=QCCategory.REQUIRED_FIELDS.value,
+        )
+
+    # Generic API source names that indicate missing publisher data
+    GENERIC_SOURCE_NAMES = {"Perigon News API", "NewsData.io"}
+
+    @staticmethod
+    def _check_source_name_not_generic(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: Optional[models.Source],
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Source name must be a real publisher, not a generic API name."""
+        if source and source.name and source.name.strip() in QualityGateService.GENERIC_SOURCE_NAMES:
+            return QCCheckResult(
+                check="source_name_not_generic", passed=False,
+                category=QCCategory.REQUIRED_FIELDS.value,
+                reason=f"Generic API source name: '{source.name}'",
+                details={"source_slug": source.slug},
+            )
+        return QCCheckResult(
+            check="source_name_not_generic", passed=True,
+            category=QCCategory.REQUIRED_FIELDS.value,
+        )
+
+    @staticmethod
+    def _check_original_body_complete(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: Optional[models.Source],
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Original body must be available and not truncated."""
+        if not raw.raw_content_available:
+            return QCCheckResult(
+                check="original_body_complete", passed=False,
+                category=QCCategory.CONTENT_QUALITY.value,
+                reason="Original body not available in storage",
+            )
+        if getattr(raw, 'body_is_truncated', False):
+            return QCCheckResult(
+                check="original_body_complete", passed=False,
+                category=QCCategory.CONTENT_QUALITY.value,
+                reason="Original body was truncated by source API",
+                details={"source_type": raw.source_type},
+            )
+        return QCCheckResult(
+            check="original_body_complete", passed=True,
+            category=QCCategory.CONTENT_QUALITY.value,
         )
 
     @staticmethod

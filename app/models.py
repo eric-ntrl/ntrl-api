@@ -330,6 +330,9 @@ class StoryRaw(Base):
     source_type = Column(String(32), nullable=False, server_default="rss")  # SourceType enum
     api_source_id = Column(String(255), nullable=True)  # External article ID from API
 
+    # Content completeness flag (True when API truncated body and scraping failed)
+    body_is_truncated = Column(Boolean, default=False, server_default="false", nullable=False)
+
     # Relationships
     source = relationship("Source", back_populates="stories")
     neutralized = relationship("StoryNeutralized", back_populates="story_raw",

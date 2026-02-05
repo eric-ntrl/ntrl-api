@@ -3,7 +3,7 @@
 Unit tests for the Quality Control gate service.
 
 Covers:
-- Each of the 13 individual QC checks (pass and fail cases)
+- Each of the 15 individual QC checks (pass and fail cases)
 - Aggregate check_article() behavior
 - QC configuration overrides
 - Edge cases (empty fields, boundary values, garbled output detection)
@@ -45,6 +45,9 @@ def _make_story_raw(
     feed_category="world",
     is_duplicate=False,
     original_url="https://example.com/article",
+    raw_content_available=True,
+    body_is_truncated=False,
+    source_type="rss",
 ) -> MagicMock:
     """Create a mock StoryRaw object."""
     raw = MagicMock()
@@ -56,6 +59,9 @@ def _make_story_raw(
     raw.duplicate_of_id = None
     raw.original_url = original_url
     raw.original_title = "Test Article Title"
+    raw.raw_content_available = raw_content_available
+    raw.body_is_truncated = body_is_truncated
+    raw.source_type = source_type
     return raw
 
 
@@ -269,9 +275,65 @@ class TestRequiredFeedCategory:
             assert result.passed is True, f"Category {cat.value} should pass"
 
 
+class TestSourceNameNotGeneric:
+    def test_pass_real_publisher(self):
+        source = _make_source(name="AP News", slug="ap")
+        result = _service()._check_source_name_not_generic(
+            _make_story_raw(), _make_neutralized(), source, QCConfig()
+        )
+        assert result.passed is True
+
+    def test_fail_perigon_api(self):
+        source = _make_source(name="Perigon News API", slug="perigon-news-api")
+        result = _service()._check_source_name_not_generic(
+            _make_story_raw(), _make_neutralized(), source, QCConfig()
+        )
+        assert result.passed is False
+        assert "Generic API source name" in result.reason
+
+    def test_fail_newsdata(self):
+        source = _make_source(name="NewsData.io", slug="newsdata-io")
+        result = _service()._check_source_name_not_generic(
+            _make_story_raw(), _make_neutralized(), source, QCConfig()
+        )
+        assert result.passed is False
+
+    def test_pass_no_source(self):
+        """None source should pass (required_source check catches this)."""
+        result = _service()._check_source_name_not_generic(
+            _make_story_raw(), _make_neutralized(), None, QCConfig()
+        )
+        assert result.passed is True
+
+
 # ---------------------------------------------------------------------------
 # B. Content Quality checks
 # ---------------------------------------------------------------------------
+
+class TestOriginalBodyComplete:
+    def test_pass_normal_article(self):
+        raw = _make_story_raw(raw_content_available=True, body_is_truncated=False)
+        result = _service()._check_original_body_complete(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_fail_truncated(self):
+        raw = _make_story_raw(raw_content_available=True, body_is_truncated=True, source_type="perigon")
+        result = _service()._check_original_body_complete(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "truncated" in result.reason
+
+    def test_fail_unavailable(self):
+        raw = _make_story_raw(raw_content_available=False)
+        result = _service()._check_original_body_complete(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "not available" in result.reason
+
 
 class TestMinBodyLength:
     def test_pass_both_above_min(self):
@@ -596,7 +658,7 @@ class TestCheckArticle:
         )
         assert result.status == QCStatus.PASSED
         assert len(result.failures) == 0
-        assert len(result.checks) == 13  # All 13 checks ran
+        assert len(result.checks) == 15  # All 15 checks ran
 
     def test_single_failure(self):
         """An article with one failing check should fail overall."""

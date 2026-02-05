@@ -374,6 +374,33 @@ class TestPerigonTruncationDetection:
         assert result["body"] == "Some text that ends...[1811 symbols]"
 
 
+class TestPerigonMarkerPreservation:
+    """Verify that Perigon fetcher preserves truncation markers in the body.
+
+    Stripping is the ingestion layer's responsibility, not the fetcher's.
+    The fetcher should pass the raw body through so ingestion can detect
+    and flag truncation.
+    """
+
+    @pytest.fixture
+    def fetcher(self):
+        return PerigonFetcher(api_key="test-api-key")
+
+    def test_truncated_body_preserved_in_output(self, fetcher):
+        """Fetcher should NOT strip markers — ingestion handles that."""
+        article = {
+            "url": "https://example.com/article",
+            "title": "Test Article",
+            "content": "Some text that ends...[1811 symbols]",
+            "pubDate": "2024-01-15T12:00:00Z",
+            "source": {"name": "Example News", "domain": "example.com"},
+        }
+        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        assert result is not None
+        # Markers should be preserved in the body
+        assert "...[1811 symbols]" in result["body"]
+
+
 class TestPerigonCategoryMapping:
     """Tests for Perigon category to NTRL mapping."""
 

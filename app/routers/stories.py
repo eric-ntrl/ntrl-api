@@ -355,6 +355,9 @@ def get_story_transparency(
 
     # Retrieve body from object storage
     original_body = _get_body_from_storage(story_raw)
+    if original_body:
+        from app.utils.content_sanitizer import strip_truncation_markers
+        original_body = strip_truncation_markers(original_body)
 
     result = StoryTransparency(
         id=str(neutralized.id),
