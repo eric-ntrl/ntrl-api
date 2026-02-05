@@ -914,7 +914,7 @@ Evaluate the span detection quality (precision and recall)."""
         ]
         if low_neutralization_scores:
             recommendations.append({
-                "prompt_name": "neutralization_system_prompt",
+                "prompt_name": "article_system_prompt",
                 "issue_category": "neutralization",
                 "issue_description": f"{len(low_neutralization_scores)} articles scored below 7.0",
                 "suggested_change": neutralization_suggestions[0] if neutralization_suggestions else "Review neutralization rules",
@@ -931,7 +931,7 @@ Evaluate the span detection quality (precision and recall)."""
             ]
             if below_target:
                 recommendations.append({
-                    "prompt_name": "neutralization_system_prompt",
+                    "prompt_name": "article_system_prompt",
                     "issue_category": "continuous_improvement",
                     "issue_description": f"Neutralization avg {avg_neutralization:.1f}/10, targeting 8.0+/10",
                     "suggested_change": neutralization_suggestions[0] if neutralization_suggestions else "Refine neutralization rules for edge cases",

@@ -59,6 +59,25 @@ FALSE_POSITIVE_PHRASES = {
     "public relations", "media relations", "investor relations",
     "communications director", "crisis communications",
     "pr firm", "pr agency", "publicist",
+
+    # Legal and epistemic language (factual, not manipulative)
+    "allegedly struck", "faces further charges", "faces charges",
+    "further charges", "found guilty", "pleaded guilty",
+    "sentenced to", "charged with", "convicted of",
+
+    # Technical and factual terms
+    "emergency inspection", "emergency services", "emergency response",
+    "emergency department", "emergency room",
+    "higher prolonged borrowing costs", "borrowing costs",
+
+    # Factual comparisons and descriptors
+    "even bigger", "even larger", "even smaller",
+    "the dominant story", "dominant position",
+    "wide-reaching consequences", "far-reaching consequences",
+    "striking the right balance",
+
+    # Product and feature descriptions (factual)
+    "quickly sync", "not unlike",
 }
 
 # Patterns that match false positives (case-insensitive partial matches)

@@ -56,6 +56,10 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         description="OpenAI model to use for neutralization",
     )
+    DETAIL_FULL_MODEL: str = Field(
+        default="",
+        description="Override model for detail_full neutralization (e.g., gpt-4o). Empty = use OPENAI_MODEL.",
+    )
     SPAN_DETECTION_MODEL: str = Field(
         default="gpt-4o",
         description="OpenAI model for span detection (can be different from neutralization model)",
@@ -85,7 +89,7 @@ class Settings(BaseSettings):
         description="Overlap between chunks in characters",
     )
     HIGH_RECALL_MODEL: str = Field(
-        default="claude-3-5-haiku-latest",
+        default="claude-haiku-4-5",
         description="Model for high-recall first pass (Anthropic)",
     )
     ADVERSARIAL_MODEL: str = Field(

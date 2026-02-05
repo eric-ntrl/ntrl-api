@@ -421,7 +421,7 @@ class TestMultiPassDetection:
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY")
         self.openai_model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-        self.anthropic_model = os.environ.get("HIGH_RECALL_MODEL", "claude-3-5-haiku-latest")
+        self.anthropic_model = os.environ.get("HIGH_RECALL_MODEL", "claude-haiku-4-5")
 
     @pytest.mark.llm
     def test_multi_pass_finds_more_than_single_pass(self):

@@ -36,7 +36,7 @@ ROLLBACK_TRIGGERS = {
 TRIGGER_TO_PROMPT = {
     "overall_score_drop": None,  # Roll back all changed prompts
     "classification_accuracy_drop": "classification_system_prompt",
-    "neutralization_score_drop": "neutralization_system_prompt",
+    "neutralization_score_drop": "article_system_prompt",
     "span_precision_drop": "span_detection_prompt",
     "span_recall_drop": "span_detection_prompt",
 }

@@ -3390,7 +3390,7 @@ IMPORTANT - Use ONLY these 7 reason values:
 def detect_spans_high_recall_anthropic(
     body: str,
     api_key: str,
-    model: str = "claude-3-5-haiku-latest"
+    model: str = "claude-haiku-4-5"
 ) -> List[TransparencySpan]:
     """
     High-recall span detection using Claude Haiku with aggressive prompting.
@@ -3401,7 +3401,7 @@ def detect_spans_high_recall_anthropic(
     Args:
         body: Original article body text
         api_key: Anthropic API key
-        model: Model name (default claude-3-5-haiku-latest for speed/cost)
+        model: Model name (default claude-haiku-4-5 for speed/cost)
 
     Returns:
         List of TransparencySpan (may include false positives)
@@ -3630,7 +3630,7 @@ async def detect_spans_multi_pass_async(
     openai_api_key: str,
     anthropic_api_key: str,
     openai_model: str = "gpt-4o-mini",
-    anthropic_model: str = "claude-3-5-haiku-latest",
+    anthropic_model: str = "claude-haiku-4-5",
     chunk_size: int = 3000,
     overlap_size: int = 500,
 ) -> List[TransparencySpan]:
@@ -3768,7 +3768,7 @@ def detect_spans_multi_pass(
     openai_api_key: str,
     anthropic_api_key: str,
     openai_model: str = "gpt-4o-mini",
-    anthropic_model: str = "claude-3-5-haiku-latest",
+    anthropic_model: str = "claude-haiku-4-5",
     chunk_size: int = 3000,
     overlap_size: int = 500,
 ) -> List[TransparencySpan]:
@@ -3812,7 +3812,7 @@ def detect_spans_with_mode(
     anthropic_api_key: str = None,
     gemini_api_key: str = None,
     openai_model: str = "gpt-4o-mini",
-    anthropic_model: str = "claude-3-5-haiku-latest",
+    anthropic_model: str = "claude-haiku-4-5",
     title: str = None,
 ) -> List[TransparencySpan]:
     """
@@ -4766,8 +4766,12 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             system_prompt = get_article_system_prompt()
             user_prompt = build_synthesis_detail_full_prompt(body)
 
+            # Allow model override for detail_full (e.g., gpt-4o for better quality)
+            from app.config import get_settings
+            detail_full_model = get_settings().DETAIL_FULL_MODEL or self._model
+
             response = client.chat.completions.create(
-                model=self._model,
+                model=detail_full_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
@@ -5305,7 +5309,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
     """Anthropic Claude-based neutralizer (Claude 3.5 Haiku, Sonnet, etc.)."""
 
     MODELS = {
-        "claude-3-5-haiku": "claude-3-5-haiku-latest",
+        "claude-3-5-haiku": "claude-haiku-4-5",
         "claude-3-5-sonnet": "claude-3-5-sonnet-latest",
         "claude-3-haiku": "claude-3-haiku-20240307",
     }

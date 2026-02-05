@@ -300,7 +300,7 @@ class PromptOptimizer:
         # Thresholds above which we skip optimization
         skip_thresholds = {
             "classification_system_prompt": ("classification_accuracy", 1.0),
-            "neutralization_system_prompt": ("avg_neutralization_score", 9.5),
+            "article_system_prompt": ("avg_neutralization_score", 9.5),
             "span_detection_prompt": None,  # Check both precision and recall
         }
 
