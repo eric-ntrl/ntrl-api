@@ -14,7 +14,7 @@ import re
 from typing import Optional
 
 # Matches Perigon-style truncation markers: "...[1811 symbols]", "...[234 chars]", etc.
-TRUNCATION_PATTERN = re.compile(r'\.\.\.\[\d+\s*(?:symbols?|chars?|characters?)\]')
+TRUNCATION_PATTERN = re.compile(r'\.\.\.\s*\[\d+\s*(?:symbols?|chars?|characters?)\]')
 
 
 def has_truncation_markers(body: Optional[str]) -> bool:

@@ -96,6 +96,7 @@ class QCConfig:
     min_feed_summary_chars: int = QualityGateDefaults.MIN_FEED_SUMMARY_CHARS
     future_publish_buffer_hours: int = QualityGateDefaults.FUTURE_PUBLISH_BUFFER_HOURS
     repeated_word_run_threshold: int = QualityGateDefaults.REPEATED_WORD_RUN_THRESHOLD
+    min_original_body_chars: int = QualityGateDefaults.MIN_ORIGINAL_BODY_CHARS
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +138,8 @@ class QualityGateService:
         # B. Content Quality
         self._register("original_body_complete", QCCategory.CONTENT_QUALITY,
                         "Original body is complete (not truncated)", self._check_original_body_complete)
+        self._register("original_body_sufficient", QCCategory.CONTENT_QUALITY,
+                        "Original body has sufficient content (not a snippet)", self._check_original_body_sufficient)
         self._register("min_body_length", QCCategory.CONTENT_QUALITY,
                         "Neutralized content meets minimum length", self._check_min_body_length)
         self._register("feed_title_bounds", QCCategory.CONTENT_QUALITY,
@@ -145,6 +148,8 @@ class QualityGateService:
                         "Feed summary is within length bounds", self._check_feed_summary_bounds)
         self._register("no_garbled_output", QCCategory.CONTENT_QUALITY,
                         "No garbled LLM output detected", self._check_no_garbled_output)
+        self._register("no_llm_refusal", QCCategory.CONTENT_QUALITY,
+                        "No LLM refusal/apology messages in content", self._check_no_llm_refusal)
 
         # C. Pipeline Integrity
         self._register("neutralization_success", QCCategory.PIPELINE_INTEGRITY,
@@ -422,6 +427,19 @@ class QualityGateService:
     # Generic API source names that indicate missing publisher data
     GENERIC_SOURCE_NAMES = {"Perigon News API", "NewsData.io"}
 
+    # Patterns indicating LLM refusal/apology instead of real content.
+    # Anchored to start of text to avoid false positives from articles quoting AI.
+    LLM_REFUSAL_PATTERNS = [
+        re.compile(r"^\s*I'?m sorry[,.]?\s+(?:but\s+)?I\s+(?:can'?t|cannot|am unable to)", re.IGNORECASE),
+        re.compile(r"^\s*I apologize[,.]?\s+(?:but\s+)?I\s+(?:can'?t|cannot|am unable to)", re.IGNORECASE),
+        re.compile(r"^\s*I'?m unable to\s+(?:provide|process|neutralize|summarize|create|generate)", re.IGNORECASE),
+        re.compile(r"^\s*I (?:can'?t|cannot) (?:provide|process|neutralize|summarize|create|generate)", re.IGNORECASE),
+        re.compile(r"^\s*As an AI(?:\s+language model)?[,.]?\s+I", re.IGNORECASE),
+        re.compile(r"^\s*I don'?t have (?:access to|enough information)", re.IGNORECASE),
+        re.compile(r"^\s*Unfortunately[,.]?\s+I\s+(?:can'?t|cannot|am unable to)", re.IGNORECASE),
+        re.compile(r"^\s*The (?:article|text|content) (?:provided |you (?:provided|shared) )?(?:is|appears to be|seems)\s+(?:too short|incomplete|not available|empty|insufficient)", re.IGNORECASE),
+    ]
+
     @staticmethod
     def _check_source_name_not_generic(
         raw: models.StoryRaw,
@@ -469,6 +487,47 @@ class QualityGateService:
         )
 
     @staticmethod
+    def _check_original_body_sufficient(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: Optional[models.Source],
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Detect paywalled/snippet sources where the raw body is too short."""
+        if not raw.raw_content_available:
+            return QCCheckResult(
+                check="original_body_sufficient", passed=True,
+                category=QCCategory.CONTENT_QUALITY.value,
+            )
+
+        body_size = getattr(raw, 'raw_content_size', None)
+        if body_size is None:
+            return QCCheckResult(
+                check="original_body_sufficient", passed=True,
+                category=QCCategory.CONTENT_QUALITY.value,
+            )
+
+        min_size = config.min_original_body_chars
+        if body_size < min_size:
+            return QCCheckResult(
+                check="original_body_sufficient", passed=False,
+                category=QCCategory.CONTENT_QUALITY.value,
+                reason=(
+                    f"Original body is {body_size} bytes (min {min_size}), "
+                    f"likely a paywall snippet"
+                ),
+                details={
+                    "raw_content_size": body_size,
+                    "min_required": min_size,
+                    "source_type": raw.source_type,
+                },
+            )
+        return QCCheckResult(
+            check="original_body_sufficient", passed=True,
+            category=QCCategory.CONTENT_QUALITY.value,
+        )
+
+    @staticmethod
     def _check_min_body_length(
         raw: models.StoryRaw,
         neutralized: models.StoryNeutralized,
@@ -483,15 +542,27 @@ class QualityGateService:
         brief_ok = brief_words >= config.min_detail_brief_words
         full_ok = full_words >= config.min_detail_full_words
 
-        if not brief_ok and not full_ok:
+        issues = []
+        if not brief_ok:
+            issues.append(
+                f"detail_brief has {brief_words} words (min {config.min_detail_brief_words})"
+            )
+        if not full_ok:
+            issues.append(
+                f"detail_full has {full_words} words (min {config.min_detail_full_words})"
+            )
+
+        if issues:
             return QCCheckResult(
                 check="min_body_length", passed=False,
                 category=QCCategory.CONTENT_QUALITY.value,
-                reason=(
-                    f"detail_brief has {brief_words} words (min {config.min_detail_brief_words}), "
-                    f"detail_full has {full_words} words (min {config.min_detail_full_words})"
-                ),
-                details={"brief_words": brief_words, "full_words": full_words},
+                reason="; ".join(issues),
+                details={
+                    "brief_words": brief_words,
+                    "full_words": full_words,
+                    "brief_ok": brief_ok,
+                    "full_ok": full_ok,
+                },
             )
         return QCCheckResult(
             check="min_body_length", passed=True,
@@ -601,6 +672,43 @@ class QualityGateService:
             )
         return QCCheckResult(
             check="no_garbled_output", passed=True,
+            category=QCCategory.CONTENT_QUALITY.value,
+        )
+
+    @staticmethod
+    def _check_no_llm_refusal(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: Optional[models.Source],
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Detect LLM refusal/apology messages in content fields."""
+        fields_to_check = [
+            ("feed_title", neutralized.feed_title),
+            ("feed_summary", neutralized.feed_summary),
+            ("detail_brief", neutralized.detail_brief),
+            ("detail_full", neutralized.detail_full),
+        ]
+        issues = []
+
+        for field_name, text in fields_to_check:
+            if not text or not text.strip():
+                continue
+            for pattern in QualityGateService.LLM_REFUSAL_PATTERNS:
+                if pattern.search(text):
+                    preview = text[:120].replace("\n", " ")
+                    issues.append(f"{field_name} contains LLM refusal: '{preview}...'")
+                    break
+
+        if issues:
+            return QCCheckResult(
+                check="no_llm_refusal", passed=False,
+                category=QCCategory.CONTENT_QUALITY.value,
+                reason="; ".join(issues),
+                details={"issues": issues},
+            )
+        return QCCheckResult(
+            check="no_llm_refusal", passed=True,
             category=QCCategory.CONTENT_QUALITY.value,
         )
 

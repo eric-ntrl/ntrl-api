@@ -100,6 +100,9 @@ class QualityGateDefaults:
     # Garbled output detection
     REPEATED_WORD_RUN_THRESHOLD = 3     # Flag if same word appears N+ times consecutively
 
+    # Minimum original body size (bytes/chars) to ensure content is not a snippet
+    MIN_ORIGINAL_BODY_CHARS = 500       # ~80-100 words; below this is almost certainly a paywall snippet
+
 
 class CacheConfig:
     """Cache TTL and size constants."""

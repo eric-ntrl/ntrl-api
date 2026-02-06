@@ -3,10 +3,12 @@
 Unit tests for the Quality Control gate service.
 
 Covers:
-- Each of the 15 individual QC checks (pass and fail cases)
+- Each of the 17 individual QC checks (pass and fail cases)
 - Aggregate check_article() behavior
 - QC configuration overrides
 - Edge cases (empty fields, boundary values, garbled output detection)
+- LLM refusal/apology detection
+- Original body size sufficiency
 """
 
 import uuid
@@ -48,6 +50,7 @@ def _make_story_raw(
     raw_content_available=True,
     body_is_truncated=False,
     source_type="rss",
+    raw_content_size=5000,
 ) -> MagicMock:
     """Create a mock StoryRaw object."""
     raw = MagicMock()
@@ -62,6 +65,7 @@ def _make_story_raw(
     raw.raw_content_available = raw_content_available
     raw.body_is_truncated = body_is_truncated
     raw.source_type = source_type
+    raw.raw_content_size = raw_content_size
     return raw
 
 
@@ -346,8 +350,8 @@ class TestMinBodyLength:
         )
         assert result.passed is True
 
-    def test_pass_brief_only(self):
-        """If only detail_brief meets threshold, should pass."""
+    def test_fail_brief_only(self):
+        """If only detail_brief meets threshold, should fail (both required)."""
         n = _make_neutralized(
             detail_brief="word " * 55,  # 55 words >= 50
             detail_full="short",       # 1 word < 100
@@ -355,10 +359,11 @@ class TestMinBodyLength:
         result = _service()._check_min_body_length(
             _make_story_raw(), n, _make_source(), QCConfig()
         )
-        assert result.passed is True
+        assert result.passed is False
+        assert "detail_full" in result.reason
 
-    def test_pass_full_only(self):
-        """If only detail_full meets threshold, should pass."""
+    def test_fail_full_only(self):
+        """If only detail_full meets threshold, should fail (both required)."""
         n = _make_neutralized(
             detail_brief="short",        # 1 word < 50
             detail_full="word " * 110,   # 110 words >= 100
@@ -366,7 +371,8 @@ class TestMinBodyLength:
         result = _service()._check_min_body_length(
             _make_story_raw(), n, _make_source(), QCConfig()
         )
-        assert result.passed is True
+        assert result.passed is False
+        assert "detail_brief" in result.reason
 
     def test_fail_both_below_min(self):
         n = _make_neutralized(
@@ -386,7 +392,18 @@ class TestMinBodyLength:
         )
         assert result.passed is False
 
-    def test_custom_thresholds(self):
+    def test_custom_thresholds_both_pass(self):
+        config = QCConfig(min_detail_brief_words=10, min_detail_full_words=20)
+        n = _make_neutralized(
+            detail_brief="word " * 12,
+            detail_full="word " * 25,
+        )
+        result = _service(config)._check_min_body_length(
+            _make_story_raw(), n, _make_source(), config
+        )
+        assert result.passed is True
+
+    def test_custom_thresholds_full_fails(self):
         config = QCConfig(min_detail_brief_words=10, min_detail_full_words=20)
         n = _make_neutralized(
             detail_brief="word " * 12,
@@ -395,7 +412,8 @@ class TestMinBodyLength:
         result = _service(config)._check_min_body_length(
             _make_story_raw(), n, _make_source(), config
         )
-        assert result.passed is True
+        assert result.passed is False
+        assert "detail_full" in result.reason
 
 
 class TestFeedTitleBounds:
@@ -518,6 +536,146 @@ class TestNoGarbledOutput:
             _make_story_raw(), n, _make_source(), QCConfig()
         )
         assert result.passed is True
+
+
+class TestNoLlmRefusal:
+    def test_pass_clean(self):
+        n = _make_neutralized()
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_fail_sorry_in_detail_full(self):
+        n = _make_neutralized(
+            detail_full="I'm sorry, but I can't process this article because the content is incomplete."
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "detail_full" in result.reason
+
+    def test_fail_apologize_in_brief(self):
+        n = _make_neutralized(
+            detail_brief="I apologize, but I cannot provide a neutralized version of this article."
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+
+    def test_fail_as_an_ai(self):
+        n = _make_neutralized(
+            detail_full="As an AI language model, I cannot determine the factual content of this article."
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+
+    def test_fail_unable_to(self):
+        n = _make_neutralized(
+            detail_full="I'm unable to summarize this article as it appears to be behind a paywall."
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+
+    def test_fail_unfortunately(self):
+        n = _make_neutralized(
+            detail_full="Unfortunately, I can't provide a neutralized version because the source content is missing."
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+
+    def test_fail_article_too_short(self):
+        n = _make_neutralized(
+            detail_full="The article provided is too short to produce a meaningful neutralization."
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+
+    def test_fail_i_cannot(self):
+        n = _make_neutralized(
+            detail_full="I cannot provide a rewritten version of this article."
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+
+    def test_pass_none_fields(self):
+        n = _make_neutralized(detail_brief=None, detail_full=None)
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_pass_article_about_ai(self):
+        """An article that discusses AI apologies mid-text should NOT be flagged."""
+        n = _make_neutralized(
+            detail_full=(
+                "The chatbot responded with 'I'm sorry, but I can't help with that' "
+                "when asked about medical advice. This has raised concerns about AI limitations."
+            )
+        )
+        result = _service()._check_no_llm_refusal(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+
+class TestOriginalBodySufficient:
+    def test_pass_normal_article(self):
+        raw = _make_story_raw(raw_content_size=5000)
+        result = _service()._check_original_body_sufficient(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_fail_snippet(self):
+        raw = _make_story_raw(raw_content_size=200)
+        result = _service()._check_original_body_sufficient(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "snippet" in result.reason
+
+    def test_pass_no_size_metadata(self):
+        """If raw_content_size is None, pass optimistically."""
+        raw = _make_story_raw(raw_content_size=None)
+        result = _service()._check_original_body_sufficient(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_pass_content_unavailable(self):
+        """If body isn't available, let original_body_complete handle it."""
+        raw = _make_story_raw(raw_content_available=False, raw_content_size=100)
+        result = _service()._check_original_body_sufficient(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_boundary_at_threshold(self):
+        raw = _make_story_raw(raw_content_size=500)
+        result = _service()._check_original_body_sufficient(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is True  # >= threshold passes
+
+    def test_boundary_below_threshold(self):
+        raw = _make_story_raw(raw_content_size=499)
+        result = _service()._check_original_body_sufficient(
+            raw, _make_neutralized(), _make_source(), QCConfig()
+        )
+        assert result.passed is False
 
 
 # ---------------------------------------------------------------------------
@@ -658,7 +816,7 @@ class TestCheckArticle:
         )
         assert result.status == QCStatus.PASSED
         assert len(result.failures) == 0
-        assert len(result.checks) == 15  # All 15 checks ran
+        assert len(result.checks) == 17  # All 17 checks ran
 
     def test_single_failure(self):
         """An article with one failing check should fail overall."""
@@ -738,6 +896,7 @@ class TestQCConfig:
         assert config.max_feed_summary_chars == 300
         assert config.future_publish_buffer_hours == 1
         assert config.repeated_word_run_threshold == 3
+        assert config.min_original_body_chars == 500
 
     def test_custom_values(self):
         config = QCConfig(

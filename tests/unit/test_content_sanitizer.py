@@ -52,6 +52,13 @@ class TestHasTruncationMarkers:
     def test_detects_marker_with_extra_whitespace(self):
         assert has_truncation_markers("Text...[1811  symbols]") is True
 
+    def test_detects_space_before_bracket(self):
+        """Space between ... and [ should match (Perigon variant)."""
+        assert has_truncation_markers("Article text... [358 symbols]") is True
+
+    def test_detects_multiple_spaces_before_bracket(self):
+        assert has_truncation_markers("Article text...  [358 symbols]") is True
+
     def test_false_for_similar_but_different_pattern(self):
         """Brackets without dots should not match."""
         assert has_truncation_markers("Article text [1811 symbols]") is False
@@ -94,6 +101,14 @@ class TestStripTruncationMarkers:
         body = "Start of article...[1811 symbols] rest continues here."
         result = strip_truncation_markers(body)
         assert result == "Start of article rest continues here."
+
+    def test_strips_space_variant(self):
+        result = strip_truncation_markers("Article text... [358 symbols]")
+        assert result == "Article text"
+
+    def test_strips_multiple_space_variant(self):
+        result = strip_truncation_markers("Article text...  [358 symbols]")
+        assert result == "Article text"
 
     def test_strips_and_rstrips_trailing_whitespace(self):
         body = "Article text...[1811 symbols]   "
