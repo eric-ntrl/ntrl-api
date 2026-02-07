@@ -270,7 +270,7 @@ class EvaluationService:
         self,
         db: Session,
         pipeline_run_id: str,
-        sample_size: int = 30,
+        sample_size: int = 50,
     ) -> EvaluationResult:
         """
         Run a complete evaluation for a pipeline run.

@@ -7,6 +7,7 @@ filtering spans inside quoted speech, and removing false positives.
 """
 
 import logging
+import re
 
 from app.models import SpanAction, SpanReason
 
@@ -141,13 +142,18 @@ FALSE_POSITIVE_PHRASES = {
     "make a transition",
 }
 
-# Patterns that match false positives (case-insensitive partial matches)
-# Be SPECIFIC to avoid filtering legitimate manipulative language
-FALSE_POSITIVE_PATTERNS: list = [
-    # CAUTION: Patterns match ANYWHERE in span text, so they can filter
-    # legitimate manipulative spans. Only add patterns that are NEVER
-    # part of manipulative language.
-    # Prefer exact phrases in FALSE_POSITIVE_PHRASES over patterns.
+# Regex patterns that match false positives (case-insensitive)
+# These use re.search against the span text, so word boundaries (\b) are important.
+# Only add patterns for phrases that are NEVER manipulative in news context.
+FALSE_POSITIVE_PATTERNS: list[re.Pattern] = [
+    # Attribution verbs — neutral reporting language
+    re.compile(r"^(said|stated|noted|reported|remarked|explained|described|added|wrote|told)$", re.IGNORECASE),
+    # Factual superlatives in data/comparison context
+    re.compile(r"^(highest|lowest|largest|smallest|most|least)\s+(in|since|of|among|on)\b", re.IGNORECASE),
+    # Legal/epistemic verbs that are factual in crime reporting
+    re.compile(r"^(alleged|allegedly|suspected|reportedly)\b", re.IGNORECASE),
+    # Standard temporal/metadata phrases
+    re.compile(r"^(updated|published|posted)\s+(on|at)\b", re.IGNORECASE),
 ]
 
 
@@ -377,10 +383,10 @@ def filter_false_positives(spans: list) -> list:
             removed_texts.append(span.original_text)
             continue
 
-        # Check pattern matches
+        # Check regex pattern matches
         is_false_positive = False
         for pattern in FALSE_POSITIVE_PATTERNS:
-            if pattern in text_lower:
+            if pattern.search(text_lower):
                 is_false_positive = True
                 removed_texts.append(span.original_text)
                 break

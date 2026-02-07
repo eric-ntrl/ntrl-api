@@ -1119,18 +1119,21 @@ The user message contains all rules, examples, and calibration guidance.
 Balance PRECISION with RECALL - flag manipulative language while avoiding false positives."""
 
 # High-recall system prompt for first pass (Claude Haiku)
-HIGH_RECALL_SYSTEM_PROMPT = """You are detecting ALL manipulative language in news articles.
+HIGH_RECALL_SYSTEM_PROMPT = """You are detecting manipulative language in news articles.
 
-CRITICAL: When in doubt, FLAG IT. It's better to flag something borderline than to miss genuine manipulation.
-Follow the detailed instructions in the user message for categories and examples.
-Prioritize RECALL over PRECISION - catch everything, filtering happens later."""
+Flag language that attempts to influence the reader rather than inform. Be thorough but precise:
+- DO flag editorial voice, loaded verbs, amplifiers, emotional triggers, and sensational language
+- DO NOT flag standard journalism: attribution verbs, factual descriptions, direct quotes, or technical terms
+Follow the detailed instructions in the user message for categories and examples."""
 
-# Adversarial system prompt for second pass (finds what was missed)
-ADVERSARIAL_SYSTEM_PROMPT = """You are a second-pass reviewer finding manipulative phrases that were MISSED by the first analysis.
+# Adversarial system prompt for second pass (validates + finds missed)
+ADVERSARIAL_SYSTEM_PROMPT = """You are a precision-focused second-pass reviewer of manipulative language detection.
 
-Your job is to identify manipulation that slipped through the initial detection.
-Look for subtle patterns, context-dependent manipulation, and phrases that seem neutral but carry bias.
-Be thorough - your role is to catch what others missed."""
+You have two roles:
+1. VALIDATE first-pass detections — remove false positives (neutral journalism flagged incorrectly)
+2. FIND phrases the first pass missed — catch subtle manipulation that slipped through
+
+Prioritize PRECISION: only keep/add phrases that are genuinely manipulative, not standard journalism."""
 
 DEFAULT_SPAN_DETECTION_PROMPT = """You are a precision-focused media analyst. Your job is to identify manipulative language in news articles while balancing precision with recall.
 
@@ -3425,12 +3428,17 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> list[
 # High-Recall Detection (Phase 2 - Claude Haiku)
 # -----------------------------------------------------------------------------
 
-# High-recall user prompt (aggressive detection)
-HIGH_RECALL_USER_PROMPT = """You are detecting ALL manipulative language. When in doubt, FLAG IT.
+# High-recall user prompt (calibrated detection — catch real manipulation, skip standard journalism)
+HIGH_RECALL_USER_PROMPT = """Your job is to identify manipulative language in this news article — phrases that attempt to influence the reader rather than inform.
 
-Your job is to find EVERY SINGLE manipulative phrase. It's better to flag something borderline than to miss genuine manipulation.
+DO NOT flag:
+- Standard attribution verbs used neutrally: said, stated, noted, reported, explained, described, added, wrote, according to
+- Factual descriptions of events, even if dramatic (e.g., "the building collapsed", "three people died")
+- Phrases inside direct quotes (the speaker's language, not the article's editorial voice)
+- Technical, legal, medical, or domain-specific terminology
+- Common journalism phrasing: "breaking news", "developing story", "sources say"
 
-Focus especially on:
+DO flag these categories:
 - Editorial voice: "we're glad", "naturally", "of course", "as it should", "key" (when emphasizing)
 - Subtle urgency: "careens toward", "scrambling", "racing against", "escape hatch"
 - Sports/entertainment hype in news context
@@ -3439,8 +3447,6 @@ Focus especially on:
 - Emotional states: "ecstatic", "outraged", "furious", "seething", "gutted", "devastated"
 - Tabloid vocabulary: "A-list", "celeb", "mogul", "haunts", "hotspot"
 - Sensational imagery: "shockwaves", "firestorm", "whirlwind"
-
-Return ALL phrases that could possibly be manipulative. Better to over-flag than under-flag.
 
 ARTICLE BODY:
 \"\"\"
@@ -3560,30 +3566,39 @@ def detect_spans_high_recall_anthropic(
 # Adversarial Second Pass Detection
 # -----------------------------------------------------------------------------
 
-# Adversarial user prompt (finds what first pass missed)
-ADVERSARIAL_USER_PROMPT = """The following manipulative phrases have already been detected in this article:
-
-ALREADY DETECTED:
-{detected_phrases}
-
-Your job: Find manipulative phrases that were MISSED.
-
-Look specifically for:
-1. Subtle editorial voice the first pass might have skipped ("naturally", "key", "crucial")
-2. Context-dependent hype (sports words in political coverage, entertainment language in news)
-3. Compound phrases that may have been partially detected
-4. Loaded verbs that seem neutral ("admits", "claims", "concedes", "insists")
-5. Amplifiers that weren't caught ("whopping", "staggering", "massive")
-6. Subtle urgency ("careens", "scrambling", "racing")
+# Adversarial user prompt (validates first pass + finds what was missed)
+ADVERSARIAL_USER_PROMPT = """You are reviewing a first-pass analysis of manipulative language in a news article.
 
 ARTICLE BODY:
 \"\"\"
 {body}
 \"\"\"
 
-Return ONLY NEW phrases not already in the detected list above.
-Return JSON format:
-{{"phrases": [{{"phrase": "EXACT text", "reason": "CATEGORY", "action": "remove|replace", "replacement": "text or null"}}]}}
+FIRST PASS DETECTED THESE PHRASES:
+{detected_phrases}
+
+You have TWO jobs:
+
+JOB 1 — VALIDATE: Review each phrase detected above. Remove any that are FALSE POSITIVES:
+- Standard attribution verbs used neutrally (said, stated, noted, reported, according to)
+- Factual descriptions of events, even if dramatic
+- Phrases inside direct quotes (the speaker's language, not the article's editorial voice)
+- Technical, legal, or domain-specific terminology
+- Common journalism phrasing that is neutral in context
+
+JOB 2 — FIND MISSED: Look for manipulative phrases the first pass missed:
+- Subtle editorial voice ("naturally", "key", "crucial", "of course")
+- Context-dependent hype (sports words in political coverage)
+- Loaded verbs ("admits", "claims", "concedes", "insists")
+- Amplifiers ("whopping", "staggering", "massive")
+- Subtle urgency ("careens", "scrambling", "racing")
+
+Return JSON with TWO arrays:
+{{"keep": [{{"phrase": "EXACT text", "reason": "CATEGORY", "action": "remove|replace", "replacement": "text or null"}}],
+  "new": [{{"phrase": "EXACT text", "reason": "CATEGORY", "action": "remove|replace", "replacement": "text or null"}}]}}
+
+"keep" = confirmed manipulative phrases from the first pass (exclude false positives).
+"new" = additional manipulative phrases the first pass missed.
 
 IMPORTANT - Use ONLY these 7 reason values:
 - clickbait
@@ -3594,29 +3609,37 @@ IMPORTANT - Use ONLY these 7 reason values:
 - rhetorical_framing
 - editorial_voice
 
-If no additional phrases found, return: {{"phrases": []}}"""
+If all first-pass phrases are valid and nothing was missed: {{"keep": [<all first pass phrases>], "new": []}}"""
 
 
 def detect_spans_adversarial_pass(
-    body: str, detected_phrases: list[str], api_key: str, model: str = "gpt-4o-mini"
-) -> list[TransparencySpan]:
+    body: str,
+    detected_phrases: list[str],
+    api_key: str,
+    model: str = "gpt-4o-mini",
+    pass1_spans: list | None = None,
+) -> tuple[list[TransparencySpan], list[TransparencySpan]]:
     """
-    Adversarial second pass that looks for phrases missed by the first pass.
+    Adversarial second pass that validates first-pass detections and finds missed phrases.
 
-    This pass sees what was already detected and specifically looks for
-    manipulation that slipped through.
+    This pass receives Pass 1 results with reasons and:
+    1. Validates each detection (removes false positives)
+    2. Finds additional manipulative phrases that were missed
 
     Args:
         body: Original article body text
         detected_phrases: List of phrase texts already detected in first pass
         api_key: OpenAI API key
         model: Model name (default gpt-4o-mini)
+        pass1_spans: Optional Pass 1 TransparencySpan objects (for reason context)
 
     Returns:
-        List of NEW TransparencySpan (only phrases not in detected_phrases)
+        Tuple of (validated_spans, new_spans):
+        - validated_spans: Pass 1 phrases confirmed as genuine manipulations
+        - new_spans: Additional phrases found by this pass
     """
     if not body or not api_key:
-        return []
+        return [], []
 
     try:
         import json
@@ -3625,8 +3648,17 @@ def detect_spans_adversarial_pass(
 
         client = OpenAI(api_key=api_key)
 
-        # Format detected phrases for the prompt
-        detected_list = "\n".join(f'- "{p}"' for p in detected_phrases) if detected_phrases else "(none detected yet)"
+        # Format detected phrases WITH reasons for better context
+        if pass1_spans:
+            detected_list = (
+                "\n".join(f'- "{s.original_text}" (reason: {s.reason.value})' for s in pass1_spans)
+                if pass1_spans
+                else "(none detected yet)"
+            )
+        elif detected_phrases:
+            detected_list = "\n".join(f'- "{p}"' for p in detected_phrases)
+        else:
+            detected_list = "(none detected yet)"
 
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_adversarial_prompt()
@@ -3650,51 +3682,65 @@ def detect_spans_adversarial_pass(
 
         content = response.choices[0].message.content.strip()
 
-        # Parse response
+        # Parse response — supports both new format (keep/new) and legacy format (phrases)
+        keep_phrases = []
+        new_phrases = []
         try:
             data = json.loads(content)
-            if isinstance(data, list):
-                llm_phrases = data
-            elif isinstance(data, dict):
-                llm_phrases = (
-                    data.get("phrases")
-                    or data.get("spans")
-                    or data.get("manipulative_phrases")
-                    or data.get("results")
-                    or []
-                )
-                if not llm_phrases and "phrase" in data:
-                    llm_phrases = [data]
-            else:
-                llm_phrases = []
+            if isinstance(data, dict):
+                if "keep" in data or "new" in data:
+                    # New validated format
+                    keep_phrases = data.get("keep", [])
+                    new_phrases = data.get("new", [])
+                    if not isinstance(keep_phrases, list):
+                        keep_phrases = []
+                    if not isinstance(new_phrases, list):
+                        new_phrases = []
+                else:
+                    # Legacy format — treat all as new phrases
+                    legacy = (
+                        data.get("phrases")
+                        or data.get("spans")
+                        or data.get("manipulative_phrases")
+                        or data.get("results")
+                        or []
+                    )
+                    if not legacy and "phrase" in data:
+                        legacy = [data]
+                    new_phrases = legacy if isinstance(legacy, list) else []
+            elif isinstance(data, list):
+                new_phrases = data
         except json.JSONDecodeError:
             logger.warning(f"Adversarial pass returned invalid JSON: {content[:200]}")
-            return []
+            return [], []
 
-        # Validate llm_phrases is a list of dicts (not a single dict or string)
-        if not isinstance(llm_phrases, list):
-            logger.warning(f"[SPAN_DETECTION] Adversarial pass returned non-list phrases: {type(llm_phrases)}")
-            llm_phrases = [llm_phrases] if isinstance(llm_phrases, dict) else []
+        logger.info(
+            f"[SPAN_DETECTION] Adversarial pass: {len(keep_phrases)} validated, "
+            f"{len(new_phrases)} new, {len(detected_phrases) - len(keep_phrases)} removed as FP"
+        )
 
-        logger.info(f"[SPAN_DETECTION] Adversarial pass found {len(llm_phrases)} additional phrases")
+        # Position matching for validated phrases
+        validated_spans = find_phrase_positions(body, keep_phrases)
 
-        # Position matching
-        spans = find_phrase_positions(body, llm_phrases)
+        # Position matching for new phrases
+        new_spans = find_phrase_positions(body, new_phrases)
 
-        # Filter out any that overlap with already-detected phrases
-        # (in case the LLM returned some duplicates)
-        detected_lower = {p.lower() for p in detected_phrases}
-        new_spans = [s for s in spans if s.original_text.lower() not in detected_lower]
+        # Filter out any new phrases that duplicate validated ones
+        validated_texts = {s.original_text.lower() for s in validated_spans}
+        new_spans = [s for s in new_spans if s.original_text.lower() not in validated_texts]
 
-        logger.info(f"[SPAN_DETECTION] Adversarial pass returning {len(new_spans)} new spans")
-        return new_spans
+        logger.info(
+            f"[SPAN_DETECTION] Adversarial pass returning {len(validated_spans)} validated + {len(new_spans)} new spans"
+        )
+        return validated_spans, new_spans
 
     except Exception as e:
         import traceback
 
         logger.warning(f"Adversarial span detection failed: {type(e).__name__}: {e}")
         logger.debug(f"Adversarial span detection traceback: {traceback.format_exc()}")
-        return []
+        # On failure, return empty validated (fall back to pass1 in orchestrator) and no new
+        return [], []
 
 
 # -----------------------------------------------------------------------------
@@ -3766,45 +3812,77 @@ async def detect_spans_multi_pass_async(
         # Adjust positions from chunk-relative to body-relative
         return adjust_chunk_positions(spans or [], chunk.start_offset)
 
-    async def run_adversarial_on_chunk(chunk: ArticleChunk, detected_phrases: list[str]) -> list[TransparencySpan]:
-        """Run adversarial pass on a single chunk."""
+    async def run_adversarial_on_chunk(
+        chunk: ArticleChunk,
+        detected_phrases: list[str],
+        chunk_pass1_spans: list | None = None,
+    ) -> tuple[list[TransparencySpan], list[TransparencySpan]]:
+        """Run adversarial pass on a single chunk. Returns (validated, new) spans."""
         loop = asyncio.get_event_loop()
-        spans = await loop.run_in_executor(
-            executor, lambda: detect_spans_adversarial_pass(chunk.text, detected_phrases, openai_api_key, openai_model)
+        validated, new = await loop.run_in_executor(
+            executor,
+            lambda: detect_spans_adversarial_pass(
+                chunk.text,
+                detected_phrases,
+                openai_api_key,
+                openai_model,
+                pass1_spans=chunk_pass1_spans,
+            ),
         )
         # Adjust positions from chunk-relative to body-relative
-        return adjust_chunk_positions(spans or [], chunk.start_offset)
+        validated = adjust_chunk_positions(validated or [], chunk.start_offset)
+        new = adjust_chunk_positions(new or [], chunk.start_offset)
+        return validated, new
 
     # Phase 2: Parallel high-recall detection on all chunks
     logger.info("[MULTI_PASS] Pass 1: High-recall detection (Claude Haiku)")
     high_recall_tasks = [run_high_recall_on_chunk(chunk) for chunk in chunks]
     high_recall_results = await asyncio.gather(*high_recall_tasks)
 
-    # Flatten Pass 1 results
+    # Flatten Pass 1 results and track per-chunk spans
     pass1_spans = []
+    pass1_by_chunk: list[list[TransparencySpan]] = []
     for spans in high_recall_results:
-        if spans:
-            pass1_spans.extend(spans)
+        chunk_spans = spans if spans else []
+        pass1_by_chunk.append(chunk_spans)
+        pass1_spans.extend(chunk_spans)
     logger.info(f"[MULTI_PASS] Pass 1 found {len(pass1_spans)} spans across {len(chunks)} chunks")
 
     # Get detected phrases for Pass 2
     detected_phrases = [s.original_text for s in pass1_spans]
 
-    # Phase 3: Adversarial pass on all chunks
-    logger.info("[MULTI_PASS] Pass 2: Adversarial detection (GPT-4o-mini)")
-    adversarial_tasks = [run_adversarial_on_chunk(chunk, detected_phrases) for chunk in chunks]
+    # Phase 3: Adversarial pass on all chunks (with full Pass 1 context)
+    logger.info("[MULTI_PASS] Pass 2: Adversarial validation + detection (GPT-4o-mini)")
+    adversarial_tasks = [
+        run_adversarial_on_chunk(chunk, detected_phrases, pass1_by_chunk[i]) for i, chunk in enumerate(chunks)
+    ]
     adversarial_results = await asyncio.gather(*adversarial_tasks)
 
-    # Flatten Pass 2 results
-    pass2_spans = []
-    for spans in adversarial_results:
-        if spans:
-            pass2_spans.extend(spans)
-    logger.info(f"[MULTI_PASS] Pass 2 found {len(pass2_spans)} additional spans")
+    # Flatten Pass 2 results — validated spans replace Pass 1, new spans are additions
+    validated_spans = []
+    new_spans = []
+    adversarial_succeeded = False
+    for validated, new in adversarial_results:
+        if validated or new:
+            adversarial_succeeded = True
+        validated_spans.extend(validated)
+        new_spans.extend(new)
 
-    # Phase 4: Merge all spans
-    logger.info("[MULTI_PASS] Merging spans from all passes")
-    merged_spans = merge_multi_pass_spans([pass1_spans, pass2_spans], body)
+    # If adversarial pass failed entirely, fall back to Pass 1 spans
+    if not adversarial_succeeded:
+        logger.warning("[MULTI_PASS] Adversarial pass failed, falling back to Pass 1 spans")
+        all_spans = pass1_spans
+    else:
+        # Use validated (filtered Pass 1) + new from Pass 2
+        all_spans = validated_spans + new_spans
+        logger.info(
+            f"[MULTI_PASS] Pass 2: {len(validated_spans)} validated, {len(new_spans)} new, "
+            f"{len(pass1_spans) - len(validated_spans)} removed as false positives"
+        )
+
+    # Phase 4: Merge all spans (validated + new from adversarial, or pass1 on failure)
+    logger.info("[MULTI_PASS] Merging spans")
+    merged_spans = merge_multi_pass_spans([all_spans], body)
 
     # Deduplicate overlaps
     deduplicated = deduplicate_overlap_spans(merged_spans, overlap_size)
@@ -3815,8 +3893,8 @@ async def detect_spans_multi_pass_async(
 
     logger.info(
         f"[MULTI_PASS] Final: {len(final)} spans "
-        f"(pass1={len(pass1_spans)}, pass2={len(pass2_spans)}, "
-        f"merged={len(merged_spans)}, filtered={len(final)})"
+        f"(pass1={len(pass1_spans)}, validated={len(validated_spans)}, "
+        f"new={len(new_spans)}, merged={len(merged_spans)}, filtered={len(final)})"
     )
 
     executor.shutdown(wait=False)

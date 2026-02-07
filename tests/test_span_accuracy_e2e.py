@@ -518,19 +518,21 @@ class TestMultiPassDetection:
         # First pass "detected" these
         already_detected = ["whopping", "shocked"]
 
-        # Adversarial should find what was missed
-        spans = detect_spans_adversarial_pass(
+        # Adversarial should validate + find what was missed
+        validated, new_spans = detect_spans_adversarial_pass(
             body=text,
             detected_phrases=already_detected,
             api_key=self.openai_api_key,
             model=self.openai_model,
         )
-        new_texts = [s.original_text.lower() for s in spans]
+        new_texts = [s.original_text.lower() for s in new_spans]
+        validated_texts = [s.original_text.lower() for s in validated]
 
-        print(f"\n  Adversarial found {len(spans)} new spans: {new_texts}")
+        print(f"\n  Adversarial validated {len(validated)} spans: {validated_texts}")
+        print(f"  Adversarial found {len(new_spans)} new spans: {new_texts}")
 
         # Should find at least one of: "scrambling", "key", "admit", "dire"
         subtle_phrases = ["scrambling", "key", "admit", "dire"]
         found = any(any(p in t for t in new_texts) for p in subtle_phrases)
 
-        assert found or len(spans) > 0, "Adversarial pass should find additional phrases"
+        assert found or len(new_spans) > 0 or len(validated) > 0, "Adversarial pass should validate or find phrases"

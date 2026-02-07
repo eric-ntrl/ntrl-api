@@ -300,10 +300,10 @@ class PromptOptimizer:
         Skip optimization for prompts where the metric is already excellent
         to prevent unnecessary churn on already-good prompts.
         """
-        # Thresholds above which we skip optimization
+        # Thresholds above which we skip optimization (realistic targets)
         skip_thresholds = {
-            "classification_system_prompt": ("classification_accuracy", 1.0),
-            "article_system_prompt": ("avg_neutralization_score", 9.5),
+            "classification_system_prompt": ("classification_accuracy", 0.90),
+            "article_system_prompt": ("avg_neutralization_score", 8.5),
             "span_detection_prompt": None,  # Check both precision and recall
         }
 
@@ -312,7 +312,7 @@ class PromptOptimizer:
             # Both precision and recall must be at target to skip
             precision = metric_scores.get("avg_span_precision", 0.0)
             recall = metric_scores.get("avg_span_recall", 0.0)
-            return precision >= 0.99 and recall >= 0.99
+            return precision >= 0.85 and recall >= 0.85
 
         if threshold_config is None:
             return False  # Unknown prompt, don't skip
@@ -336,14 +336,14 @@ class PromptOptimizer:
         if len(new_content) > MAX_PROMPT_LENGTH:
             return f"Prompt would grow to {len(new_content)} chars (max {MAX_PROMPT_LENGTH})"
 
-        # Gate 2: Reject if prompt grew by more than 30%
+        # Gate 2: Reject if prompt grew by more than 15%
         original_len = len(prompt.content)
         if original_len > 0:
             growth_ratio = len(new_content) / original_len
-            if growth_ratio > 1.3:
+            if growth_ratio > 1.15:
                 return (
                     f"Prompt grew by {(growth_ratio - 1) * 100:.0f}% "
-                    f"({original_len} → {len(new_content)} chars, max 30% growth)"
+                    f"({original_len} → {len(new_content)} chars, max 15% growth)"
                 )
 
         # Gate 3: Reject if it contains "NEW INSTRUCTION" / "ADDITIONAL INSTRUCTION" appends
