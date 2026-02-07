@@ -1,0 +1,9 @@
+# NTRL API Code Owners
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything
+* @eric-ntrl
+
+# Pipeline-critical paths (expand as team grows)
+# app/services/quality_gate.py @eric-ntrl
+# app/services/neutralizer.py @eric-ntrl

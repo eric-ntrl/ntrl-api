@@ -191,6 +191,18 @@ pipenv run python -m app.cli.retention set-policy production
 - **Soft delete grace**: 24-hour window before hard delete
 - **Dry run**: Preview before executing any purge
 
+## Git Workflow
+
+Follow the branch and commit conventions in the root `CLAUDE.md`. Key points for ntrl-api:
+
+- **Branch prefixes**: `feature/`, `fix/`, `docs/`, `refactor/`, `chore/`
+- **Conventional commits**: `type: description` format, enforced by `pre-commit` hooks
+- **Pre-commit checks**: `ruff` linting/formatting + secret detection, runs on every commit
+- **CI**: GitHub Actions runs `ruff check` + `pytest` on every PR to `main`
+- **Deploy verification**: After merge to `main`, `deploy-verify.yml` checks Railway health
+
+Install hooks after cloning: `pipenv install --dev && pipenv run pre-commit install --hook-type pre-commit --hook-type commit-msg`
+
 ## Key Gotchas
 
 - **Spans**: Always reference `original_body`, not `detail_full`

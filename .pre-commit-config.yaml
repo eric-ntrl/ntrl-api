@@ -1,0 +1,48 @@
+repos:
+  # Conventional commit message validation
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.0.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - docs
+          - refactor
+          - test
+          - chore
+          - ci
+          - perf
+          - build
+          - revert
+
+  # Ruff linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-merge-conflict
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  # Secret pattern detection
+  - repo: local
+    hooks:
+      - id: no-secrets
+        name: Check for API key patterns
+        entry: bash -c 'if git diff --cached --diff-filter=ACM | grep -qEi "(sk-[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36}|password\s*=\s*[\"'\''][^\"'\'']+[\"'\''])"; then echo "ERROR: Possible secret detected in staged changes. Review your diff."; exit 1; fi'
+        language: system
+        stages: [pre-commit]

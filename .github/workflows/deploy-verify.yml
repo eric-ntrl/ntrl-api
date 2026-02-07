@@ -1,0 +1,49 @@
+name: Deploy Verification
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Verify Staging Deploy
+    runs-on: ubuntu-latest
+    # Only run after CI passes
+    needs: []
+
+    steps:
+      - name: Wait for Railway deploy
+        run: |
+          echo "Waiting 120 seconds for Railway to pick up the push..."
+          sleep 120
+
+      - name: Health check
+        run: |
+          echo "Checking staging health..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://api-staging-7b4d.up.railway.app/health)
+          if [ "$response" != "200" ]; then
+            echo "FAIL: Health check returned $response"
+            exit 1
+          fi
+          echo "PASS: Health check returned 200"
+
+      - name: Brief endpoint check
+        run: |
+          echo "Checking brief endpoint..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "X-API-Key: ${{ secrets.STAGING_API_KEY }}" \
+            https://api-staging-7b4d.up.railway.app/v1/brief)
+          if [ "$response" != "200" ]; then
+            echo "FAIL: Brief endpoint returned $response"
+            exit 1
+          fi
+          echo "PASS: Brief endpoint returned 200"
+
+      - name: Summary
+        if: success()
+        run: echo "Staging deploy verified successfully."
+
+      - name: Failure notification
+        if: failure()
+        run: echo "WARNING: Staging deploy verification failed. Check Railway logs."
