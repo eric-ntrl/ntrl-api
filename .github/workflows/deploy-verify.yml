@@ -1,5 +1,4 @@
 name: Deploy Verification
-# Verifies Railway staging deploy after push to main
 
 on:
   push:
@@ -9,40 +8,34 @@ jobs:
   verify:
     name: Verify Staging Deploy
     runs-on: ubuntu-latest
-
     steps:
       - name: Wait for Railway deploy
-        run: |
-          echo "Waiting 120 seconds for Railway to pick up the push..."
-          sleep 120
+        run: echo "Waiting 120s for Railway..." && sleep 120
 
       - name: Health check
         run: |
-          echo "Checking staging health..."
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://api-staging-7b4d.up.railway.app/health)
+          response=$(curl -s -o /dev/null -w '%{http_code}' https://api-staging-7b4d.up.railway.app/health)
           if [ "$response" != "200" ]; then
-            echo "FAIL: Health check returned $response"
+            echo "FAIL - Health check returned $response"
             exit 1
           fi
-          echo "PASS: Health check returned 200"
+          echo "PASS - Health check returned 200"
 
       - name: Brief endpoint check
+        env:
+          STAGING_KEY: ${{ secrets.STAGING_API_KEY }}
         run: |
-          echo "Checking brief endpoint..."
-          response=$(curl -s -o /dev/null -w "%{http_code}" \
-            -H "X-API-Key: ${{ secrets.STAGING_API_KEY }}" \
-            https://api-staging-7b4d.up.railway.app/v1/brief)
+          response=$(curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: $STAGING_KEY" https://api-staging-7b4d.up.railway.app/v1/brief)
           if [ "$response" != "200" ]; then
-            echo "FAIL: Brief endpoint returned $response"
+            echo "FAIL - Brief endpoint returned $response"
             exit 1
           fi
-          echo "PASS: Brief endpoint returned 200"
+          echo "PASS - Brief endpoint returned 200"
 
       - name: Summary
         if: success()
-        run: echo "Staging deploy verified successfully."
+        run: echo "Staging deploy verified successfully"
 
       - name: Failure notification
         if: failure()
-        run: echo "WARNING: Staging deploy verification failed. Check Railway logs."
+        run: echo "WARNING - Staging deploy verification failed. Check Railway logs."
