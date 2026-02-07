@@ -16,10 +16,14 @@ import os
 import secrets
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from app import models
 
 admin_logger = logging.getLogger(__name__)
 

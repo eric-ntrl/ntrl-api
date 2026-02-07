@@ -463,7 +463,7 @@ def merge_multi_pass_spans(span_lists: list, body: str) -> list:
 
     # Select best span from each group and track multi-model detection
     final_spans = []
-    for key, group in span_groups.items():
+    for _key, group in span_groups.items():
         # Get unique passes that detected this span
         passes = set(item["pass_idx"] for item in group)
         multi_model = len(passes) > 1

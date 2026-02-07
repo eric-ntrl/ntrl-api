@@ -195,7 +195,7 @@ class NTRLFixer:
         """
         print(f"Validation failed ({original_validation.failures}), retrying...")
 
-        for attempt in range(self.config.max_retries):
+        for _attempt in range(self.config.max_retries):
             # Use mock generator for conservative fallback
             # (In production, would use stricter prompt)
             result = self.detail_full_gen._mock_generate(body, body_scan.spans)

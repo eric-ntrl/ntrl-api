@@ -51,7 +51,7 @@ class TestCircuitBreaker:
             raise ValueError("test error")
 
         # First two failures should not open circuit
-        for i in range(2):
+        for _i in range(2):
             with pytest.raises(ValueError):
                 await breaker.call(fail)
             assert breaker.state == CircuitState.CLOSED

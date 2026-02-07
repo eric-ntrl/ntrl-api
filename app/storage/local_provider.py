@@ -124,8 +124,6 @@ class LocalStorageProvider(StorageProvider):
     def download(self, key: str) -> StorageObject | None:
         """Download and decompress content from local filesystem."""
         file_path = self._get_path(key)
-        meta_path = self._get_metadata_path(key)
-
         if not file_path.exists():
             return None
 

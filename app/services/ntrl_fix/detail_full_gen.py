@@ -543,8 +543,6 @@ class DetailFullGenerator:
         CRITICAL: This function now validates that neutralized_text is present
         and different from the original. Silent fallback to original is a bug.
         """
-        MAX_PARSE_RETRIES = 2
-
         try:
             data = json.loads(content)
 
