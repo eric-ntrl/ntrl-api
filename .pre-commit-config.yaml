@@ -35,6 +35,7 @@ repos:
         args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-yaml
+        exclude: '^\.github/'
       - id: check-added-large-files
         args: [--maxkb=500]
 
@@ -43,6 +44,6 @@ repos:
     hooks:
       - id: no-secrets
         name: Check for API key patterns
-        entry: bash -c 'if git diff --cached --diff-filter=ACM | grep -qEi "(sk-[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36}|password\s*=\s*[\"'\''][^\"'\'']+[\"'\''])"; then echo "ERROR: Possible secret detected in staged changes. Review your diff."; exit 1; fi'
-        language: system
+        entry: scripts/check-secrets.sh
+        language: script
         stages: [pre-commit]

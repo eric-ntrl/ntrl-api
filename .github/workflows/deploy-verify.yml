@@ -1,4 +1,5 @@
 name: Deploy Verification
+# Verifies Railway staging deploy after push to main
 
 on:
   push:
