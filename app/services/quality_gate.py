@@ -160,6 +160,9 @@ class QualityGateService:
         # D. View Completeness
         self._register("views_renderable", QCCategory.VIEW_COMPLETENESS,
                         "All article views can render", self._check_views_renderable)
+        self._register("brief_full_different", QCCategory.VIEW_COMPLETENESS,
+                        "Brief and full views have meaningfully different content",
+                        self._check_brief_full_different)
 
     def _register(self, name: str, category: QCCategory, description: str,
                   check_fn: Callable, enabled: bool = True) -> None:
@@ -782,6 +785,59 @@ class QualityGateService:
             )
         return QCCheckResult(
             check="views_renderable", passed=True,
+            category=QCCategory.VIEW_COMPLETENESS.value,
+        )
+
+    @staticmethod
+    def _check_brief_full_different(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: Optional[models.Source],
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Brief and full views must have meaningfully different content."""
+        import difflib
+
+        has_brief = neutralized.detail_brief and neutralized.detail_brief.strip()
+        has_full = neutralized.detail_full and neutralized.detail_full.strip()
+
+        # Neither present — views_renderable handles this
+        if not has_brief and not has_full:
+            return QCCheckResult(
+                check="brief_full_different", passed=True,
+                category=QCCategory.VIEW_COMPLETENESS.value,
+            )
+
+        # Only full present (no brief) — acceptable
+        if not has_brief and has_full:
+            return QCCheckResult(
+                check="brief_full_different", passed=True,
+                category=QCCategory.VIEW_COMPLETENESS.value,
+            )
+
+        # Brief exists but full is missing/empty — user sees identical tabs
+        if has_brief and not has_full:
+            return QCCheckResult(
+                check="brief_full_different", passed=False,
+                category=QCCategory.VIEW_COMPLETENESS.value,
+                reason="detail_brief exists but detail_full is empty/None (tabs look identical)",
+            )
+
+        # Both exist — check similarity
+        ratio = difflib.SequenceMatcher(
+            None, neutralized.detail_brief.strip(), neutralized.detail_full.strip()
+        ).ratio()
+
+        if ratio > 0.9:
+            return QCCheckResult(
+                check="brief_full_different", passed=False,
+                category=QCCategory.VIEW_COMPLETENESS.value,
+                reason=f"detail_brief and detail_full are {ratio:.0%} similar (max 90%)",
+                details={"similarity_ratio": round(ratio, 3)},
+            )
+
+        return QCCheckResult(
+            check="brief_full_different", passed=True,
             category=QCCategory.VIEW_COMPLETENESS.value,
         )
 

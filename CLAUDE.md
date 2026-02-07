@@ -10,14 +10,14 @@ Neutral news backend: removes manipulative language, creates calm news briefs.
 | Admin Key | `staging-key-123` (header: `X-API-Key`) |
 | Dev Server | `pipenv run uvicorn app.main:app --reload --port 8000` |
 | Tests | `pipenv run pytest tests/` |
-| Unit Tests | `pipenv run pytest tests/unit/` (85 tests) |
+| Unit Tests | `pipenv run pytest tests/unit/` (248 tests) |
 | E2E Tests | `pipenv run pytest tests/e2e/` (13 tests) |
 | Migrations | `pipenv run alembic upgrade head` |
 
 ## Pipeline Overview
 
 ```
-INGEST → CLASSIFY → NEUTRALIZE → BRIEF ASSEMBLE [→ EVALUATE → OPTIMIZE]
+INGEST → CLASSIFY → NEUTRALIZE → QC GATE → BRIEF ASSEMBLE [→ EVALUATE → OPTIMIZE]
 ```
 
 **Core principle**: Original article body is the single source of truth. All outputs derive from `original_body`.
@@ -63,8 +63,31 @@ curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
 | Ingest | ~20s | Parallel RSS fetches |
 | Classify | ~2.5 min | LLM classification |
 | Neutralize | ~5.5 min | LLM neutralization |
+| QC Gate | <1s | 18 checks per article |
 | Brief | ~125ms | Assembly |
 | **Total** | **~8.5 min** | vs 9-14 min sequential |
+
+## QC Gate
+
+Runs between NEUTRALIZE and BRIEF ASSEMBLE. Articles must pass **all 18 checks** to appear in the brief. Failed articles are excluded with structured reason codes.
+
+**Implementation**: `app/services/quality_gate.py`
+
+### Checks by Category
+
+| Category | Checks | What They Catch |
+|----------|--------|-----------------|
+| **Required Fields** (7) | `required_feed_title`, `required_feed_summary`, `required_source`, `required_published_at`, `required_original_url`, `required_feed_category`, `source_name_not_generic` | Missing metadata, generic API source names |
+| **Content Quality** (7) | `original_body_complete`, `original_body_sufficient`, `min_body_length`, `feed_title_bounds`, `feed_summary_bounds`, `no_garbled_output`, `no_llm_refusal` | Truncated bodies, paywall snippets, LLM refusals/apologies, placeholder text |
+| **Pipeline Integrity** (2) | `neutralization_success`, `not_duplicate` | Failed neutralization, duplicate articles |
+| **View Completeness** (2) | `views_renderable`, `brief_full_different` | Blank detail views, missing disclosure text, identical brief/full tabs |
+
+### Key Design Decisions
+
+- `min_body_length` uses **AND logic**: both `detail_brief` AND `detail_full` must meet minimums
+- `no_llm_refusal` patterns are **anchored to start** of text to avoid false positives from articles quoting AI
+- `original_body_sufficient` uses `raw_content_size` column as a proxy (no S3 download needed)
+- `original_body_complete` checks the `body_is_truncated` flag set during ingestion
 
 ## Slash Commands
 

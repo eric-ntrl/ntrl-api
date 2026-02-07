@@ -24,8 +24,8 @@ class TextLimits:
     DETAIL_TITLE_MAX_CHARS = 100
 
     # Detail brief (article page summary)
-    DETAIL_BRIEF_MIN_PARAGRAPHS = 3
-    DETAIL_BRIEF_MAX_PARAGRAPHS = 5
+    DETAIL_BRIEF_MIN_PARAGRAPHS = 2
+    DETAIL_BRIEF_MAX_PARAGRAPHS = 3
 
     # Body truncation for classification
     CLASSIFICATION_BODY_PREFIX_CHARS = 2000

@@ -2436,6 +2436,77 @@ def get_qc_failures(
     )
 
 
+class QCRecheckRequest(BaseModel):
+    """Request to force re-check all articles through QC gate."""
+    dry_run: bool = False
+
+
+class QCRecheckResponse(BaseModel):
+    """Response from QC re-check."""
+    total_checked: int
+    passed: int
+    failed: int
+    newly_failed: int = 0
+    failures_by_check: Dict[str, int] = Field(default_factory=dict)
+    dry_run: bool
+
+
+@router.post("/admin/qc/recheck", response_model=QCRecheckResponse)
+def recheck_qc(
+    request: QCRecheckRequest = QCRecheckRequest(),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> QCRecheckResponse:
+    """
+    Force re-run all QC checks on every article.
+
+    This re-evaluates previously-passed articles with the current set of checks.
+    Use dry_run=true to preview without persisting changes.
+    """
+    from app import models
+    from app.services.quality_gate import QualityGateService
+
+    # Count articles that were previously passing
+    previously_passed = (
+        db.query(models.StoryNeutralized)
+        .filter(models.StoryNeutralized.is_current == True)
+        .filter(models.StoryNeutralized.qc_status == "passed")
+        .count()
+    )
+
+    if request.dry_run:
+        # Use savepoint so we can rollback
+        db.begin_nested()
+
+    svc = QualityGateService()
+    result = svc.run_batch(db, trace_id=f"recheck-{uuid.uuid4().hex[:8]}", force=True)
+
+    # Count newly failed (were passed, now failed)
+    newly_failed_count = (
+        db.query(models.StoryNeutralized)
+        .filter(models.StoryNeutralized.is_current == True)
+        .filter(models.StoryNeutralized.qc_status == "failed")
+        .count()
+    )
+    # newly_failed = articles that flipped from passed to failed
+    newly_failed = max(0, newly_failed_count - (result["total_checked"] - previously_passed - result["passed"]))
+    # Simpler: previously_passed - still_passing
+    still_passing = result["passed"]
+    newly_failed = max(0, previously_passed - still_passing)
+
+    if request.dry_run:
+        db.rollback()
+
+    return QCRecheckResponse(
+        total_checked=result["total_checked"],
+        passed=result["passed"],
+        failed=result["failed"],
+        newly_failed=newly_failed,
+        failures_by_check=result.get("failures_by_check", {}),
+        dry_run=request.dry_run,
+    )
+
+
 @router.get("/pipeline/jobs", response_model=PipelineJobListResponse)
 def list_jobs(
     limit: int = 10,

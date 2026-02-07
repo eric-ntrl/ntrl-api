@@ -2086,7 +2086,7 @@ Do NOT add:
 YOUR TASK
 ═══════════════════════════════════════════════════════════════════════════════
 
-Create a detail_brief: a calm, complete explanation of the story in 3-5 paragraphs.
+Create a detail_brief: a calm, complete explanation of the story in 2-3 paragraphs.
 
 This is the CORE NTRL reading experience. The brief must:
 1. Inform without pushing
@@ -2136,9 +2136,9 @@ FORBIDDEN:
 - Adding information about "long-term effects" or "implementation" not in source
 
 CRITICAL: Scale with the original article length.
-- A 3-paragraph original → 2-3 paragraph brief
-- A 10-paragraph original → 4-5 paragraph brief
-- A 20+ paragraph original → 5 paragraph brief (cap)
+- A 3-paragraph original → 2 paragraph brief
+- A 10-paragraph original → 2-3 paragraph brief
+- A 20+ paragraph original → 3 paragraph brief (cap)
 - Do NOT pad with general knowledge, assumed context, or speculation
 - If there's nothing to say about "uncertainty", don't add an uncertainty paragraph
 - The brief should be SMALLER than the original, not larger
@@ -2155,9 +2155,9 @@ EXPLICIT PROHIBITIONS - The following are NEVER acceptable in your narrative:
 FORMAT REQUIREMENTS
 ═══════════════════════════════════════════════════════════════════════════════
 
-LENGTH: 3-5 paragraphs
+LENGTH: 2-3 paragraphs
 - Each paragraph should be 2-4 sentences
-- Total word count typically 200-350 words (shorter for short articles, but never below 100 words for articles with substantial content)
+- Total word count typically 150-250 words (shorter for short articles, but never below 100 words for articles with substantial content)
 
 FORMAT: Plain prose only
 - NO section headers (no "What happened:", "Context:", etc.)
@@ -2282,7 +2282,7 @@ OUTPUT
 ═══════════════════════════════════════════════════════════════════════════════
 
 Return ONLY the brief as plain text. No JSON. No markup. No labels.
-Just 3-5 paragraphs of neutral prose."""
+Just 2-3 paragraphs of neutral prose."""
 
 
 # -----------------------------------------------------------------------------

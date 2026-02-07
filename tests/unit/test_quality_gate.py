@@ -3,12 +3,13 @@
 Unit tests for the Quality Control gate service.
 
 Covers:
-- Each of the 17 individual QC checks (pass and fail cases)
+- Each of the 18 individual QC checks (pass and fail cases)
 - Aggregate check_article() behavior
 - QC configuration overrides
 - Edge cases (empty fields, boundary values, garbled output detection)
 - LLM refusal/apology detection
 - Original body size sufficiency
+- Brief/full view difference detection
 """
 
 import uuid
@@ -801,6 +802,83 @@ class TestViewsRenderable:
         assert "disclosure" in result.reason
 
 
+class TestBriefFullDifferent:
+    def test_pass_both_present_different(self):
+        n = _make_neutralized(
+            detail_brief="A short brief about the article topic.",
+            detail_full="A much longer full version with many more details about the article topic and additional context and information.",
+        )
+        result = _service()._check_brief_full_different(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_fail_full_is_none(self):
+        n = _make_neutralized(
+            detail_brief="Some brief content here.",
+            detail_full=None,
+        )
+        result = _service()._check_brief_full_different(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "empty/None" in result.reason
+
+    def test_fail_full_is_empty(self):
+        n = _make_neutralized(
+            detail_brief="Some brief content here.",
+            detail_full="",
+        )
+        result = _service()._check_brief_full_different(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "empty/None" in result.reason
+
+    def test_fail_identical_content(self):
+        text = "The exact same text appears in both views."
+        n = _make_neutralized(
+            detail_brief=text,
+            detail_full=text,
+        )
+        result = _service()._check_brief_full_different(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "100%" in result.reason
+
+    def test_fail_nearly_identical(self):
+        n = _make_neutralized(
+            detail_brief="The president signed the bill into law on Tuesday.",
+            detail_full="The president signed the bill into law on Tuesday .",
+        )
+        result = _service()._check_brief_full_different(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is False
+        assert "similar" in result.reason
+
+    def test_pass_neither_present(self):
+        n = _make_neutralized(
+            detail_brief=None,
+            detail_full=None,
+        )
+        result = _service()._check_brief_full_different(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+    def test_pass_only_full_present(self):
+        n = _make_neutralized(
+            detail_brief=None,
+            detail_full="Only the full view has content.",
+        )
+        result = _service()._check_brief_full_different(
+            _make_story_raw(), n, _make_source(), QCConfig()
+        )
+        assert result.passed is True
+
+
 # ---------------------------------------------------------------------------
 # Aggregate check_article() tests
 # ---------------------------------------------------------------------------
@@ -816,7 +894,7 @@ class TestCheckArticle:
         )
         assert result.status == QCStatus.PASSED
         assert len(result.failures) == 0
-        assert len(result.checks) == 17  # All 17 checks ran
+        assert len(result.checks) == 18  # All 18 checks ran
 
     def test_single_failure(self):
         """An article with one failing check should fail overall."""
