@@ -3,14 +3,13 @@
 Unit tests for neutralization service.
 """
 
-import pytest
+from app.models import SpanAction, SpanReason
 from app.services.neutralizer import (
+    DetailFullResult,
     MockNeutralizerProvider,
     NeutralizationResult,
     TransparencySpan,
-    DetailFullResult,
 )
-from app.models import SpanAction, SpanReason
 
 
 class TestMockNeutralizerProvider:
@@ -102,7 +101,7 @@ class TestMockNeutralizerProvider:
             assert span.start_char < span.end_char
 
             # Original text should match position
-            assert title[span.start_char:span.end_char].lower() == span.original_text.lower()
+            assert title[span.start_char : span.end_char].lower() == span.original_text.lower()
 
     def test_spans_do_not_overlap(self):
         """Test that spans don't overlap."""

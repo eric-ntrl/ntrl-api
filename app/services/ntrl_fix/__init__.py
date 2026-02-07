@@ -31,42 +31,37 @@ Usage:
         print(f"Validation failed: {result.validation.failures}")
 """
 
-from .types import (
-    FixAction,
-    ValidationStatus,
-    RiskLevel,
-    ChangeRecord,
-    CheckResult,
-    ValidationResult,
-    FixResult,
-    GeneratorConfig,
-    SpanContext,
-)
-
-from .validator import (
-    RedLineValidator,
-    get_validator,
-)
-
-from .detail_full_gen import (
-    DetailFullGenerator,
-    DetailFullResult,
-)
-
 from .detail_brief_gen import (
     DetailBriefGenerator,
     DetailBriefResult,
 )
-
+from .detail_full_gen import (
+    DetailFullGenerator,
+    DetailFullResult,
+)
 from .feed_outputs_gen import (
     FeedOutputsGenerator,
     FeedOutputsResult,
 )
-
 from .fixer import (
-    NTRLFixer,
     FixerConfig,
+    NTRLFixer,
     fix_article,
+)
+from .types import (
+    ChangeRecord,
+    CheckResult,
+    FixAction,
+    FixResult,
+    GeneratorConfig,
+    RiskLevel,
+    SpanContext,
+    ValidationResult,
+    ValidationStatus,
+)
+from .validator import (
+    RedLineValidator,
+    get_validator,
 )
 
 __all__ = [

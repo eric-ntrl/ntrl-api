@@ -10,17 +10,15 @@ scripts/test_e2e_pipeline.py to avoid API calls during CI.
 """
 
 import json
-import pytest
 from pathlib import Path
 
+from app.models import SpanAction, SpanReason
+from app.services.grader import get_default_spec, grade_article
 from app.services.neutralizer import (
-    MockNeutralizerProvider,
-    NeutralizationResult,
     DetailFullResult,
+    MockNeutralizerProvider,
     TransparencySpan,
 )
-from app.services.grader import grade_article, get_default_spec, grade
-from app.models import SpanAction, SpanReason
 
 
 class TestArticleNeutralizationPipeline:
@@ -219,9 +217,7 @@ class TestGraderIntegration:
         # Should have at least one failure for banned token
         failed_rules = [r for r in result["results"] if not r.get("passed", True)]
         has_banned_token_failure = any(
-            "banned" in r.get("message", "").lower() or
-            "B1_" in r.get("rule_id", "") or
-            "B2_" in r.get("rule_id", "")
+            "banned" in r.get("message", "").lower() or "B1_" in r.get("rule_id", "") or "B2_" in r.get("rule_id", "")
             for r in failed_rules
         )
 
@@ -244,7 +240,7 @@ class TestDetailFullMethod:
 
     def test_preserves_factual_content(self):
         """Test that factual content is preserved."""
-        body = "The company reported $10 million in revenue. CEO Jane Smith said, \"We are pleased with the results.\""
+        body = 'The company reported $10 million in revenue. CEO Jane Smith said, "We are pleased with the results."'
 
         result = self.provider._neutralize_detail_full(body)
 

@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -44,7 +44,7 @@ PERIGON_CATEGORY_MAP = {
 }
 
 # Regex to detect Perigon content truncation markers like "...[1811 symbols]"
-TRUNCATION_PATTERN = re.compile(r'\.\.\.\[\d+\s*(?:symbols?|chars?|characters?)\]')
+TRUNCATION_PATTERN = re.compile(r"\.\.\.\[\d+\s*(?:symbols?|chars?|characters?)\]")
 
 
 class PerigonFetcher(BaseFetcher):
@@ -94,11 +94,11 @@ class PerigonFetcher(BaseFetcher):
 
     async def fetch_articles(
         self,
-        categories: Optional[List[str]] = None,
+        categories: list[str] | None = None,
         language: str = "en",
         max_results: int = 100,
-        from_date: Optional[datetime] = None,
-    ) -> List[NormalizedEntry]:
+        from_date: datetime | None = None,
+    ) -> list[NormalizedEntry]:
         """
         Fetch and normalize articles from Perigon.
 
@@ -112,11 +112,11 @@ class PerigonFetcher(BaseFetcher):
             List of normalized article entries
         """
         start_time = time.time()
-        articles: List[NormalizedEntry] = []
+        articles: list[NormalizedEntry] = []
 
         try:
             # Build query parameters
-            params: Dict[str, Any] = {
+            params: dict[str, Any] = {
                 "language": language,
                 "size": min(max_results, self.DEFAULT_PAGE_SIZE),
                 "sortBy": "date",
@@ -146,10 +146,7 @@ class PerigonFetcher(BaseFetcher):
                     logger.warning(f"Failed to normalize Perigon article: {e}")
                     continue
 
-            logger.info(
-                f"Perigon fetched {len(articles)} articles in "
-                f"{int((time.time() - start_time) * 1000)}ms"
-            )
+            logger.info(f"Perigon fetched {len(articles)} articles in {int((time.time() - start_time) * 1000)}ms")
 
         except httpx.HTTPStatusError as e:
             logger.error(f"Perigon API error: {e.response.status_code} - {e.response.text}")
@@ -164,8 +161,8 @@ class PerigonFetcher(BaseFetcher):
         self,
         language: str = "en",
         max_results: int = 50,
-        from_date: Optional[datetime] = None,
-    ) -> List[Dict[str, Any]]:
+        from_date: datetime | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Fetch clustered news stories (trending topics).
 
@@ -180,7 +177,7 @@ class PerigonFetcher(BaseFetcher):
         Returns:
             List of story clusters with metadata
         """
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "language": language,
             "size": min(max_results, self.DEFAULT_PAGE_SIZE),
             "sortBy": "count",  # Sort by article count
@@ -207,9 +204,9 @@ class PerigonFetcher(BaseFetcher):
 
     def _normalize_article(
         self,
-        article: Dict[str, Any],
+        article: dict[str, Any],
         start_time: float,
-    ) -> Optional[NormalizedEntry]:
+    ) -> NormalizedEntry | None:
         """
         Convert Perigon article to NTRL NormalizedEntry.
 
@@ -228,9 +225,7 @@ class PerigonFetcher(BaseFetcher):
         # Check for truncation markers in Perigon content
         body_is_truncated = self._is_body_truncated(body) if body else False
         if body_is_truncated:
-            logger.info(
-                f"Perigon article body truncated, will need web scraping: {url}"
-            )
+            logger.info(f"Perigon article body truncated, will need web scraping: {url}")
 
         if not url or not title:
             return None
@@ -239,9 +234,7 @@ class PerigonFetcher(BaseFetcher):
         pub_date_str = article.get("pubDate")
         if pub_date_str:
             try:
-                published_at = datetime.fromisoformat(
-                    pub_date_str.replace("Z", "+00:00")
-                )
+                published_at = datetime.fromisoformat(pub_date_str.replace("Z", "+00:00"))
             except (ValueError, TypeError):
                 published_at = datetime.utcnow()
         else:
@@ -255,17 +248,13 @@ class PerigonFetcher(BaseFetcher):
         # Fallback: derive publisher name from domain if source.name is missing
         if not source_name and source_domain:
             source_name = source_domain.lower().removeprefix("www.")
-            logger.debug(
-                f"Perigon article missing source.name, derived from domain: {source_name}"
-            )
+            logger.debug(f"Perigon article missing source.name, derived from domain: {source_name}")
         elif not source_name and url:
             try:
                 parsed = urlparse(url)
                 if parsed.netloc:
                     source_name = parsed.netloc.lower().removeprefix("www.")
-                    logger.debug(
-                        f"Perigon article missing source.name, derived from URL: {source_name}"
-                    )
+                    logger.debug(f"Perigon article missing source.name, derived from URL: {source_name}")
             except Exception:
                 pass
 
@@ -278,14 +267,11 @@ class PerigonFetcher(BaseFetcher):
                 categories.append(cat.get("name", ""))
 
         # Extract entities
-        entities: Dict[str, Any] = {}
+        entities: dict[str, Any] = {}
         for entity_type in ["people", "organizations", "locations"]:
             entity_list = article.get(entity_type, [])
             if entity_list:
-                entities[entity_type] = [
-                    e.get("name") if isinstance(e, dict) else e
-                    for e in entity_list
-                ]
+                entities[entity_type] = [e.get("name") if isinstance(e, dict) else e for e in entity_list]
 
         # Calculate extraction duration
         duration_ms = int((time.time() - start_time) * 1000)
@@ -305,10 +291,7 @@ class PerigonFetcher(BaseFetcher):
             entities=entities,
             body_downloaded=bool(body) and not body_is_truncated,
             extractor_used="perigon_api" if (body and not body_is_truncated) else None,
-            extraction_failure_reason=(
-                "truncated_content" if body_is_truncated
-                else (None if body else "no_content")
-            ),
+            extraction_failure_reason=("truncated_content" if body_is_truncated else (None if body else "no_content")),
             extraction_duration_ms=duration_ms,
         )
 

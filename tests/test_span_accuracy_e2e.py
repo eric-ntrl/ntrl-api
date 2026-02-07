@@ -11,26 +11,26 @@ LLM tests: pipenv run pytest tests/test_span_accuracy_e2e.py -m llm -v -s
 
 import os
 from dataclasses import dataclass
-from typing import List, Optional
 
 import pytest
 
 from app.services.neutralizer import (
-    detect_spans_via_llm_openai,
-    detect_spans_multi_pass,
-    detect_spans_high_recall_anthropic,
-    detect_spans_adversarial_pass,
     TransparencySpan,
+    detect_spans_adversarial_pass,
+    detect_spans_high_recall_anthropic,
+    detect_spans_multi_pass,
+    detect_spans_via_llm_openai,
 )
 
 
 @dataclass
 class AccuracyTestCase:
     """Test case for span detection accuracy validation."""
+
     name: str
     text: str
-    must_flag: List[str]  # Phrases that MUST be detected
-    must_not_flag: List[str]  # Phrases that must NOT be detected (false positives)
+    must_flag: list[str]  # Phrases that MUST be detected
+    must_not_flag: list[str]  # Phrases that must NOT be detected (false positives)
 
 
 # Test cases based on real issues identified
@@ -104,10 +104,7 @@ ACCURACY_TEST_CASES = [
             "They were spotted at a beloved waterfront restaurant. "
             "Sources say they looked more in love than ever."
         ),
-        must_flag=[
-            "A-list pair", "romantic escape", "beloved waterfront restaurant",
-            "looked more in love than ever"
-        ],
+        must_flag=["A-list pair", "romantic escape", "beloved waterfront restaurant", "looked more in love than ever"],
         must_not_flag=["Cabo", "restaurant", "sources"],
     ),
     AccuracyTestCase(
@@ -148,8 +145,11 @@ ACCURACY_TEST_CASES = [
             "The reality star has been through numerous high-profile relationships."
         ),
         must_flag=[
-            "shock fourth marriage", "sent shockwaves", "showbiz world",
-            "completely horrified", "whirlwind romance"
+            "shock fourth marriage",
+            "sent shockwaves",
+            "showbiz world",
+            "completely horrified",
+            "whirlwind romance",
         ],
         must_not_flag=["Katie Price", "family", "reality star", "relationships"],
     ),
@@ -160,10 +160,7 @@ ACCURACY_TEST_CASES = [
             "These lunatic faceoffs at the border have gone on too long. "
             "Of course, critics argue the policy doesn't go far enough."
         ),
-        must_flag=[
-            "We're glad to see", "Border Czar", "as it should be",
-            "lunatic faceoffs", "Of course"
-        ],
+        must_flag=["We're glad to see", "Border Czar", "as it should be", "lunatic faceoffs", "Of course"],
         # Note: "border" removed - it overlaps with "Border Czar" which IS correctly flagged
         must_not_flag=["policy", "critics", "taking action"],
     ),
@@ -174,20 +171,18 @@ ACCURACY_TEST_CASES = [
             "Naturally, the opposition disagrees, but as they should know, "
             "the evidence clearly supports our position."
         ),
-        must_flag=[
-            "We believe", "Naturally", "as they should know"
-        ],
+        must_flag=["We believe", "Naturally", "as they should know"],
         must_not_flag=["decision", "opposition", "evidence"],
     ),
 ]
 
 
-def get_flagged_texts(spans: List[TransparencySpan]) -> List[str]:
+def get_flagged_texts(spans: list[TransparencySpan]) -> list[str]:
     """Extract the original text from spans."""
     return [span.original_text.lower() for span in spans]
 
 
-def phrase_was_flagged(flagged_texts: List[str], phrase: str) -> bool:
+def phrase_was_flagged(flagged_texts: list[str], phrase: str) -> bool:
     """
     Check if a phrase was flagged.
 
@@ -209,7 +204,7 @@ def phrase_was_flagged(flagged_texts: List[str], phrase: str) -> bool:
     return False
 
 
-def phrase_incorrectly_flagged(flagged_texts: List[str], phrase: str) -> bool:
+def phrase_incorrectly_flagged(flagged_texts: list[str], phrase: str) -> bool:
     """
     Check if a phrase was incorrectly flagged as a false positive.
 
@@ -364,10 +359,7 @@ class TestProfessionalTermsExclusion:
 
         print(f"\n  Detected spans: {[s.original_text for s in spans]}")
 
-        pr_flagged = any(
-            "public relations" in t or "media relations" in t
-            for t in flagged_texts
-        )
+        pr_flagged = any("public relations" in t or "media relations" in t for t in flagged_texts)
         assert not pr_flagged, "public/media relations should not be flagged"
 
 
@@ -433,7 +425,6 @@ class TestMultiPassDetection:
 
         from app.services.neutralizer import (
             detect_spans_via_llm_openai,
-            detect_spans_multi_pass,
         )
 
         # Text with subtle manipulation that single pass might miss
@@ -445,9 +436,7 @@ class TestMultiPassDetection:
         )
 
         # Single pass detection
-        single_spans = detect_spans_via_llm_openai(
-            text, self.openai_api_key, self.openai_model
-        )
+        single_spans = detect_spans_via_llm_openai(text, self.openai_api_key, self.openai_model)
         single_count = len(single_spans)
         single_texts = [s.original_text for s in single_spans]
 
@@ -472,10 +461,7 @@ class TestMultiPassDetection:
         )
 
         # Check that key phrases are detected
-        key_phrases = [
-            "Border Czar", "whopping", "scrambling", "lunacy",
-            "careens toward", "We're glad"
-        ]
+        key_phrases = ["Border Czar", "whopping", "scrambling", "lunacy", "careens toward", "We're glad"]
 
         multi_texts_lower = [t.lower() for t in multi_texts]
         found_count = 0
@@ -495,8 +481,6 @@ class TestMultiPassDetection:
         if not self.anthropic_api_key:
             pytest.skip("ANTHROPIC_API_KEY not set")
 
-        from app.services.neutralizer import detect_spans_high_recall_anthropic
-
         # Text with both clear and subtle manipulation
         text = (
             "The stunning victory left fans ecstatic. "
@@ -504,9 +488,7 @@ class TestMultiPassDetection:
             "Naturally, the team's brilliant form continues."
         )
 
-        spans = detect_spans_high_recall_anthropic(
-            text, self.anthropic_api_key, self.anthropic_model
-        )
+        spans = detect_spans_high_recall_anthropic(text, self.anthropic_api_key, self.anthropic_model)
         flagged_texts = [s.original_text.lower() for s in spans]
 
         print(f"\n  High-recall found {len(spans)} spans: {flagged_texts}")
@@ -525,8 +507,6 @@ class TestMultiPassDetection:
         """Adversarial pass should find phrases that first pass missed."""
         if not self.openai_api_key:
             pytest.skip("OPENAI_API_KEY not set")
-
-        from app.services.neutralizer import detect_spans_adversarial_pass
 
         # Simulate first pass missing some phrases
         text = (

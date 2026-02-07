@@ -14,26 +14,25 @@ import logging
 import os
 import secrets
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.retention import (
-    get_active_policy,
-    set_policy,
-    get_policy_by_name,
-    ensure_default_policies,
     archive_batch,
-    purge_expired_content,
-    purge_development_mode,
     dry_run_purge,
+    ensure_default_policies,
+    get_active_policy,
+    purge_development_mode,
+    purge_expired_content,
+    set_policy,
 )
 from app.services.retention.archive_service import get_retention_stats
-from app.services.retention.purge_service import get_purge_preview, cleanup_orphaned_records
-from app.services.retention.policy_service import list_policies, update_policy, get_retention_config
+from app.services.retention.policy_service import list_policies, update_policy
+from app.services.retention.purge_service import cleanup_orphaned_records, get_purge_preview
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +40,7 @@ router = APIRouter(prefix="/v1/admin/retention", tags=["admin-retention"])
 
 
 def require_admin_key(
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> None:
     """Validate admin API key."""
     expected_key = os.getenv("ADMIN_API_KEY")
@@ -60,38 +59,43 @@ def require_admin_key(
 # Response Models
 # -----------------------------------------------------------------------------
 
+
 class PolicyResponse(BaseModel):
     """Retention policy details."""
+
     name: str
     active_days: int
     compliance_days: int
     auto_archive: bool
     hard_delete_mode: bool
     is_active: bool
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class RetentionStatsResponse(BaseModel):
     """Retention statistics."""
+
     total: int
-    by_tier: Dict[str, int]
-    policy: Dict[str, Any]
+    by_tier: dict[str, int]
+    policy: dict[str, Any]
 
 
 class ArchiveResponse(BaseModel):
     """Archive operation result."""
+
     success: bool
     dry_run: bool
     stories_processed: int
     stories_archived: int
     stories_skipped: int
     stories_failed: int
-    errors: List[str]
+    errors: list[str]
 
 
 class PurgeResponse(BaseModel):
     """Purge operation result."""
+
     success: bool
     dry_run: bool
     stories_soft_deleted: int
@@ -99,15 +103,16 @@ class PurgeResponse(BaseModel):
     stories_skipped: int
     protected_by_brief: int
     protected_by_hold: int
-    related_records_deleted: Dict[str, int]
-    errors: List[str]
+    related_records_deleted: dict[str, int]
+    errors: list[str]
 
 
 class DryRunResponse(BaseModel):
     """Dry run preview result."""
+
     dry_run: bool = True
     mode: str
-    policy: Optional[str]
+    policy: str | None
     would_soft_delete: int
     would_hard_delete: int
     would_skip: int
@@ -117,24 +122,27 @@ class DryRunResponse(BaseModel):
 
 class PolicyUpdateRequest(BaseModel):
     """Request to update or switch policy."""
-    name: Optional[str] = Field(None, description="Switch to policy by name")
-    active_days: Optional[int] = Field(None, ge=1, le=30, description="Days in active tier")
-    compliance_days: Optional[int] = Field(None, ge=7, le=730, description="Days in compliance tier")
-    auto_archive: Optional[bool] = Field(None, description="Enable auto archival")
-    hard_delete_mode: Optional[bool] = Field(None, description="Skip archival, hard delete")
+
+    name: str | None = Field(None, description="Switch to policy by name")
+    active_days: int | None = Field(None, ge=1, le=30, description="Days in active tier")
+    compliance_days: int | None = Field(None, ge=7, le=730, description="Days in compliance tier")
+    auto_archive: bool | None = Field(None, description="Enable auto archival")
+    hard_delete_mode: bool | None = Field(None, description="Skip archival, hard delete")
 
 
 class ArchiveRequest(BaseModel):
     """Request to trigger archive."""
+
     batch_size: int = Field(100, ge=1, le=1000, description="Max stories to archive")
     dry_run: bool = Field(False, description="Preview only, don't archive")
 
 
 class PurgeRequest(BaseModel):
     """Request to trigger purge."""
+
     batch_size: int = Field(100, ge=1, le=1000, description="Max stories to purge")
     development_mode: bool = Field(False, description="Use development mode (hard delete)")
-    days: Optional[int] = Field(None, ge=1, le=365, description="Days threshold for dev mode")
+    days: int | None = Field(None, ge=1, le=365, description="Days threshold for dev mode")
     dry_run: bool = Field(False, description="Preview only, don't purge")
     confirm: bool = Field(False, description="Required confirmation for non-dry-run")
 
@@ -142,6 +150,7 @@ class PurgeRequest(BaseModel):
 # -----------------------------------------------------------------------------
 # Endpoints
 # -----------------------------------------------------------------------------
+
 
 @router.get("/status", response_model=RetentionStatsResponse)
 def get_retention_status(
@@ -194,7 +203,7 @@ def get_policy(
 def list_all_policies(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
-) -> List[PolicyResponse]:
+) -> list[PolicyResponse]:
     """
     List all available retention policies.
     """
@@ -359,7 +368,7 @@ def trigger_purge(
 @router.post("/dry-run", response_model=DryRunResponse)
 def preview_purge(
     development_mode: bool = Query(False, description="Use development mode"),
-    days: Optional[int] = Query(None, ge=1, le=365, description="Days for dev mode"),
+    days: int | None = Query(None, ge=1, le=365, description="Days for dev mode"),
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> DryRunResponse:

@@ -9,12 +9,11 @@ No personalization, trending, or recommendations.
 No urgency language or "breaking" alerts.
 """
 
-import asyncio
 import logging
 import os
 import uuid
-
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -23,7 +22,16 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from app.routers import brief_router, stories_router, admin_router, sources_router, pipeline_router, admin_retention_router, search_router, topics_router
+from app.routers import (
+    admin_retention_router,
+    admin_router,
+    brief_router,
+    pipeline_router,
+    search_router,
+    sources_router,
+    stories_router,
+    topics_router,
+)
 
 # Configure logging based on environment
 _use_json_logging = os.getenv("ENVIRONMENT", "development").lower() in ("production", "staging")
@@ -31,6 +39,7 @@ _log_level = os.getenv("LOG_LEVEL", "INFO")
 
 if _use_json_logging:
     from app.logging_config import configure_logging
+
     configure_logging(json_format=True, level=_log_level)
 else:
     logging.basicConfig(
@@ -128,11 +137,15 @@ app.openapi = custom_openapi
 
 # CORS middleware — restrict origins in production
 _cors_origins_env = os.getenv("CORS_ORIGINS", "")
-_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()] if _cors_origins_env else [
-    "http://localhost:8081",
-    "http://localhost:19006",
-    "http://localhost:3000",
-]
+_cors_origins = (
+    [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+    if _cors_origins_env
+    else [
+        "http://localhost:8081",
+        "http://localhost:19006",
+        "http://localhost:3000",
+    ]
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -141,6 +154,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["Content-Type", "X-API-Key"],
 )
+
 
 # Global exception handler — never leak internal details to clients
 @app.exception_handler(Exception)
@@ -167,6 +181,7 @@ app.include_router(topics_router)  # Trending topics
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
+
 
 @app.get("/health", tags=["health"])
 def health() -> dict:

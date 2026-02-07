@@ -9,19 +9,17 @@ Covers:
 - Input normalization (case, whitespace)
 """
 
-import pytest
-
+from app.models import Domain, FeedCategory
 from app.services.domain_mapper import (
-    map_domain_to_feed_category,
     DIRECT_MAPPINGS,
     GEO_DEPENDENT_MAPPINGS,
+    map_domain_to_feed_category,
 )
-from app.models import Domain, FeedCategory
-
 
 # ---------------------------------------------------------------------------
 # Test: Direct (geography-independent) mappings
 # ---------------------------------------------------------------------------
+
 
 class TestDirectMappings:
     """All 15 geography-independent domain -> feed_category mappings."""
@@ -88,6 +86,7 @@ class TestDirectMappings:
 # ---------------------------------------------------------------------------
 # Test: Geography-dependent mappings
 # ---------------------------------------------------------------------------
+
 
 class TestGeoDependentMappings:
     """All 5 geography-dependent domains with each geography value."""
@@ -173,14 +172,14 @@ class TestGeoDependentMappings:
         all_mapped = set(DIRECT_MAPPINGS.keys()) | set(GEO_DEPENDENT_MAPPINGS.keys())
         all_domains = {d.value for d in Domain}
         assert all_mapped == all_domains, (
-            f"Missing domains: {all_domains - all_mapped}, "
-            f"Extra domains: {all_mapped - all_domains}"
+            f"Missing domains: {all_domains - all_mapped}, Extra domains: {all_mapped - all_domains}"
         )
 
 
 # ---------------------------------------------------------------------------
 # Test: Local vs US distinction for crime/incidents
 # ---------------------------------------------------------------------------
+
 
 class TestLocalDistinction:
     """
@@ -218,6 +217,7 @@ class TestLocalDistinction:
 # Test: Unknown domains and geographies
 # ---------------------------------------------------------------------------
 
+
 class TestUnknownInputs:
     """Tests for unknown or edge-case inputs."""
 
@@ -253,6 +253,7 @@ class TestUnknownInputs:
 # ---------------------------------------------------------------------------
 # Test: Input normalization
 # ---------------------------------------------------------------------------
+
 
 class TestInputNormalization:
     """Tests that inputs are normalized (lowercased, stripped)."""

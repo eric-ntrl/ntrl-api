@@ -6,15 +6,14 @@ GET /v1/topics/trending - Returns trending topics from recent articles
 """
 
 import logging
-from datetime import datetime
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.trending_service import TrendingService
 from app.schemas.topics import TrendingTopicsResponse
+from app.services.trending_service import TrendingService
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +30,7 @@ def _get_cache_key(window_hours: int) -> str:
 
 @router.get("/trending", response_model=TrendingTopicsResponse)
 def get_trending_topics(
-    window_hours: int = Query(
-        24,
-        ge=1,
-        le=168,
-        description="Time window in hours (1-168, default 24)"
-    ),
+    window_hours: int = Query(24, ge=1, le=168, description="Time window in hours (1-168, default 24)"),
     db: Session = Depends(get_db),
 ) -> TrendingTopicsResponse:
     """

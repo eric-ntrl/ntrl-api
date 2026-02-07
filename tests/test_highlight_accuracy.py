@@ -19,20 +19,18 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple
 
 import pytest
 
+from app.models import SpanReason
 from app.services.neutralizer import (
     MockNeutralizerProvider,
     TransparencySpan,
-    find_phrase_positions,
-    detect_spans_via_llm_openai,
     detect_spans_via_llm_anthropic,
     detect_spans_via_llm_gemini,
+    detect_spans_via_llm_openai,
+    find_phrase_positions,
 )
-from app.models import SpanReason
-
 
 # Test corpus and gold standard paths
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -44,6 +42,7 @@ METRICS_DIR = FIXTURES_DIR / "metrics"
 @dataclass
 class GoldSpan:
     """A gold standard expected span."""
+
     span_id: str
     start_char: int
     end_char: int
@@ -56,6 +55,7 @@ class GoldSpan:
 @dataclass
 class SpanMatch:
     """Result of matching a predicted span to gold standard."""
+
     predicted: TransparencySpan
     gold: GoldSpan
     overlap: float  # Jaccard overlap 0.0-1.0
@@ -64,6 +64,7 @@ class SpanMatch:
 @dataclass
 class AccuracyMetrics:
     """Accuracy metrics for span detection."""
+
     true_positives: int
     false_positives: int
     false_negatives: int
@@ -90,24 +91,25 @@ def load_gold_standard(article_id: str) -> dict:
         return json.load(f)
 
 
-def parse_gold_spans(gold_data: dict) -> List[GoldSpan]:
+def parse_gold_spans(gold_data: dict) -> list[GoldSpan]:
     """Parse gold standard JSON into GoldSpan objects."""
     spans = []
     for s in gold_data.get("expected_spans", []):
-        spans.append(GoldSpan(
-            span_id=s.get("span_id", ""),
-            start_char=s.get("start_char", 0),
-            end_char=s.get("end_char", 0),
-            text=s.get("text", ""),
-            reason=s.get("reason", ""),
-            action=s.get("action", ""),
-            confidence=s.get("confidence", "medium"),
-        ))
+        spans.append(
+            GoldSpan(
+                span_id=s.get("span_id", ""),
+                start_char=s.get("start_char", 0),
+                end_char=s.get("end_char", 0),
+                text=s.get("text", ""),
+                reason=s.get("reason", ""),
+                action=s.get("action", ""),
+                confidence=s.get("confidence", "medium"),
+            )
+        )
     return spans
 
 
-def compute_jaccard_overlap(span1_start: int, span1_end: int,
-                            span2_start: int, span2_end: int) -> float:
+def compute_jaccard_overlap(span1_start: int, span1_end: int, span2_start: int, span2_end: int) -> float:
     """
     Compute overlap between two spans.
 
@@ -138,9 +140,9 @@ def compute_jaccard_overlap(span1_start: int, span1_end: int,
     return intersection_len / union_len if union_len > 0 else 0.0
 
 
-def match_spans(predicted: List[TransparencySpan],
-                gold: List[GoldSpan],
-                overlap_threshold: float = 0.5) -> Tuple[List[SpanMatch], List[TransparencySpan], List[GoldSpan]]:
+def match_spans(
+    predicted: list[TransparencySpan], gold: list[GoldSpan], overlap_threshold: float = 0.5
+) -> tuple[list[SpanMatch], list[TransparencySpan], list[GoldSpan]]:
     """
     Match predicted spans to gold standard spans.
 
@@ -161,21 +163,14 @@ def match_spans(predicted: List[TransparencySpan],
         best_overlap = 0.0
 
         for gold_span in unmatched_gold:
-            overlap = compute_jaccard_overlap(
-                pred.start_char, pred.end_char,
-                gold_span.start_char, gold_span.end_char
-            )
+            overlap = compute_jaccard_overlap(pred.start_char, pred.end_char, gold_span.start_char, gold_span.end_char)
 
             if overlap >= overlap_threshold and overlap > best_overlap:
                 best_match = gold_span
                 best_overlap = overlap
 
         if best_match:
-            matches.append(SpanMatch(
-                predicted=pred,
-                gold=best_match,
-                overlap=best_overlap
-            ))
+            matches.append(SpanMatch(predicted=pred, gold=best_match, overlap=best_overlap))
             if pred in unmatched_predicted:
                 unmatched_predicted.remove(pred)
             if best_match in unmatched_gold:
@@ -184,13 +179,11 @@ def match_spans(predicted: List[TransparencySpan],
     return matches, unmatched_predicted, unmatched_gold
 
 
-def compute_accuracy_metrics(predicted: List[TransparencySpan],
-                             gold: List[GoldSpan],
-                             overlap_threshold: float = 0.5) -> AccuracyMetrics:
+def compute_accuracy_metrics(
+    predicted: list[TransparencySpan], gold: list[GoldSpan], overlap_threshold: float = 0.5
+) -> AccuracyMetrics:
     """Compute precision, recall, F1 for span detection."""
-    matches, false_positives, false_negatives = match_spans(
-        predicted, gold, overlap_threshold
-    )
+    matches, false_positives, false_negatives = match_spans(predicted, gold, overlap_threshold)
 
     tp = len(matches)
     fp = len(false_positives)
@@ -265,10 +258,7 @@ class TestHighlightAccuracyByArticle:
         """Set up test fixtures."""
         self.provider = MockNeutralizerProvider()
 
-    @pytest.mark.parametrize("article_id", [
-        "001", "002", "003", "004", "005",
-        "006", "007", "008", "009", "010"
-    ])
+    @pytest.mark.parametrize("article_id", ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010"])
     def test_article_accuracy(self, article_id: str):
         """Test span detection accuracy for a single article."""
         # Load article and gold standard
@@ -311,14 +301,15 @@ class TestHighlightAccuracyByArticle:
         # Current baseline thresholds: just check recall > 0 (some matches found)
 
         # Log metrics for tracking improvement
-        print(f"  Article {article_id}: P={metrics.precision:.2f}, R={metrics.recall:.2f}, "
-              f"TP={metrics.true_positives}, FP={metrics.false_positives}, FN={metrics.false_negatives}")
+        print(
+            f"  Article {article_id}: P={metrics.precision:.2f}, R={metrics.recall:.2f}, "
+            f"TP={metrics.true_positives}, FP={metrics.false_positives}, FN={metrics.false_negatives}"
+        )
 
         # Minimal assertion: we should find at least some true positives
         # Full thresholds will be enforced after LLM-based detection is enabled
         assert metrics.true_positives >= 1 or metrics.false_negatives == 0, (
-            f"Article {article_id}: no true positives found "
-            f"(TP={metrics.true_positives}, FN={metrics.false_negatives})"
+            f"Article {article_id}: no true positives found (TP={metrics.true_positives}, FN={metrics.false_negatives})"
         )
 
 
@@ -335,8 +326,7 @@ class TestHighlightAccuracyAggregate:
         total_fp = 0
         total_fn = 0
 
-        for article_id in ["001", "002", "003", "004", "005",
-                           "006", "007", "008", "009", "010"]:
+        for article_id in ["001", "002", "003", "004", "005", "006", "007", "008", "009", "010"]:
             article = load_test_article(article_id)
             gold_data = load_gold_standard(article_id)
             gold_spans = parse_gold_spans(gold_data)
@@ -358,16 +348,16 @@ class TestHighlightAccuracyAggregate:
         f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
         # Log metrics for visibility - this is the baseline measurement
-        print(f"\n{'='*60}")
-        print(f"CORPUS-WIDE ACCURACY BASELINE")
-        print(f"{'='*60}")
+        print(f"\n{'=' * 60}")
+        print("CORPUS-WIDE ACCURACY BASELINE")
+        print(f"{'=' * 60}")
         print(f"  Precision: {precision:.2%} (target: 75%)")
         print(f"  Recall:    {recall:.2%} (target: 75%)")
         print(f"  F1 Score:  {f1:.2%} (target: 75%)")
         print(f"  TP={total_tp}, FP={total_fp}, FN={total_fn}")
-        print(f"{'='*60}")
-        print(f"\nNote: Low precision is expected with pattern-based detection.")
-        print(f"LLM-based detection (Phase 0) should significantly improve these metrics.")
+        print(f"{'=' * 60}")
+        print("\nNote: Low precision is expected with pattern-based detection.")
+        print("LLM-based detection (Phase 0) should significantly improve these metrics.")
 
         # INITIAL BASELINE: Just verify we're detecting something
         # Full thresholds (P >= 0.75, R >= 0.75) enforced after LLM integration
@@ -401,7 +391,7 @@ class TestSpanDetectionWithLLM:
 
         # Check slams position
         slams_span = [s for s in spans if s.original_text == "slams"][0]
-        assert body[slams_span.start_char:slams_span.end_char] == "slams"
+        assert body[slams_span.start_char : slams_span.end_char] == "slams"
 
     def test_find_phrase_positions_case_insensitive(self):
         """Test case-insensitive phrase matching."""
@@ -463,7 +453,7 @@ class TestMetricsFunctions:
         """Test Jaccard overlap for partial match."""
         overlap = compute_jaccard_overlap(0, 10, 5, 15)
         # Intersection: 5-10 = 5, Union: 0-15 = 15
-        assert abs(overlap - 5/15) < 0.001
+        assert abs(overlap - 5 / 15) < 0.001
 
     def test_jaccard_overlap_no_overlap(self):
         """Test Jaccard overlap for non-overlapping spans."""
@@ -474,15 +464,24 @@ class TestMetricsFunctions:
         """Test metrics with perfect prediction."""
         predicted = [
             TransparencySpan(
-                field="body", start_char=0, end_char=8,
-                original_text="BREAKING", action="removed",
-                reason=SpanReason.URGENCY_INFLATION
+                field="body",
+                start_char=0,
+                end_char=8,
+                original_text="BREAKING",
+                action="removed",
+                reason=SpanReason.URGENCY_INFLATION,
             )
         ]
         gold = [
-            GoldSpan(span_id="001", start_char=0, end_char=8,
-                    text="BREAKING", reason="urgency_inflation",
-                    action="remove", confidence="high")
+            GoldSpan(
+                span_id="001",
+                start_char=0,
+                end_char=8,
+                text="BREAKING",
+                reason="urgency_inflation",
+                action="remove",
+                confidence="high",
+            )
         ]
 
         metrics = compute_accuracy_metrics(predicted, gold)
@@ -498,9 +497,12 @@ class TestMetricsFunctions:
         """Test metrics when all predictions are wrong."""
         predicted = [
             TransparencySpan(
-                field="body", start_char=0, end_char=5,
-                original_text="Hello", action="removed",
-                reason=SpanReason.CLICKBAIT
+                field="body",
+                start_char=0,
+                end_char=5,
+                original_text="Hello",
+                action="removed",
+                reason=SpanReason.CLICKBAIT,
             )
         ]
         gold = []  # Article is clean
@@ -517,9 +519,15 @@ class TestMetricsFunctions:
         """Test metrics when all expected spans are missed."""
         predicted = []
         gold = [
-            GoldSpan(span_id="001", start_char=0, end_char=8,
-                    text="BREAKING", reason="urgency_inflation",
-                    action="remove", confidence="high")
+            GoldSpan(
+                span_id="001",
+                start_char=0,
+                end_char=8,
+                text="BREAKING",
+                reason="urgency_inflation",
+                action="remove",
+                confidence="high",
+            )
         ]
 
         metrics = compute_accuracy_metrics(predicted, gold)
@@ -534,6 +542,7 @@ class TestMetricsFunctions:
 # =============================================================================
 # LLM-Based Accuracy Tests
 # =============================================================================
+
 
 class TestHighlightAccuracyWithLLM:
     """
@@ -568,7 +577,7 @@ class TestHighlightAccuracyWithLLM:
         else:
             self.provider = None
 
-    def _detect_spans(self, body: str) -> List[TransparencySpan]:
+    def _detect_spans(self, body: str) -> list[TransparencySpan]:
         """Detect spans using the configured LLM provider."""
         if self.provider == "openai":
             return detect_spans_via_llm_openai(body, self.openai_key, self.model)
@@ -626,17 +635,17 @@ class TestHighlightAccuracyWithLLM:
 
         # Show false positives (detected but not expected)
         if metrics.false_positives > 0:
-            print(f"    False positives:")
+            print("    False positives:")
             matches, fps, fns = match_spans(predicted_spans, gold_spans)
             for fp in fps[:5]:  # Show first 5
-                print(f"      - \"{fp.original_text}\" ({fp.reason.value})")
+                print(f'      - "{fp.original_text}" ({fp.reason.value})')
 
         # Show false negatives (expected but not detected)
         if metrics.false_negatives > 0:
-            print(f"    False negatives (missed):")
+            print("    False negatives (missed):")
             matches, fps, fns = match_spans(predicted_spans, gold_spans)
             for fn in fns[:5]:  # Show first 5
-                print(f"      - \"{fn.text}\" ({fn.reason})")
+                print(f'      - "{fn.text}" ({fn.reason})')
 
         # Assertions - LLM should do better than pattern matching
         # Phase 0 (baseline): No hard assertion - just measure
@@ -682,9 +691,9 @@ class TestHighlightAccuracyWithLLM:
         # LLM should find very few or no false positives on clean text
         # Allow up to 2 false positives per article as tolerance
         if predicted_spans:
-            print(f"    False positives detected:")
+            print("    False positives detected:")
             for fp in predicted_spans[:5]:
-                print(f"      - \"{fp.original_text}\" ({fp.reason.value})")
+                print(f'      - "{fp.original_text}" ({fp.reason.value})')
 
         # Soft assertion - warn but don't fail if some FPs found
         if len(predicted_spans) > 3:
@@ -724,14 +733,14 @@ class TestHighlightAccuracyWithLLM:
         recall = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 1.0
         f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"LLM CORPUS-WIDE ACCURACY ({self.provider}/{self.model})")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"  Precision: {precision:.2%} (target: 75%)")
         print(f"  Recall:    {recall:.2%} (target: 75%)")
         print(f"  F1 Score:  {f1:.2%} (target: 75%)")
         print(f"  TP={total_tp}, FP={total_fp}, FN={total_fn}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Enforce 70% thresholds - tests will fail if accuracy drops below this
         # These thresholds match the LLM-based detection performance we've achieved
@@ -745,6 +754,5 @@ class TestHighlightAccuracyWithLLM:
             f"TP={total_tp}, FN={total_fn}. Check for missed manipulation patterns."
         )
         assert f1 >= 0.70, (
-            f"LLM F1 Score {f1:.2%} below 70% threshold. "
-            f"Balance between precision and recall has degraded."
+            f"LLM F1 Score {f1:.2%} below 70% threshold. Balance between precision and recall has degraded."
         )

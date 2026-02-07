@@ -8,7 +8,7 @@ that all API fetchers must implement and produce.
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, TypedDict
 
 
 class NormalizedEntry(TypedDict, total=False):
@@ -18,28 +18,29 @@ class NormalizedEntry(TypedDict, total=False):
     This format mirrors the normalization done by RSS ingestion,
     allowing seamless integration with the existing pipeline.
     """
+
     # Required fields
-    url: str                      # Original article URL
-    title: str                    # Article headline
-    body: str                     # Full article body text
-    published_at: datetime        # Publication timestamp
+    url: str  # Original article URL
+    title: str  # Article headline
+    body: str  # Full article body text
+    published_at: datetime  # Publication timestamp
 
     # Optional fields
-    description: Optional[str]    # Short summary/excerpt
-    author: Optional[str]         # Article author
-    source_name: Optional[str]    # Publisher name (e.g., "Reuters")
-    source_domain: Optional[str]  # Publisher domain (e.g., "reuters.com")
+    description: str | None  # Short summary/excerpt
+    author: str | None  # Article author
+    source_name: str | None  # Publisher name (e.g., "Reuters")
+    source_domain: str | None  # Publisher domain (e.g., "reuters.com")
 
     # API-specific metadata
-    api_source: str               # "perigon", "newsdata", etc.
-    api_article_id: Optional[str] # External article ID from API
-    categories: List[str]         # API-provided categories
-    entities: Dict[str, Any]      # Extracted entities (people, orgs, locations)
+    api_source: str  # "perigon", "newsdata", etc.
+    api_article_id: str | None  # External article ID from API
+    categories: list[str]  # API-provided categories
+    entities: dict[str, Any]  # Extracted entities (people, orgs, locations)
 
     # Extraction metrics (for compatibility with RSS flow)
-    body_downloaded: bool         # Whether body was fetched successfully
-    extractor_used: Optional[str] # "api" for API sources
-    extraction_failure_reason: Optional[str]
+    body_downloaded: bool  # Whether body was fetched successfully
+    extractor_used: str | None  # "api" for API sources
+    extraction_failure_reason: str | None
     extraction_duration_ms: int
 
 
@@ -54,11 +55,11 @@ class BaseFetcher(ABC):
     @abstractmethod
     async def fetch_articles(
         self,
-        categories: Optional[List[str]] = None,
+        categories: list[str] | None = None,
         language: str = "en",
         max_results: int = 100,
-        from_date: Optional[datetime] = None,
-    ) -> List[NormalizedEntry]:
+        from_date: datetime | None = None,
+    ) -> list[NormalizedEntry]:
         """
         Fetch and normalize articles from the API.
 

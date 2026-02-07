@@ -30,9 +30,10 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 WORD_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9'’.-]*")
+
 
 @dataclass
 class RuleResult:
@@ -40,18 +41,22 @@ class RuleResult:
     passed: bool
     severity: str
     message: str = ""
-    evidence: Optional[Dict[str, Any]] = None
+    evidence: dict[str, Any] | None = None
 
-def _words(s: str) -> List[str]:
+
+def _words(s: str) -> list[str]:
     return WORD_RE.findall(s or "")
+
 
 def _word_count(s: str) -> int:
     return len(_words(s))
 
+
 def _lower(s: str) -> str:
     return (s or "").lower()
 
-def _scan_tokens(text: str, tokens: List[str]) -> List[str]:
+
+def _scan_tokens(text: str, tokens: list[str]) -> list[str]:
     """
     Scan for banned tokens using word boundaries to avoid false positives.
     E.g., "live" should not match "delivery".
@@ -60,12 +65,13 @@ def _scan_tokens(text: str, tokens: List[str]) -> List[str]:
     hits = []
     for tok in tokens:
         # Use word boundary regex to avoid substring matches
-        pattern = r'\b' + re.escape(tok.lower()) + r'\b'
+        pattern = r"\b" + re.escape(tok.lower()) + r"\b"
         if re.search(pattern, t):
             hits.append(tok)
     return hits
 
-def _agenda_scan_with_quote_exception(neutral: str, tokens: List[str]) -> List[str]:
+
+def _agenda_scan_with_quote_exception(neutral: str, tokens: list[str]) -> list[str]:
     """
     Allow tokens only if they appear inside quotation marks in the neutral output.
     This is a minimal deterministic approximation. For stricter enforcement,
@@ -89,11 +95,13 @@ def _agenda_scan_with_quote_exception(neutral: str, tokens: List[str]) -> List[s
                 hits.append(tok)
     return hits
 
-def _regex_forbidden(text: str, pattern: str) -> Optional[str]:
+
+def _regex_forbidden(text: str, pattern: str) -> str | None:
     m = re.search(pattern, text or "")
     return m.group(0) if m else None
 
-def _grammar_lint_min(text: str) -> List[str]:
+
+def _grammar_lint_min(text: str) -> list[str]:
     """
     Minimal deterministic lints:
     - empty quotes
@@ -112,7 +120,8 @@ def _grammar_lint_min(text: str) -> List[str]:
         problems.append("trailing_punct")
     return problems
 
-def _all_caps_scan(text: str, allowlist: List[str]) -> List[str]:
+
+def _all_caps_scan(text: str, allowlist: list[str]) -> list[str]:
     """
     Flags ALL CAPS tokens longer than 2 chars not in allowlist.
     """
@@ -126,7 +135,8 @@ def _all_caps_scan(text: str, allowlist: List[str]) -> List[str]:
             hits.append(tok)
     return hits
 
-def _scope_marker_preservation(original: str, neutral: str, markers: List[str]) -> List[str]:
+
+def _scope_marker_preservation(original: str, neutral: str, markers: list[str]) -> list[str]:
     """
     If a scope marker appears in original as a standalone word, it should appear in neutral.
     Uses word boundary matching to avoid false positives (e.g., "all" in "eventually").
@@ -138,12 +148,13 @@ def _scope_marker_preservation(original: str, neutral: str, markers: List[str]) 
     for m in markers:
         ml = m.lower()
         # Use word boundary regex to find standalone occurrences
-        pattern = r'\b' + re.escape(ml) + r'\b'
+        pattern = r"\b" + re.escape(ml) + r"\b"
         if re.search(pattern, o) and not re.search(pattern, n):
             missing.append(m)
     return missing
 
-def _compound_term_atomicity(original: str, neutral: str, terms: List[str]) -> List[str]:
+
+def _compound_term_atomicity(original: str, neutral: str, terms: list[str]) -> list[str]:
     """
     If a compound term appears in original, require it in neutral.
     (This is intentionally strict; tune term list as canon evolves.)
@@ -157,7 +168,8 @@ def _compound_term_atomicity(original: str, neutral: str, terms: List[str]) -> L
             missing.append(term)
     return missing
 
-def _certainty_marker_preservation(original: str, neutral: str, markers: List[str]) -> List[str]:
+
+def _certainty_marker_preservation(original: str, neutral: str, markers: list[str]) -> list[str]:
     """
     If a certainty marker appears in original, it should appear in neutral.
     Uses word boundary matching to find phrase occurrences.
@@ -169,12 +181,13 @@ def _certainty_marker_preservation(original: str, neutral: str, markers: List[st
     for m in markers:
         ml = m.lower()
         # Use word boundary regex to find phrase occurrences
-        pattern = r'\b' + re.escape(ml) + r'\b'
+        pattern = r"\b" + re.escape(ml) + r"\b"
         if re.search(pattern, o) and not re.search(pattern, n):
             missing.append(m)
     return missing
 
-def _heuristic_no_new_entities_numbers(original: str, neutral: str) -> Dict[str, Any]:
+
+def _heuristic_no_new_entities_numbers(original: str, neutral: str) -> dict[str, Any]:
     """
     Heuristic: flags numbers or capitalized tokens that appear in neutral but not in original.
     Not perfect, but useful for catching obvious 'new facts' regressions.
@@ -197,17 +210,19 @@ def _heuristic_no_new_entities_numbers(original: str, neutral: str) -> Dict[str,
 
     return {"new_numbers": new_numbers, "new_capitalized_tokens": new_caps}
 
-def load_spec(path: Path) -> Dict[str, Any]:
+
+def load_spec(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
+
 def grade(
-    spec: Dict[str, Any],
+    spec: dict[str, Any],
     original_text: str,
     neutral_text: str,
-    original_headline: Optional[str] = None,
-    neutral_headline: Optional[str] = None,
-) -> Dict[str, Any]:
-    results: List[RuleResult] = []
+    original_headline: str | None = None,
+    neutral_headline: str | None = None,
+) -> dict[str, Any]:
+    results: list[RuleResult] = []
     overall_pass = True
 
     for rule in spec["rules"]:
@@ -302,15 +317,15 @@ def grade(
 
         results.append(RuleResult(rule_id=rid, passed=passed, severity=severity, message=msg, evidence=evidence))
 
-    return {
-        "overall_pass": overall_pass,
-        "results": [r.__dict__ for r in results]
-    }
+    return {"overall_pass": overall_pass, "results": [r.__dict__ for r in results]}
+
 
 # Default spec path relative to this file
 _DEFAULT_SPEC_PATH = Path(__file__).parent.parent / "data" / "grader_spec_v1.json"
+
+
 @lru_cache(maxsize=1)
-def get_default_spec() -> Dict[str, Any]:
+def get_default_spec() -> dict[str, Any]:
     """Load and cache the default grader spec."""
     return load_spec(_DEFAULT_SPEC_PATH)
 
@@ -318,10 +333,10 @@ def get_default_spec() -> Dict[str, Any]:
 def grade_article(
     original_text: str,
     neutral_text: str,
-    original_headline: Optional[str] = None,
-    neutral_headline: Optional[str] = None,
-    spec: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    original_headline: str | None = None,
+    neutral_headline: str | None = None,
+    spec: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Convenience function to grade an article using the default spec.
 
@@ -346,6 +361,6 @@ if __name__ == "__main__":
         original_text="Meghan Markle set to return to Britain with Harry this summer.",
         neutral_text="Meghan Markle and Harry return to Britain this summer.",
         original_headline="Meghan Markle set to return to Britain with Harry this summer.",
-        neutral_headline="Meghan Markle and Harry return to Britain this summer."
+        neutral_headline="Meghan Markle and Harry return to Britain this summer.",
     )
     print(json.dumps(sample, indent=2))

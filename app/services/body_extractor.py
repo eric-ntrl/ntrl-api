@@ -12,7 +12,6 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 import trafilatura
 from tenacity import (
@@ -40,9 +39,9 @@ class ExtractionResult:
     """Result of a body extraction attempt with detailed metadata."""
 
     success: bool
-    body: Optional[str] = None
+    body: str | None = None
     char_count: int = 0
-    failure_reason: Optional[ExtractionFailureReason] = None
+    failure_reason: ExtractionFailureReason | None = None
     attempts: int = 1
     duration_ms: int = 0
     extractor_used: str = "trafilatura"  # "trafilatura" or "newspaper3k"
@@ -60,17 +59,19 @@ class BodyExtractor:
         retry=retry_if_exception_type((TimeoutError, ConnectionError, OSError)),
         reraise=True,
     )
-    def _fetch_with_retry(self, url: str) -> Optional[str]:
+    def _fetch_with_retry(self, url: str) -> str | None:
         """Fetch URL content with retries on network errors."""
         config = configparser.ConfigParser()
-        config.read_dict({
-            'DEFAULT': {
-                'DOWNLOAD_TIMEOUT': str(self.TIMEOUT_SECONDS),
+        config.read_dict(
+            {
+                "DEFAULT": {
+                    "DOWNLOAD_TIMEOUT": str(self.TIMEOUT_SECONDS),
+                }
             }
-        })
+        )
         return trafilatura.fetch_url(url, config=config)
 
-    def _try_newspaper3k(self, url: str) -> Optional[str]:
+    def _try_newspaper3k(self, url: str) -> str | None:
         """Fallback extractor using newspaper3k."""
         try:
             from newspaper import Article
@@ -79,9 +80,7 @@ class BodyExtractor:
             article.download()
             article.parse()
             if article.text and len(article.text) >= self.MIN_BODY_LENGTH:
-                logger.debug(
-                    f"newspaper3k extracted {len(article.text)} chars from {url}"
-                )
+                logger.debug(f"newspaper3k extracted {len(article.text)} chars from {url}")
                 return article.text
         except Exception as e:
             logger.debug(f"newspaper3k fallback failed for {url}: {e}")
@@ -193,9 +192,7 @@ class BodyExtractor:
             return ExtractionResult(
                 success=False,
                 failure_reason=(
-                    ExtractionFailureReason.TIMEOUT
-                    if "timeout" in str(e).lower()
-                    else ExtractionFailureReason.UNKNOWN
+                    ExtractionFailureReason.TIMEOUT if "timeout" in str(e).lower() else ExtractionFailureReason.UNKNOWN
                 ),
                 attempts=attempts,
                 duration_ms=int((time.time() - start_time) * 1000),

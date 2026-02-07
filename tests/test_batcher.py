@@ -4,15 +4,16 @@ Integration tests for the NTRL Batcher.
 """
 
 import pytest
+
 from app.services.ntrl_batcher import (
-    NTRLBatcher,
-    BatchConfig,
     ArticleInput,
+    BatchConfig,
+    NTRLBatcher,
     process_articles,
 )
+from app.services.ntrl_fix import FixerConfig, GeneratorConfig
 from app.services.ntrl_pipeline import PipelineConfig
 from app.services.ntrl_scan import ScannerConfig
-from app.services.ntrl_fix import FixerConfig, GeneratorConfig
 
 
 @pytest.fixture

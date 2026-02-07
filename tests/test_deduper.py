@@ -3,7 +3,6 @@
 Unit tests for deduplication service.
 """
 
-import pytest
 from app.services.deduper import Deduper
 
 

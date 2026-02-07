@@ -19,42 +19,43 @@ Fallback to hardcoded prompts if DB lookup fails.
 import json
 import logging
 import os
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from app.models import Domain, FeedCategory, PipelineStage, PipelineStatus
+from app.models import Domain
 from app.services.domain_mapper import map_domain_to_feed_category
 from app.services.enhanced_keyword_classifier import classify_by_keywords
 
 logger = logging.getLogger(__name__)
 
 # Prompt cache for hot-reload
-_classification_prompt_cache: Dict[str, str] = {}
+_classification_prompt_cache: dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ClassificationResult:
     """Result of classifying a single article."""
-    domain: str               # e.g. "governance_politics"
-    feed_category: str        # e.g. "us" (from domain mapper)
-    confidence: float         # 0.0-1.0 (LLM self-reported, 0.0 for keyword)
-    tags: dict                # {geography, geography_detail, actors, action_type, topic_keywords}
-    model: str                # "gpt-4o-mini", "gemini-2.0-flash", or "keyword"
-    method: str               # "llm" or "keyword_fallback"
+
+    domain: str  # e.g. "governance_politics"
+    feed_category: str  # e.g. "us" (from domain mapper)
+    confidence: float  # 0.0-1.0 (LLM self-reported, 0.0 for keyword)
+    tags: dict  # {geography, geography_detail, actors, action_type, topic_keywords}
+    model: str  # "gpt-4o-mini", "gemini-2.0-flash", or "keyword"
+    method: str  # "llm" or "keyword_fallback"
 
 
 @dataclass
 class ClassifyRunResult:
     """Result of a classification batch run."""
+
     total: int = 0
     success: int = 0
     llm: int = 0
@@ -133,6 +134,7 @@ VALID_DOMAINS = {d.value for d in Domain}
 # Prompt loading from database
 # ---------------------------------------------------------------------------
 
+
 def get_classification_prompt(prompt_name: str = "classification_system_prompt") -> str:
     """
     Get classification prompt from database, with hardcoded fallback.
@@ -145,15 +147,19 @@ def get_classification_prompt(prompt_name: str = "classification_system_prompt")
 
     # Try to fetch from database
     try:
-        from app.database import SessionLocal
         from app import models
+        from app.database import SessionLocal
 
         db = SessionLocal()
         try:
-            prompt = db.query(models.Prompt).filter(
-                models.Prompt.name == prompt_name,
-                models.Prompt.is_active == True,
-            ).first()
+            prompt = (
+                db.query(models.Prompt)
+                .filter(
+                    models.Prompt.name == prompt_name,
+                    models.Prompt.is_active == True,
+                )
+                .first()
+            )
 
             if prompt and prompt.content:
                 _classification_prompt_cache[prompt_name] = prompt.content
@@ -198,7 +204,7 @@ def _build_user_prompt(title: str, description: str, body_excerpt: str, source_s
     return "\n".join(parts)
 
 
-def _parse_llm_response(content: str) -> Optional[dict]:
+def _parse_llm_response(content: str) -> dict | None:
     """Parse and validate LLM JSON response."""
     try:
         # Strip markdown code blocks if present
@@ -245,6 +251,7 @@ def _parse_llm_response(content: str) -> Optional[dict]:
 # LLM call implementations
 # ---------------------------------------------------------------------------
 
+
 def _classify_openai(
     title: str,
     description: str,
@@ -252,7 +259,7 @@ def _classify_openai(
     source_slug: str,
     system_prompt: str,
     model: str = "gpt-4o-mini",
-) -> Optional[dict]:
+) -> dict | None:
     """Classify using OpenAI API with JSON mode."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -289,7 +296,7 @@ def _classify_gemini(
     source_slug: str,
     system_prompt: str,
     model: str = "gemini-2.0-flash",
-) -> Optional[dict]:
+) -> dict | None:
     """Classify using Gemini API with JSON mode."""
     api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -330,15 +337,16 @@ def _classify_gemini(
 # Main classifier
 # ---------------------------------------------------------------------------
 
+
 class LLMClassifier:
     """LLM-based article classifier with multi-model retry and robust fallback."""
 
     def classify(
         self,
         title: str,
-        description: Optional[str] = None,
-        body_excerpt: Optional[str] = None,
-        source_slug: Optional[str] = None,
+        description: str | None = None,
+        body_excerpt: str | None = None,
+        source_slug: str | None = None,
     ) -> ClassificationResult:
         """
         Classify a single article through the reliability chain.
@@ -375,7 +383,7 @@ class LLMClassifier:
             return self._make_result(result, model="gemini-2.0-flash", method="llm")
 
         # Attempt 4: Enhanced keyword classifier (last resort)
-        logger.warning(f"[CLASSIFY] All LLM attempts failed, falling back to keyword classifier")
+        logger.warning("[CLASSIFY] All LLM attempts failed, falling back to keyword classifier")
         kw_result = classify_by_keywords(title, desc, excerpt, slug)
         domain = kw_result["domain"]
         geography = kw_result["geography"]
@@ -405,17 +413,14 @@ class LLMClassifier:
             method=method,
         )
 
-    def _prefetch_bodies(self, stories: List, storage) -> Dict[str, str]:
+    def _prefetch_bodies(self, stories: list, storage) -> dict[str, str]:
         """Pre-fetch article bodies from S3 in parallel using a thread pool.
 
         Returns a dict mapping story ID (str) to body excerpt (first 2000 chars).
         Stories without content URIs or failed downloads map to empty string.
         """
-        body_map: Dict[str, str] = {}
-        fetchable = [
-            s for s in stories
-            if s.raw_content_uri and s.raw_content_available
-        ]
+        body_map: dict[str, str] = {}
+        fetchable = [s for s in stories if s.raw_content_uri and s.raw_content_available]
 
         if not fetchable:
             return body_map
@@ -430,10 +435,7 @@ class LLMClassifier:
             return (story_id, "")
 
         with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                executor.submit(_fetch_one, str(s.id), s.raw_content_uri): s
-                for s in fetchable
-            }
+            futures = {executor.submit(_fetch_one, str(s.id), s.raw_content_uri): s for s in fetchable}
             for future in as_completed(futures):
                 story_id, excerpt = future.result()
                 body_map[story_id] = excerpt
@@ -476,7 +478,7 @@ class LLMClassifier:
             logger.warning(f"[CLASSIFY] Could not get storage provider: {e}")
 
         # Pre-fetch all bodies from S3 in parallel
-        body_map: Dict[str, str] = {}
+        body_map: dict[str, str] = {}
         if storage:
             body_map = self._prefetch_bodies(stories, storage)
 
@@ -507,7 +509,7 @@ class LLMClassifier:
                 story.classification_confidence = result.confidence
                 story.classification_model = result.model
                 story.classification_method = result.method
-                story.classified_at = datetime.now(timezone.utc)
+                story.classified_at = datetime.now(UTC)
 
                 run_result.success += 1
                 if result.method == "llm":
@@ -563,7 +565,7 @@ class LLMClassifier:
             logger.warning(f"[CLASSIFY] Could not get storage provider: {e}")
 
         # Pre-fetch all bodies from S3 in parallel
-        body_map: Dict[str, str] = {}
+        body_map: dict[str, str] = {}
         if storage:
             body_map = self._prefetch_bodies(stories, storage)
 
@@ -591,7 +593,7 @@ class LLMClassifier:
                 story.classification_confidence = result.confidence
                 story.classification_model = result.model
                 story.classification_method = result.method
-                story.classified_at = datetime.now(timezone.utc)
+                story.classified_at = datetime.now(UTC)
 
                 run_result.success += 1
                 if result.method == "llm":

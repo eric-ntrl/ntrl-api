@@ -15,18 +15,17 @@ Key features:
 import re
 import time
 from functools import lru_cache
-from typing import Optional
 
 from app.taxonomy import (
-    MANIPULATION_TAXONOMY,
     ManipulationType,
     get_types_with_patterns,
 )
+
 from .types import (
-    DetectionInstance,
-    ScanResult,
     ArticleSegment,
+    DetectionInstance,
     DetectorSource,
+    ScanResult,
     SpanAction,
 )
 
@@ -61,10 +60,12 @@ class LexicalDetector:
             for pattern in manip_type.lexical_patterns:
                 try:
                     # Compile with case-insensitive flag
-                    compiled.append((
-                        re.compile(pattern, re.IGNORECASE),
-                        pattern  # Keep original for debugging
-                    ))
+                    compiled.append(
+                        (
+                            re.compile(pattern, re.IGNORECASE),
+                            pattern,  # Keep original for debugging
+                        )
+                    )
                 except re.error as e:
                     # Log but don't fail on bad patterns
                     print(f"Warning: Invalid pattern for {type_id}: {pattern} - {e}")

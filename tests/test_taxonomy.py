@@ -3,24 +3,22 @@
 Unit tests for the NTRL Canonical Manipulation Taxonomy.
 """
 
-import pytest
 from app.taxonomy import (
-    MANIPULATION_TAXONOMY,
-    ManipulationCategory,
-    ManipulationType,
-    SpanAction,
-    ArticleSegment,
-    SEGMENT_MULTIPLIERS,
     CATEGORY_NAMES,
+    COUNTS_BY_CATEGORY,
+    MANIPULATION_TAXONOMY,
+    SEGMENT_MULTIPLIERS,
+    TAXONOMY_VERSION,
+    TOTAL_TYPES,
+    ArticleSegment,
+    ManipulationCategory,
+    SpanAction,
+    get_all_type_ids,
     get_type,
     get_types_by_category,
     get_types_by_severity,
     get_types_with_patterns,
-    get_all_type_ids,
     validate_type_id,
-    TAXONOMY_VERSION,
-    TOTAL_TYPES,
-    COUNTS_BY_CATEGORY,
 )
 
 

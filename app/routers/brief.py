@@ -5,19 +5,16 @@ Daily brief endpoints.
 GET /v1/brief - Get the current daily brief
 """
 
-import hashlib
-import json
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app import models
-from app.models import FeedCategory, FEED_CATEGORY_ORDER
-from app.schemas.brief import BriefResponse, BriefSection, BriefStory, FEED_CATEGORY_DISPLAY_NAMES
+from app.database import get_db
+from app.models import FEED_CATEGORY_ORDER, FeedCategory
+from app.schemas.brief import FEED_CATEGORY_DISPLAY_NAMES, BriefResponse, BriefSection, BriefStory
 
 router = APIRouter(prefix="/v1", tags=["brief"])
 
@@ -34,11 +31,11 @@ def invalidate_brief_cache():
 def get_brief(
     response: Response,
     db: Session = Depends(get_db),
-    hours: Optional[int] = Query(
+    hours: int | None = Query(
         default=None,
         ge=1,
         le=168,
-        description="Filter to stories from last N hours (1-168). Default: all stories in brief."
+        description="Filter to stories from last N hours (1-168). Default: all stories in brief.",
     ),
 ) -> BriefResponse:
     """
@@ -96,21 +93,15 @@ def get_brief(
         time_cutoff = datetime.utcnow() - timedelta(hours=hours)
 
     # Build sections
-    sections: List[BriefSection] = []
+    sections: list[BriefSection] = []
     total_filtered_stories = 0
 
     for category in FeedCategory:
-        category_items = [
-            item for item in brief.items
-            if item.section == category.value
-        ]
+        category_items = [item for item in brief.items if item.section == category.value]
 
         # Apply time filter if specified
         if time_cutoff:
-            category_items = [
-                item for item in category_items
-                if item.published_at >= time_cutoff
-            ]
+            category_items = [item for item in category_items if item.published_at >= time_cutoff]
 
         if not category_items:
             continue
@@ -119,39 +110,43 @@ def get_brief(
         story_ids = [item.story_neutralized_id for item in category_items]
         neutralized_map = {}
         if story_ids:
-            neutralized_stories = db.query(models.StoryNeutralized).filter(
-                models.StoryNeutralized.id.in_(story_ids)
-            ).all()
+            neutralized_stories = (
+                db.query(models.StoryNeutralized).filter(models.StoryNeutralized.id.in_(story_ids)).all()
+            )
             neutralized_map = {str(s.id): s for s in neutralized_stories}
 
         stories = []
         for item in sorted(category_items, key=lambda x: x.position):
             neutralized = neutralized_map.get(str(item.story_neutralized_id))
-            stories.append(BriefStory(
-                id=str(item.story_neutralized_id),
-                feed_title=item.feed_title,
-                feed_summary=item.feed_summary,
-                source_name=item.source_name,
-                source_url=item.original_url,
-                published_at=item.published_at,
-                has_manipulative_content=item.has_manipulative_content,
-                position=item.position,
-                # Detail fields from story_neutralized (for article view)
-                detail_title=neutralized.detail_title if neutralized else None,
-                detail_brief=neutralized.detail_brief if neutralized else None,
-                detail_full=neutralized.detail_full if neutralized else None,
-                disclosure=neutralized.disclosure if neutralized else None,
-            ))
+            stories.append(
+                BriefStory(
+                    id=str(item.story_neutralized_id),
+                    feed_title=item.feed_title,
+                    feed_summary=item.feed_summary,
+                    source_name=item.source_name,
+                    source_url=item.original_url,
+                    published_at=item.published_at,
+                    has_manipulative_content=item.has_manipulative_content,
+                    position=item.position,
+                    # Detail fields from story_neutralized (for article view)
+                    detail_title=neutralized.detail_title if neutralized else None,
+                    detail_brief=neutralized.detail_brief if neutralized else None,
+                    detail_full=neutralized.detail_full if neutralized else None,
+                    disclosure=neutralized.disclosure if neutralized else None,
+                )
+            )
 
         total_filtered_stories += len(stories)
 
-        sections.append(BriefSection(
-            name=category.value,
-            display_name=FEED_CATEGORY_DISPLAY_NAMES.get(category.value, category.value.title()),
-            order=FEED_CATEGORY_ORDER[category],
-            stories=stories,
-            story_count=len(stories),
-        ))
+        sections.append(
+            BriefSection(
+                name=category.value,
+                display_name=FEED_CATEGORY_DISPLAY_NAMES.get(category.value, category.value.title()),
+                order=FEED_CATEGORY_ORDER[category],
+                stories=stories,
+                story_count=len(stories),
+            )
+        )
 
     # Sort sections by order
     sections.sort(key=lambda x: x.order)

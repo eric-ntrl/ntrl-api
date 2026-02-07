@@ -16,13 +16,12 @@ Key features:
 import json
 import os
 import time
-from typing import Optional
 from dataclasses import dataclass
+
 import httpx
 
-from .types import GeneratorConfig
 from ..ntrl_scan.types import MergedScanResult
-
+from .types import GeneratorConfig
 
 DETAIL_BRIEF_PROMPT = """You are a professional news synthesizer. Create a brief, factual summary of this article.
 
@@ -65,6 +64,7 @@ Return ONLY valid JSON."""
 @dataclass
 class DetailBriefResult:
     """Result from detail brief generation."""
+
     text: str
     key_facts: list[str]
     word_count: int
@@ -79,10 +79,10 @@ class DetailBriefGenerator:
     while removing manipulation and unnecessary filler.
     """
 
-    def __init__(self, config: Optional[GeneratorConfig] = None):
+    def __init__(self, config: GeneratorConfig | None = None):
         """Initialize with configuration."""
         self.config = config or GeneratorConfig()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
         if self.config.provider == "auto":
             self._auto_configure()
@@ -107,7 +107,7 @@ class DetailBriefGenerator:
     async def generate(
         self,
         body: str,
-        scan_result: Optional[MergedScanResult] = None,
+        scan_result: MergedScanResult | None = None,
     ) -> DetailBriefResult:
         """
         Generate brief synthesis of article.
@@ -122,12 +122,7 @@ class DetailBriefGenerator:
         start_time = time.perf_counter()
 
         if not body or not body.strip():
-            return DetailBriefResult(
-                text="",
-                key_facts=[],
-                word_count=0,
-                processing_time_ms=0.0
-            )
+            return DetailBriefResult(text="", key_facts=[], word_count=0, processing_time_ms=0.0)
 
         # Create manipulation summary for context
         manipulation_summary = self._create_manipulation_summary(scan_result)
@@ -145,10 +140,7 @@ class DetailBriefGenerator:
         result.processing_time_ms = (time.perf_counter() - start_time) * 1000
         return result
 
-    def _create_manipulation_summary(
-        self,
-        scan_result: Optional[MergedScanResult]
-    ) -> str:
+    def _create_manipulation_summary(self, scan_result: MergedScanResult | None) -> str:
         """Create brief summary of detected manipulation for context."""
         if not scan_result or not scan_result.spans:
             return "No significant manipulation detected."
@@ -178,13 +170,13 @@ class DetailBriefGenerator:
     def _mock_generate(self, body: str) -> DetailBriefResult:
         """Mock generation for testing."""
         # Extract first few sentences as a simple mock
-        sentences = body.replace('\n', ' ').split('. ')
+        sentences = body.replace("\n", " ").split(". ")
         brief_sentences = sentences[:5]  # Take first 5 sentences
 
         # Simple cleanup
-        brief = '. '.join(brief_sentences)
-        if brief and not brief.endswith('.'):
-            brief += '.'
+        brief = ". ".join(brief_sentences)
+        if brief and not brief.endswith("."):
+            brief += "."
 
         # Extract potential key facts (sentences with numbers or proper nouns)
         key_facts = []
@@ -193,24 +185,13 @@ class DetailBriefGenerator:
                 key_facts.append(sent.strip())
 
         words = brief.split()
-        return DetailBriefResult(
-            text=brief,
-            key_facts=key_facts[:3],
-            word_count=len(words)
-        )
+        return DetailBriefResult(text=brief, key_facts=key_facts[:3], word_count=len(words))
 
-    async def _openai_generate(
-        self,
-        body: str,
-        manipulation_summary: str
-    ) -> DetailBriefResult:
+    async def _openai_generate(self, body: str, manipulation_summary: str) -> DetailBriefResult:
         """Generate using OpenAI API."""
         client = await self._get_client()
 
-        prompt = DETAIL_BRIEF_PROMPT.format(
-            body=body,
-            manipulation_summary=manipulation_summary
-        )
+        prompt = DETAIL_BRIEF_PROMPT.format(body=body, manipulation_summary=manipulation_summary)
 
         response = await client.post(
             "https://api.openai.com/v1/chat/completions",
@@ -235,18 +216,11 @@ class DetailBriefGenerator:
 
         return self._parse_response(content, body)
 
-    async def _anthropic_generate(
-        self,
-        body: str,
-        manipulation_summary: str
-    ) -> DetailBriefResult:
+    async def _anthropic_generate(self, body: str, manipulation_summary: str) -> DetailBriefResult:
         """Generate using Anthropic API."""
         client = await self._get_client()
 
-        prompt = DETAIL_BRIEF_PROMPT.format(
-            body=body,
-            manipulation_summary=manipulation_summary
-        )
+        prompt = DETAIL_BRIEF_PROMPT.format(body=body, manipulation_summary=manipulation_summary)
 
         response = await client.post(
             "https://api.anthropic.com/v1/messages",
@@ -277,9 +251,7 @@ class DetailBriefGenerator:
             data = json.loads(content)
             text = data.get("brief", "")
             return DetailBriefResult(
-                text=text,
-                key_facts=data.get("key_facts", []),
-                word_count=data.get("word_count", len(text.split()))
+                text=text, key_facts=data.get("key_facts", []), word_count=data.get("word_count", len(text.split()))
             )
         except json.JSONDecodeError:
             # Fallback to mock

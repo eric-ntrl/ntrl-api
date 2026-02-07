@@ -16,9 +16,8 @@ import os
 import secrets
 import uuid
 from datetime import datetime
-from typing import Dict, Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -27,22 +26,26 @@ admin_logger = logging.getLogger(__name__)
 from app.config import get_settings
 from app.database import get_db
 from app.schemas.admin import (
-    IngestRunRequest,
-    IngestRunResponse,
-    IngestSourceResult,
-    ClassifyRunRequest,
-    ClassifyRunResponse,
-    NeutralizeRunRequest,
-    NeutralizeRunResponse,
-    NeutralizeStoryResult,
     BriefRunRequest,
     BriefRunResponse,
     BriefSectionResult,
+    ClassifyRunRequest,
+    ClassifyRunResponse,
+    IngestRunRequest,
+    IngestRunResponse,
+    IngestSourceResult,
+    NeutralizeRunRequest,
+    NeutralizeRunResponse,
+    NeutralizeStoryResult,
 )
 from app.schemas.grading import GradeRequest, GradeResponse, RuleResult
-from app.services.ingestion import IngestionService
-from app.services.neutralizer import NeutralizerService, get_neutralizer_provider, NeutralizerConfigError, get_active_model
 from app.services.brief_assembly import BriefAssemblyService
+from app.services.ingestion import IngestionService
+from app.services.neutralizer import (
+    NeutralizerConfigError,
+    NeutralizerService,
+    get_neutralizer_provider,
+)
 
 router = APIRouter(prefix="/v1", tags=["admin"])
 
@@ -51,27 +54,31 @@ router = APIRouter(prefix="/v1", tags=["admin"])
 # Status endpoint
 # -----------------------------------------------------------------------------
 
+
 class LastRunInfo(BaseModel):
     """Info about last pipeline run."""
+
     stage: str
     status: str
-    finished_at: Optional[datetime] = None
-    duration_ms: Optional[int] = None
+    finished_at: datetime | None = None
+    duration_ms: int | None = None
 
 
 class PipelineHealthInfo(BaseModel):
     """Pipeline health metrics from latest run."""
-    trace_id: Optional[str] = None
-    finished_at: Optional[datetime] = None
-    status: Optional[str] = None
-    body_download_rate: Optional[float] = None
-    neutralization_rate: Optional[float] = None
-    brief_story_count: Optional[int] = None
-    alerts: List[str] = Field(default_factory=list)
+
+    trace_id: str | None = None
+    finished_at: datetime | None = None
+    status: str | None = None
+    body_download_rate: float | None = None
+    neutralization_rate: float | None = None
+    brief_story_count: int | None = None
+    alerts: list[str] = Field(default_factory=list)
 
 
 class AlertThresholds(BaseModel):
     """Alert threshold values."""
+
     body_download_rate_min: int = 70
     neutralization_rate_min: int = 90
     brief_story_count_min: int = 10
@@ -84,29 +91,30 @@ CODE_VERSION = "2026.01.31.1"
 
 class StatusResponse(BaseModel):
     """System status response."""
+
     status: str = "ok"
     health: str = "unknown"
     code_version: str = CODE_VERSION
-    neutralizer_provider: Optional[str] = None
-    neutralizer_model: Optional[str] = None
-    neutralizer_error: Optional[str] = None
+    neutralizer_provider: str | None = None
+    neutralizer_model: str | None = None
+    neutralizer_error: str | None = None
     has_google_api_key: bool
     has_openai_api_key: bool
     has_anthropic_api_key: bool
     has_aws_credentials: bool = False
-    s3_bucket: Optional[str] = None
+    s3_bucket: str | None = None
     total_articles_ingested: int = 0
     total_articles_neutralized: int = 0
     total_sources: int = 0
-    last_ingest: Optional[LastRunInfo] = None
-    last_neutralize: Optional[LastRunInfo] = None
-    last_brief: Optional[LastRunInfo] = None
-    latest_pipeline_run: Optional[PipelineHealthInfo] = None
+    last_ingest: LastRunInfo | None = None
+    last_neutralize: LastRunInfo | None = None
+    last_brief: LastRunInfo | None = None
+    latest_pipeline_run: PipelineHealthInfo | None = None
     thresholds: AlertThresholds = Field(default_factory=AlertThresholds)
 
 
 def require_admin_key(
-    x_api_key: Optional[str] = Header(default=None, alias="X-API-Key"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> None:
     """Validate admin API key. Fails closed if ADMIN_API_KEY is not set."""
     expected_key = os.getenv("ADMIN_API_KEY")
@@ -151,7 +159,7 @@ def get_status(
         config_error = str(e)
 
     # Get last run for each stage
-    def get_last_run(stage: str) -> Optional[LastRunInfo]:
+    def get_last_run(stage: str) -> LastRunInfo | None:
         log = (
             db.query(models.PipelineLog)
             .filter(models.PipelineLog.stage == stage)
@@ -169,31 +177,21 @@ def get_status(
 
     # Get counts
     total_ingested = db.query(models.StoryRaw).count()
-    total_neutralized = db.query(models.StoryNeutralized).filter(
-        models.StoryNeutralized.is_current == True
-    ).count()
-    total_sources = db.query(models.Source).filter(
-        models.Source.is_active == True
-    ).count()
+    total_neutralized = db.query(models.StoryNeutralized).filter(models.StoryNeutralized.is_current == True).count()
+    total_sources = db.query(models.Source).filter(models.Source.is_active == True).count()
 
     # Get latest pipeline run summary for health metrics
-    latest_run = (
-        db.query(models.PipelineRunSummary)
-        .order_by(models.PipelineRunSummary.finished_at.desc())
-        .first()
-    )
+    latest_run = db.query(models.PipelineRunSummary).order_by(models.PipelineRunSummary.finished_at.desc()).first()
 
     pipeline_health = None
     health = "unknown"
 
     if latest_run:
         body_download_rate = (
-            latest_run.ingest_body_downloaded / latest_run.ingest_total * 100
-            if latest_run.ingest_total > 0 else 0
+            latest_run.ingest_body_downloaded / latest_run.ingest_total * 100 if latest_run.ingest_total > 0 else 0
         )
         neutralization_rate = (
-            latest_run.neutralize_success / latest_run.neutralize_total * 100
-            if latest_run.neutralize_total > 0 else 0
+            latest_run.neutralize_success / latest_run.neutralize_total * 100 if latest_run.neutralize_total > 0 else 0
         )
 
         pipeline_health = PipelineHealthInfo(
@@ -240,6 +238,7 @@ def get_status(
 # Debug endpoint for reason mapping verification
 # -----------------------------------------------------------------------------
 
+
 @router.get("/debug/span-pipeline")
 def debug_span_pipeline(
     story_id: str,
@@ -253,6 +252,7 @@ def debug_span_pipeline(
     detailed info about what reasons are assigned at each stage.
     """
     import os
+
     from app import models
     from app.services.neutralizer import _detect_spans_with_config
 
@@ -263,6 +263,7 @@ def debug_span_pipeline(
 
     # Get body from storage
     from app.storage.factory import get_storage_provider
+
     storage = get_storage_provider()
     result = storage.download(story.raw_content_uri) if story.raw_content_uri else None
     body = result.content.decode("utf-8") if result and result.exists else None
@@ -274,9 +275,10 @@ def debug_span_pipeline(
     api_key = os.environ.get("OPENAI_API_KEY")
 
     # Also run raw LLM call to see what reasons it returns
-    from app.services.neutralizer import detect_spans_via_llm_openai, SPAN_DETECTION_SYSTEM_PROMPT, build_span_detection_prompt
-    import json
-    from openai import OpenAI
+
+    from app.services.neutralizer import (
+        detect_spans_via_llm_openai,
+    )
 
     # Prepare combined text like production does
     title_separator = "\n\n---ARTICLE BODY---\n\n"
@@ -284,15 +286,21 @@ def debug_span_pipeline(
 
     # Get settings
     from app.config import get_settings
+
     settings = get_settings()
     span_detection_model = settings.SPAN_DETECTION_MODEL  # Should be gpt-4o by default
 
     # Call detect_spans_via_llm_openai directly with BODY ONLY
     body_only_spans = detect_spans_via_llm_openai(body, api_key, span_detection_model)
-    body_only_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in body_only_spans] if body_only_spans else []
+    body_only_reasons = (
+        [s.reason.value if hasattr(s.reason, "value") else str(s.reason) for s in body_only_spans]
+        if body_only_spans
+        else []
+    )
 
     # Call detect_spans_with_mode directly (isolate the position adjustment)
     from app.services.neutralizer import detect_spans_with_mode
+
     mode_spans = detect_spans_with_mode(
         body=body,
         mode="single",
@@ -300,7 +308,9 @@ def debug_span_pipeline(
         openai_model=span_detection_model,
         title=story.original_title,
     )
-    mode_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in mode_spans] if mode_spans else []
+    mode_reasons = (
+        [s.reason.value if hasattr(s.reason, "value") else str(s.reason) for s in mode_spans] if mode_spans else []
+    )
 
     # Run _detect_spans_with_config (production path) and collect all reasons
     spans = _detect_spans_with_config(
@@ -310,17 +320,18 @@ def debug_span_pipeline(
         provider_model="gpt-4o-mini",
         title=story.original_title,
     )
-    all_span_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in spans] if spans else []
+    all_span_reasons = [s.reason.value if hasattr(s.reason, "value") else str(s.reason) for s in spans] if spans else []
 
     # Collect span reasons
     from collections import Counter
-    reason_values = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in spans]
+
+    reason_values = [s.reason.value if hasattr(s.reason, "value") else str(s.reason) for s in spans]
     reason_counts = Counter(reason_values)
 
     span_details = [
         {
             "phrase": s.original_text[:50],
-            "reason": s.reason.value if hasattr(s.reason, 'value') else str(s.reason),
+            "reason": s.reason.value if hasattr(s.reason, "value") else str(s.reason),
             "field": s.field,
         }
         for s in spans[:15]
@@ -356,7 +367,6 @@ def debug_reason_mapping(
     Use this to verify deployment after code changes.
     """
     from app.services.neutralizer import _parse_span_reason
-    from app.models import SpanReason
 
     test_cases = {
         # Canonical reasons
@@ -378,7 +388,7 @@ def debug_reason_mapping(
 
     for input_reason, expected_output in test_cases.items():
         result = _parse_span_reason(input_reason)
-        actual_output = result.value if hasattr(result, 'value') else str(result)
+        actual_output = result.value if hasattr(result, "value") else str(result)
         is_correct = actual_output == expected_output
         if not is_correct:
             all_correct = False
@@ -398,6 +408,7 @@ def debug_reason_mapping(
 # -----------------------------------------------------------------------------
 # Grading endpoint
 # -----------------------------------------------------------------------------
+
 
 @router.post("/grade", response_model=GradeResponse)
 def grade_text(
@@ -446,17 +457,15 @@ def run_ingest(
     )
 
     return IngestRunResponse(
-        status=result['status'],
-        started_at=result['started_at'],
-        finished_at=result['finished_at'],
-        duration_ms=result['duration_ms'],
-        sources_processed=result['sources_processed'],
-        total_ingested=result['total_ingested'],
-        total_skipped_duplicate=result['total_skipped_duplicate'],
-        source_results=[
-            IngestSourceResult(**sr) for sr in result['source_results']
-        ],
-        errors=result['errors'],
+        status=result["status"],
+        started_at=result["started_at"],
+        finished_at=result["finished_at"],
+        duration_ms=result["duration_ms"],
+        sources_processed=result["sources_processed"],
+        total_ingested=result["total_ingested"],
+        total_skipped_duplicate=result["total_skipped_duplicate"],
+        source_results=[IngestSourceResult(**sr) for sr in result["source_results"]],
+        errors=result["errors"],
     )
 
 
@@ -540,20 +549,19 @@ def run_neutralize(
         )
     except NeutralizerConfigError as e:
         import logging
+
         logging.getLogger(__name__).error(f"Neutralizer config error: {e}")
         raise HTTPException(status_code=500, detail="Neutralizer configuration error")
 
     return NeutralizeRunResponse(
-        status=result['status'],
-        started_at=result['started_at'],
-        finished_at=result['finished_at'],
-        duration_ms=result['duration_ms'],
-        total_processed=result['total_processed'],
-        total_skipped=result['total_skipped'],
-        total_failed=result['total_failed'],
-        story_results=[
-            NeutralizeStoryResult(**sr) for sr in result['story_results']
-        ],
+        status=result["status"],
+        started_at=result["started_at"],
+        finished_at=result["finished_at"],
+        duration_ms=result["duration_ms"],
+        total_processed=result["total_processed"],
+        total_skipped=result["total_skipped"],
+        total_failed=result["total_failed"],
+        story_results=[NeutralizeStoryResult(**sr) for sr in result["story_results"]],
     )
 
 
@@ -578,23 +586,22 @@ def run_brief(
 
     # Invalidate brief cache after assembly
     from app.routers.brief import invalidate_brief_cache
+
     invalidate_brief_cache()
 
     return BriefRunResponse(
-        status=result['status'],
-        started_at=result['started_at'],
-        finished_at=result['finished_at'],
-        duration_ms=result['duration_ms'],
-        brief_id=result.get('brief_id'),
-        brief_date=result.get('brief_date'),
-        cutoff_time=result.get('cutoff_time'),
-        total_stories=result.get('total_stories', 0),
-        is_empty=result.get('is_empty', False),
-        empty_reason=result.get('empty_reason'),
-        sections=[
-            BriefSectionResult(**s) for s in result.get('sections', [])
-        ],
-        error=result.get('error'),
+        status=result["status"],
+        started_at=result["started_at"],
+        finished_at=result["finished_at"],
+        duration_ms=result["duration_ms"],
+        brief_id=result.get("brief_id"),
+        brief_date=result.get("brief_date"),
+        cutoff_time=result.get("cutoff_time"),
+        total_stories=result.get("total_stories", 0),
+        is_empty=result.get("is_empty", False),
+        empty_reason=result.get("empty_reason"),
+        sections=[BriefSectionResult(**s) for s in result.get("sections", [])],
+        error=result.get("error"),
     )
 
 
@@ -602,8 +609,10 @@ def run_brief(
 # Combined pipeline endpoint
 # -----------------------------------------------------------------------------
 
+
 class PipelineStageResult(BaseModel):
     """Result for a single pipeline stage."""
+
     stage: str
     status: str
     duration_ms: int
@@ -612,6 +621,7 @@ class PipelineStageResult(BaseModel):
 
 class PipelineRunRequest(BaseModel):
     """Request to run full pipeline."""
+
     max_items_per_source: int = Field(20, ge=1, le=100, description="Max items to ingest per source")
     classify_limit: int = Field(200, ge=1, le=500, description="Max stories to classify")
     neutralize_limit: int = Field(100, ge=1, le=500, description="Max stories to neutralize")
@@ -621,11 +631,12 @@ class PipelineRunRequest(BaseModel):
 
 class PipelineRunResponse(BaseModel):
     """Response from full pipeline run."""
+
     status: str
     started_at: datetime
     finished_at: datetime
     total_duration_ms: int
-    stages: List[PipelineStageResult]
+    stages: list[PipelineStageResult]
     summary: dict
 
 
@@ -652,52 +663,47 @@ def run_pipeline(
             db,
             max_items_per_source=request.max_items_per_source,
         )
-        stages.append(PipelineStageResult(
-            stage="ingest",
-            status=ingest_result['status'],
-            duration_ms=ingest_result['duration_ms'],
-            details={
-                'total_ingested': ingest_result['total_ingested'],
-                'total_skipped': ingest_result['total_skipped_duplicate'],
-                'sources_processed': ingest_result['sources_processed'],
-            }
-        ))
+        stages.append(
+            PipelineStageResult(
+                stage="ingest",
+                status=ingest_result["status"],
+                duration_ms=ingest_result["duration_ms"],
+                details={
+                    "total_ingested": ingest_result["total_ingested"],
+                    "total_skipped": ingest_result["total_skipped_duplicate"],
+                    "sources_processed": ingest_result["sources_processed"],
+                },
+            )
+        )
     except Exception as e:
-        stages.append(PipelineStageResult(
-            stage="ingest",
-            status="failed",
-            duration_ms=0,
-            details={'error': str(e)}
-        ))
+        stages.append(PipelineStageResult(stage="ingest", status="failed", duration_ms=0, details={"error": str(e)}))
         errors.append(f"Ingest failed: {e}")
 
     # Stage 2: Classify
     try:
         from app.services.llm_classifier import LLMClassifier
+
         classify_started = datetime.utcnow()
         classifier = LLMClassifier()
         classify_result = classifier.classify_pending(db, limit=request.classify_limit)
         classify_finished = datetime.utcnow()
         classify_duration = int((classify_finished - classify_started).total_seconds() * 1000)
-        stages.append(PipelineStageResult(
-            stage="classify",
-            status="completed",
-            duration_ms=classify_duration,
-            details={
-                'total': classify_result.total,
-                'success': classify_result.success,
-                'llm': classify_result.llm,
-                'keyword_fallback': classify_result.keyword_fallback,
-                'failed': classify_result.failed,
-            }
-        ))
+        stages.append(
+            PipelineStageResult(
+                stage="classify",
+                status="completed",
+                duration_ms=classify_duration,
+                details={
+                    "total": classify_result.total,
+                    "success": classify_result.success,
+                    "llm": classify_result.llm,
+                    "keyword_fallback": classify_result.keyword_fallback,
+                    "failed": classify_result.failed,
+                },
+            )
+        )
     except Exception as e:
-        stages.append(PipelineStageResult(
-            stage="classify",
-            status="failed",
-            duration_ms=0,
-            details={'error': str(e)}
-        ))
+        stages.append(PipelineStageResult(stage="classify", status="failed", duration_ms=0, details={"error": str(e)}))
         errors.append(f"Classify failed: {e}")
 
     # Stage 3: Neutralize
@@ -708,23 +714,22 @@ def run_pipeline(
             limit=request.neutralize_limit,
             max_workers=request.max_workers,
         )
-        stages.append(PipelineStageResult(
-            stage="neutralize",
-            status=neutralize_result['status'],
-            duration_ms=neutralize_result['duration_ms'],
-            details={
-                'total_processed': neutralize_result['total_processed'],
-                'total_skipped': neutralize_result['total_skipped'],
-                'total_failed': neutralize_result['total_failed'],
-            }
-        ))
+        stages.append(
+            PipelineStageResult(
+                stage="neutralize",
+                status=neutralize_result["status"],
+                duration_ms=neutralize_result["duration_ms"],
+                details={
+                    "total_processed": neutralize_result["total_processed"],
+                    "total_skipped": neutralize_result["total_skipped"],
+                    "total_failed": neutralize_result["total_failed"],
+                },
+            )
+        )
     except Exception as e:
-        stages.append(PipelineStageResult(
-            stage="neutralize",
-            status="failed",
-            duration_ms=0,
-            details={'error': str(e)}
-        ))
+        stages.append(
+            PipelineStageResult(stage="neutralize", status="failed", duration_ms=0, details={"error": str(e)})
+        )
         errors.append(f"Neutralize failed: {e}")
 
     # Stage 4: Brief assembly
@@ -735,23 +740,20 @@ def run_pipeline(
             cutoff_hours=request.cutoff_hours,
             force=True,
         )
-        stages.append(PipelineStageResult(
-            stage="brief",
-            status=brief_result['status'],
-            duration_ms=brief_result['duration_ms'],
-            details={
-                'total_stories': brief_result.get('total_stories', 0),
-                'brief_id': brief_result.get('brief_id'),
-                'is_empty': brief_result.get('is_empty', False),
-            }
-        ))
+        stages.append(
+            PipelineStageResult(
+                stage="brief",
+                status=brief_result["status"],
+                duration_ms=brief_result["duration_ms"],
+                details={
+                    "total_stories": brief_result.get("total_stories", 0),
+                    "brief_id": brief_result.get("brief_id"),
+                    "is_empty": brief_result.get("is_empty", False),
+                },
+            )
+        )
     except Exception as e:
-        stages.append(PipelineStageResult(
-            stage="brief",
-            status="failed",
-            duration_ms=0,
-            details={'error': str(e)}
-        ))
+        stages.append(PipelineStageResult(stage="brief", status="failed", duration_ms=0, details={"error": str(e)}))
         errors.append(f"Brief failed: {e}")
 
     finished_at = datetime.utcnow()
@@ -777,12 +779,12 @@ def run_pipeline(
         total_duration_ms=total_duration_ms,
         stages=stages,
         summary={
-            'articles_ingested': _stage_detail('ingest', 'total_ingested'),
-            'articles_classified': _stage_detail('classify', 'success'),
-            'articles_neutralized': _stage_detail('neutralize', 'total_processed'),
-            'stories_in_brief': _stage_detail('brief', 'total_stories'),
-            'errors': errors,
-        }
+            "articles_ingested": _stage_detail("ingest", "total_ingested"),
+            "articles_classified": _stage_detail("classify", "success"),
+            "articles_neutralized": _stage_detail("neutralize", "total_processed"),
+            "stories_in_brief": _stage_detail("brief", "total_stories"),
+            "errors": errors,
+        },
     )
 
 
@@ -790,8 +792,10 @@ def run_pipeline(
 # Scheduled pipeline endpoint (for Railway cron)
 # -----------------------------------------------------------------------------
 
+
 class ScheduledRunRequest(BaseModel):
     """Request for scheduled pipeline run."""
+
     # DEVELOPMENT MODE: Using low limits to conserve resources
     # Before production: increase max_items_per_source to 50+, neutralize_limit to 100+
     max_items_per_source: int = Field(25, ge=1, le=100, description="Max items to ingest per source")
@@ -802,17 +806,18 @@ class ScheduledRunRequest(BaseModel):
 
     # Evaluation options
     enable_evaluation: bool = Field(False, description="Run teacher evaluation after pipeline")
-    teacher_model: Optional[str] = Field(None, description="Model to use for evaluation (default: uses EVAL_MODEL config)")
+    teacher_model: str | None = Field(None, description="Model to use for evaluation (default: uses EVAL_MODEL config)")
     eval_sample_size: int = Field(10, ge=1, le=50, description="Number of articles to evaluate")
     enable_auto_optimize: bool = Field(False, description="Auto-apply prompt improvements")
 
 
 class EvaluationSummary(BaseModel):
     """Summary of evaluation results for scheduled run response."""
-    evaluation_run_id: Optional[str] = None
-    classification_accuracy: Optional[float] = None
-    avg_neutralization_score: Optional[float] = None
-    overall_quality_score: Optional[float] = None
+
+    evaluation_run_id: str | None = None
+    classification_accuracy: float | None = None
+    avg_neutralization_score: float | None = None
+    overall_quality_score: float | None = None
     prompts_updated: int = 0
     rollback_triggered: bool = False
     estimated_cost_usd: float = 0.0
@@ -820,6 +825,7 @@ class EvaluationSummary(BaseModel):
 
 class ScheduledRunResponse(BaseModel):
     """Response from scheduled pipeline run with summary stats."""
+
     status: str
     trace_id: str
     started_at: datetime
@@ -840,8 +846,8 @@ class ScheduledRunResponse(BaseModel):
     neutralize_failed: int
     brief_story_count: int
     brief_section_count: int
-    alerts: List[str]
-    evaluation: Optional[EvaluationSummary] = None
+    alerts: list[str]
+    evaluation: EvaluationSummary | None = None
 
 
 @router.post("/pipeline/scheduled-run", response_model=ScheduledRunResponse)
@@ -860,6 +866,7 @@ def run_scheduled_pipeline(
     The endpoint returns detailed metrics that can be used for monitoring.
     """
     import uuid as uuid_module
+
     from app import models
     from app.services.alerts import check_alerts
 
@@ -888,11 +895,11 @@ def run_scheduled_pipeline(
             max_items_per_source=request.max_items_per_source,
             trace_id=trace_id,
         )
-        ingest_success = ingest_result.get('total_ingested', 0)
-        ingest_total = ingest_success + ingest_result.get('total_skipped_duplicate', 0)
-        ingest_body_downloaded = ingest_result.get('total_body_downloaded', 0)
-        ingest_body_failed = ingest_result.get('total_body_failed', 0)
-        ingest_skipped_duplicate = ingest_result.get('total_skipped_duplicate', 0)
+        ingest_success = ingest_result.get("total_ingested", 0)
+        ingest_total = ingest_success + ingest_result.get("total_skipped_duplicate", 0)
+        ingest_body_downloaded = ingest_result.get("total_body_downloaded", 0)
+        ingest_body_failed = ingest_result.get("total_body_failed", 0)
+        ingest_skipped_duplicate = ingest_result.get("total_skipped_duplicate", 0)
     except Exception as e:
         errors.append(f"Ingest failed: {e}")
 
@@ -904,6 +911,7 @@ def run_scheduled_pipeline(
     classify_failed = 0
     try:
         from app.services.llm_classifier import LLMClassifier
+
         classifier = LLMClassifier()
         classify_result = classifier.classify_pending(db, limit=request.classify_limit)
         classify_total = classify_result.total
@@ -922,10 +930,10 @@ def run_scheduled_pipeline(
             limit=request.neutralize_limit,
             max_workers=request.max_workers,
         )
-        neutralize_total = neutralize_result.get('total_processed', 0) + neutralize_result.get('total_skipped', 0)
-        neutralize_success = neutralize_result.get('total_processed', 0) - neutralize_result.get('total_failed', 0)
-        neutralize_skipped_no_body = neutralize_result.get('skipped_no_body', 0)
-        neutralize_failed = neutralize_result.get('total_failed', 0)
+        neutralize_total = neutralize_result.get("total_processed", 0) + neutralize_result.get("total_skipped", 0)
+        neutralize_success = neutralize_result.get("total_processed", 0) - neutralize_result.get("total_failed", 0)
+        neutralize_skipped_no_body = neutralize_result.get("skipped_no_body", 0)
+        neutralize_failed = neutralize_result.get("total_failed", 0)
     except Exception as e:
         errors.append(f"Neutralize failed: {e}")
 
@@ -937,8 +945,8 @@ def run_scheduled_pipeline(
             cutoff_hours=request.cutoff_hours,
             force=True,
         )
-        brief_story_count = brief_result.get('total_stories', 0)
-        brief_section_count = len(brief_result.get('sections', []))
+        brief_story_count = brief_result.get("total_stories", 0)
+        brief_section_count = len(brief_result.get("sections", []))
     except Exception as e:
         errors.append(f"Brief failed: {e}")
 
@@ -1058,18 +1066,13 @@ def run_scheduled_pipeline(
             if evaluation_summary and evaluation_summary.evaluation_run_id:
                 try:
                     from app.services.email_service import EmailService
+
                     email_service = EmailService()
-                    email_result = email_service.send_evaluation_results(
-                        db, evaluation_summary.evaluation_run_id
-                    )
+                    email_result = email_service.send_evaluation_results(db, evaluation_summary.evaluation_run_id)
                     if email_result.get("status") == "sent":
-                        admin_logger.info(
-                            f"[SCHEDULED-RUN] Email notification sent to {email_result.get('recipient')}"
-                        )
+                        admin_logger.info(f"[SCHEDULED-RUN] Email notification sent to {email_result.get('recipient')}")
                     elif email_result.get("status") == "skipped":
-                        admin_logger.info(
-                            f"[SCHEDULED-RUN] Email notification skipped: {email_result.get('reason')}"
-                        )
+                        admin_logger.info(f"[SCHEDULED-RUN] Email notification skipped: {email_result.get('reason')}")
                 except Exception as email_error:
                     admin_logger.error(f"[SCHEDULED-RUN] Email notification failed: {email_error}")
                     alerts.append(f"EMAIL_NOTIFICATION_FAILED: {str(email_error)}")
@@ -1112,42 +1115,46 @@ def run_scheduled_pipeline(
 # Prompt management endpoints
 # -----------------------------------------------------------------------------
 
-def _get_active_model_from_db(db: Session) -> Optional[str]:
+
+def _get_active_model_from_db(db: Session) -> str | None:
     """Get the currently active model from the active system_prompt in DB."""
     from app import models
-    prompt = db.query(models.Prompt).filter(
-        models.Prompt.name == "system_prompt",
-        models.Prompt.is_active == True
-    ).first()
+
+    prompt = (
+        db.query(models.Prompt).filter(models.Prompt.name == "system_prompt", models.Prompt.is_active == True).first()
+    )
     return prompt.model if prompt else None
 
 
 class PromptResponse(BaseModel):
     """Response for a single prompt."""
+
     name: str
-    model: Optional[str] = None
+    model: str | None = None
     content: str
     version: int
     is_active: bool = True
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
 
 class PromptUpdateRequest(BaseModel):
     """Request to update a prompt."""
+
     content: str
-    model: Optional[str] = None  # Optional - None for model-agnostic prompts
-    change_reason: Optional[str] = None  # Optional reason for the change (for audit trail)
+    model: str | None = None  # Optional - None for model-agnostic prompts
+    change_reason: str | None = None  # Optional reason for the change (for audit trail)
 
 
 class PromptListResponse(BaseModel):
     """Response for listing all prompts."""
-    prompts: List[PromptResponse]
-    active_model: Optional[str] = None
+
+    prompts: list[PromptResponse]
+    active_model: str | None = None
 
 
 @router.get("/prompts", response_model=PromptListResponse)
 def list_prompts(
-    model: Optional[str] = None,
+    model: str | None = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PromptListResponse:
@@ -1183,7 +1190,7 @@ def list_prompts(
 @router.get("/prompts/{name}", response_model=PromptResponse)
 def get_prompt(
     name: str,
-    model: Optional[str] = None,
+    model: str | None = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PromptResponse:
@@ -1195,16 +1202,24 @@ def get_prompt(
 
     if model:
         # Get specific model's prompt
-        prompt = db.query(models.Prompt).filter(
-            models.Prompt.name == name,
-            models.Prompt.model == model,
-        ).first()
+        prompt = (
+            db.query(models.Prompt)
+            .filter(
+                models.Prompt.name == name,
+                models.Prompt.model == model,
+            )
+            .first()
+        )
     else:
         # Get the active prompt for this name
-        prompt = db.query(models.Prompt).filter(
-            models.Prompt.name == name,
-            models.Prompt.is_active == True,
-        ).first()
+        prompt = (
+            db.query(models.Prompt)
+            .filter(
+                models.Prompt.name == name,
+                models.Prompt.is_active == True,
+            )
+            .first()
+        )
 
     if not prompt:
         detail = f"Prompt '{name}' not found"
@@ -1239,10 +1254,7 @@ def update_prompt(
 
     target_model = request.model
 
-    prompt = db.query(models.Prompt).filter(
-        models.Prompt.name == name,
-        models.Prompt.model == target_model
-    ).first()
+    prompt = db.query(models.Prompt).filter(models.Prompt.name == name, models.Prompt.model == target_model).first()
 
     if prompt:
         # Update existing
@@ -1268,10 +1280,9 @@ def update_prompt(
         prompt.updated_at = datetime.utcnow()
     else:
         # Deactivate other prompts with same name (only one active per name)
-        db.query(models.Prompt).filter(
-            models.Prompt.name == name,
-            models.Prompt.is_active == True
-        ).update({"is_active": False})
+        db.query(models.Prompt).filter(models.Prompt.name == name, models.Prompt.is_active == True).update(
+            {"is_active": False}
+        )
 
         # Create new for this model (set as active)
         prompt = models.Prompt(
@@ -1317,22 +1328,15 @@ def activate_prompt(
     from app.services.neutralizer import clear_prompt_cache
 
     # Find the prompt to activate
-    prompt = db.query(models.Prompt).filter(
-        models.Prompt.name == name,
-        models.Prompt.model == model
-    ).first()
+    prompt = db.query(models.Prompt).filter(models.Prompt.name == name, models.Prompt.model == model).first()
 
     if not prompt:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Prompt '{name}' for model '{model}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Prompt '{name}' for model '{model}' not found")
 
     # Deactivate all other prompts with same name
-    db.query(models.Prompt).filter(
-        models.Prompt.name == name,
-        models.Prompt.id != prompt.id
-    ).update({"is_active": False})
+    db.query(models.Prompt).filter(models.Prompt.name == name, models.Prompt.id != prompt.id).update(
+        {"is_active": False}
+    )
 
     # Activate this prompt
     prompt.is_active = True
@@ -1358,19 +1362,22 @@ def activate_prompt(
 # Prompt testing endpoint
 # -----------------------------------------------------------------------------
 
+
 class TestPromptRequest(BaseModel):
     """Request to test prompts on sample articles."""
+
     limit: int = Field(10, ge=1, le=50, description="Number of articles to test")
-    system_prompt: Optional[str] = Field(None, description="Override system prompt for this test only")
-    user_prompt_template: Optional[str] = Field(None, description="Override user prompt template for this test only")
+    system_prompt: str | None = Field(None, description="Override system prompt for this test only")
+    user_prompt_template: str | None = Field(None, description="Override user prompt template for this test only")
 
 
 class ArticleTestResult(BaseModel):
     """Result for a single article test."""
+
     story_id: str
     source: str
     original_title: str
-    original_description: Optional[str]
+    original_description: str | None
     feed_title: str
     feed_summary: str
     has_manipulative_content: bool
@@ -1378,10 +1385,11 @@ class ArticleTestResult(BaseModel):
 
 class TestPromptResponse(BaseModel):
     """Response from prompt testing."""
+
     prompt_version: int
     articles_tested: int
     duration_ms: int
-    results: List[ArticleTestResult]
+    results: list[ArticleTestResult]
 
 
 @router.post("/prompts/test", response_model=TestPromptResponse)
@@ -1396,12 +1404,14 @@ def test_prompts(
     Returns neutralization results WITHOUT saving to database.
     Useful for iterating on prompt quality.
     """
+    import logging
+
     from app import models
     from app.services.neutralizer import (
-        get_neutralizer_provider,
         _prompt_cache,
+        get_neutralizer_provider,
     )
-    import logging
+
     logger = logging.getLogger(__name__)
 
     started_at = datetime.utcnow()
@@ -1437,15 +1447,17 @@ def test_prompts(
                     description=story.original_description,
                     body=None,  # Skip body for speed
                 )
-                results.append(ArticleTestResult(
-                    story_id=str(story.id),
-                    source=story.source.name if story.source else "Unknown",
-                    original_title=story.original_title,
-                    original_description=story.original_description,
-                    feed_title=result.feed_title,
-                    feed_summary=result.feed_summary,
-                    has_manipulative_content=result.has_manipulative_content,
-                ))
+                results.append(
+                    ArticleTestResult(
+                        story_id=str(story.id),
+                        source=story.source.name if story.source else "Unknown",
+                        original_title=story.original_title,
+                        original_description=story.original_description,
+                        feed_title=result.feed_title,
+                        feed_summary=result.feed_summary,
+                        has_manipulative_content=result.has_manipulative_content,
+                    )
+                )
             except Exception as e:
                 logger.error(f"Failed to neutralize story {story.id}: {e}")
                 continue
@@ -1454,9 +1466,7 @@ def test_prompts(
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
         # Get current prompt version
-        prompt = db.query(models.Prompt).filter(
-            models.Prompt.name == "system_prompt"
-        ).first()
+        prompt = db.query(models.Prompt).filter(models.Prompt.name == "system_prompt").first()
         prompt_version = prompt.version if prompt else 0
 
         return TestPromptResponse(
@@ -1476,15 +1486,17 @@ def test_prompts(
 # Reset endpoint (for testing)
 # -----------------------------------------------------------------------------
 
+
 class ResetResponse(BaseModel):
     """Response for reset operation."""
+
     status: str
     started_at: datetime
     finished_at: datetime
     duration_ms: int
     db_deleted: dict
     storage_deleted: int
-    warning: Optional[str] = None
+    warning: str | None = None
 
 
 @router.post("/reset", response_model=ResetResponse)
@@ -1500,9 +1512,10 @@ def reset_all_data(
 
     Protected by admin API key.
     """
+    import os
+
     from app import models
     from app.storage.factory import get_storage_provider
-    import os
 
     started_at = datetime.utcnow()
 
@@ -1536,6 +1549,7 @@ def reset_all_data(
     except Exception as e:
         db.rollback()
         import logging
+
         logging.getLogger(__name__).error(f"Database reset failed: {e}")
         raise HTTPException(
             status_code=500,
@@ -1570,31 +1584,31 @@ def reset_all_data(
 # -----------------------------------------------------------------------------
 
 from app.schemas.evaluation import (
+    ArticleEvaluationResult,
+    AutoOptimizeConfigRequest,
+    AutoOptimizeConfigResponse,
+    EvaluationRunListResponse,
     EvaluationRunRequest,
     EvaluationRunResponse,
     EvaluationRunSummary,
-    EvaluationRunListResponse,
-    ArticleEvaluationResult,
-    PromptVersionResponse,
-    PromptVersionListResponse,
-    RollbackRequest,
-    RollbackResponse,
-    AutoOptimizeConfigRequest,
-    AutoOptimizeConfigResponse,
-    ScoreComparison,
     MissedItemsSummary,
     PromptChangeDetail,
+    PromptVersionListResponse,
+    PromptVersionResponse,
+    RollbackRequest,
+    RollbackResponse,
+    ScoreComparison,
 )
-
 
 # -----------------------------------------------------------------------------
 # Evaluation helper functions
 # -----------------------------------------------------------------------------
 
+
 def _get_score_comparison(
     db: Session,
     current_run: "models.EvaluationRun",
-) -> Optional[ScoreComparison]:
+) -> ScoreComparison | None:
     """Compare current evaluation with the most recent previous run."""
     from app import models
 
@@ -1611,12 +1625,12 @@ def _get_score_comparison(
     if not prev_run:
         return None
 
-    def safe_delta(current: Optional[float], prev: Optional[float]) -> Optional[float]:
+    def safe_delta(current: float | None, prev: float | None) -> float | None:
         if current is not None and prev is not None:
             return round(current - prev, 4)
         return None
 
-    def improved(current: Optional[float], prev: Optional[float]) -> Optional[bool]:
+    def improved(current: float | None, prev: float | None) -> bool | None:
         if current is not None and prev is not None:
             return current > prev
         return None
@@ -1624,44 +1638,28 @@ def _get_score_comparison(
     return ScoreComparison(
         previous_run_id=str(prev_run.id),
         classification_accuracy_prev=prev_run.classification_accuracy,
-        classification_accuracy_delta=safe_delta(
-            current_run.classification_accuracy, prev_run.classification_accuracy
-        ),
-        classification_improved=improved(
-            current_run.classification_accuracy, prev_run.classification_accuracy
-        ),
+        classification_accuracy_delta=safe_delta(current_run.classification_accuracy, prev_run.classification_accuracy),
+        classification_improved=improved(current_run.classification_accuracy, prev_run.classification_accuracy),
         neutralization_score_prev=prev_run.avg_neutralization_score,
-        neutralization_score_delta=safe_delta(
-            current_run.avg_neutralization_score, prev_run.avg_neutralization_score
-        ),
-        neutralization_improved=improved(
-            current_run.avg_neutralization_score, prev_run.avg_neutralization_score
-        ),
+        neutralization_score_delta=safe_delta(current_run.avg_neutralization_score, prev_run.avg_neutralization_score),
+        neutralization_improved=improved(current_run.avg_neutralization_score, prev_run.avg_neutralization_score),
         span_precision_prev=prev_run.avg_span_precision,
-        span_precision_delta=safe_delta(
-            current_run.avg_span_precision, prev_run.avg_span_precision
-        ),
+        span_precision_delta=safe_delta(current_run.avg_span_precision, prev_run.avg_span_precision),
         span_recall_prev=prev_run.avg_span_recall,
-        span_recall_delta=safe_delta(
-            current_run.avg_span_recall, prev_run.avg_span_recall
-        ),
+        span_recall_delta=safe_delta(current_run.avg_span_recall, prev_run.avg_span_recall),
         overall_score_prev=prev_run.overall_quality_score,
-        overall_score_delta=safe_delta(
-            current_run.overall_quality_score, prev_run.overall_quality_score
-        ),
-        overall_improved=improved(
-            current_run.overall_quality_score, prev_run.overall_quality_score
-        ),
+        overall_score_delta=safe_delta(current_run.overall_quality_score, prev_run.overall_quality_score),
+        overall_improved=improved(current_run.overall_quality_score, prev_run.overall_quality_score),
     )
 
 
 def _aggregate_missed_items(
-    article_evals: List["models.ArticleEvaluation"],
+    article_evals: list["models.ArticleEvaluation"],
 ) -> MissedItemsSummary:
     """Aggregate missed manipulations and false positives across articles."""
     all_missed = []
     all_false_positives = []
-    category_counts: Dict[str, int] = {}
+    category_counts: dict[str, int] = {}
 
     for ae in article_evals:
         if ae.missed_manipulations:
@@ -1743,6 +1741,7 @@ def run_evaluation(
         # Convert to PromptUpdate schema (only include applied changes)
         if opt_result.prompts_updated:
             from app.schemas.evaluation import PromptUpdate
+
             prompts_updated = [
                 PromptUpdate(
                     prompt_name=p["prompt_name"],
@@ -1768,9 +1767,7 @@ def run_evaluation(
             ]
 
     # Get article evaluations for response
-    eval_run = db.query(models.EvaluationRun).filter(
-        models.EvaluationRun.id == result.evaluation_run_id
-    ).first()
+    eval_run = db.query(models.EvaluationRun).filter(models.EvaluationRun.id == result.evaluation_run_id).first()
 
     article_evals = None
     score_comparison = None
@@ -1844,12 +1841,7 @@ def list_evaluation_runs(
     """List recent evaluation runs."""
     from app import models
 
-    runs = (
-        db.query(models.EvaluationRun)
-        .order_by(models.EvaluationRun.started_at.desc())
-        .limit(limit)
-        .all()
-    )
+    runs = db.query(models.EvaluationRun).order_by(models.EvaluationRun.started_at.desc()).limit(limit).all()
 
     return EvaluationRunListResponse(
         evaluations=[
@@ -1877,15 +1869,17 @@ def list_evaluation_runs(
 
 class SendEmailRequest(BaseModel):
     """Request to send evaluation email."""
-    recipient: Optional[str] = Field(None, description="Override recipient email address")
+
+    recipient: str | None = Field(None, description="Override recipient email address")
 
 
 class SendEmailResponse(BaseModel):
     """Response from sending evaluation email."""
+
     status: str
-    message_id: Optional[str] = None
-    recipient: Optional[str] = None
-    error: Optional[str] = None
+    message_id: str | None = None
+    recipient: str | None = None
+    error: str | None = None
 
 
 @router.post("/evaluation/runs/{run_id}/email", response_model=SendEmailResponse)
@@ -1924,12 +1918,11 @@ def get_evaluation_run(
     _: None = Depends(require_admin_key),
 ) -> EvaluationRunResponse:
     """Get detailed evaluation run by ID."""
-    from app import models
     import uuid as uuid_module
 
-    eval_run = db.query(models.EvaluationRun).filter(
-        models.EvaluationRun.id == uuid_module.UUID(run_id)
-    ).first()
+    from app import models
+
+    eval_run = db.query(models.EvaluationRun).filter(models.EvaluationRun.id == uuid_module.UUID(run_id)).first()
 
     if not eval_run:
         raise HTTPException(status_code=404, detail=f"Evaluation run {run_id} not found")
@@ -2013,10 +2006,11 @@ def get_evaluation_run(
 # Prompt version history endpoints
 # -----------------------------------------------------------------------------
 
+
 @router.get("/prompts/{name}/versions", response_model=PromptVersionListResponse)
 def get_prompt_versions(
     name: str,
-    model: Optional[str] = None,
+    model: str | None = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PromptVersionListResponse:
@@ -2061,7 +2055,7 @@ def get_prompt_versions(
 def rollback_prompt(
     name: str,
     request: RollbackRequest = RollbackRequest(),
-    model: Optional[str] = None,
+    model: str | None = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> RollbackResponse:
@@ -2092,7 +2086,7 @@ def rollback_prompt(
 def configure_auto_optimize(
     name: str,
     request: AutoOptimizeConfigRequest,
-    model: Optional[str] = None,
+    model: str | None = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> AutoOptimizeConfigResponse:
@@ -2136,8 +2130,10 @@ def configure_auto_optimize(
 # Async Pipeline endpoints
 # -----------------------------------------------------------------------------
 
+
 class AsyncPipelineResponse(BaseModel):
     """Response from starting an async pipeline job."""
+
     job_id: str
     trace_id: str
     status: str
@@ -2147,21 +2143,23 @@ class AsyncPipelineResponse(BaseModel):
 
 class PipelineJobStatusResponse(BaseModel):
     """Status of a pipeline job."""
+
     id: str
     trace_id: str
     status: str
-    current_stage: Optional[str] = None
+    current_stage: str | None = None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    finished_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     stage_progress: dict = Field(default_factory=dict)
-    errors: List[dict] = Field(default_factory=list)
-    pipeline_run_summary_id: Optional[str] = None
+    errors: list[dict] = Field(default_factory=list)
+    pipeline_run_summary_id: str | None = None
 
 
 class PipelineJobListResponse(BaseModel):
     """List of pipeline jobs."""
-    jobs: List[PipelineJobStatusResponse]
+
+    jobs: list[PipelineJobStatusResponse]
     total: int
     running_count: int
 
@@ -2182,8 +2180,8 @@ async def start_async_pipeline(
     This solves the timeout issue with the synchronous /scheduled-run endpoint
     by not blocking the HTTP request while the pipeline runs.
     """
-    from app.services.pipeline_job_manager import PipelineJobManager
     from app.services.async_pipeline_orchestrator import create_orchestrator
+    from app.services.pipeline_job_manager import PipelineJobManager
 
     # Convert request to dict for serialization
     config = request.model_dump()
@@ -2197,7 +2195,7 @@ async def start_async_pipeline(
 
     admin_logger.info(
         f"[ASYNC-PIPELINE] Started job {job.id} with trace_id {job.trace_id}",
-        extra={"job_id": str(job.id), "trace_id": job.trace_id}
+        extra={"job_id": str(job.id), "trace_id": job.trace_id},
     )
 
     return AsyncPipelineResponse(
@@ -2257,10 +2255,12 @@ async def stream_job_progress(
 
     The stream closes automatically when the job completes.
     """
-    from fastapi.responses import StreamingResponse
-    from app.services.pipeline_job_manager import PipelineJobManager
-    import json
     import asyncio
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    from app.services.pipeline_job_manager import PipelineJobManager
 
     async def generate_events():
         """Generate SSE events for job progress."""
@@ -2332,31 +2332,34 @@ async def cancel_job(
 # Quality Control failures endpoint
 # -----------------------------------------------------------------------------
 
+
 class QCFailureItem(BaseModel):
     """A single QC failure record for debugging."""
+
     story_neutralized_id: str
     story_raw_id: str
-    feed_title: Optional[str] = None
-    source_name: Optional[str] = None
-    original_url: Optional[str] = None
-    published_at: Optional[datetime] = None
+    feed_title: str | None = None
+    source_name: str | None = None
+    original_url: str | None = None
+    published_at: datetime | None = None
     qc_status: str
-    qc_checked_at: Optional[datetime] = None
-    qc_failures: Optional[List[dict]] = None
+    qc_checked_at: datetime | None = None
+    qc_failures: list[dict] | None = None
 
 
 class QCFailuresResponse(BaseModel):
     """Response listing QC failures for debugging."""
+
     total: int
-    failures: List[QCFailureItem]
+    failures: list[QCFailureItem]
     filters: dict = Field(default_factory=dict)
 
 
 @router.get("/admin/qc/failures", response_model=QCFailuresResponse)
 def get_qc_failures(
-    check: Optional[str] = None,
-    category: Optional[str] = None,
-    since: Optional[str] = None,
+    check: str | None = None,
+    category: str | None = None,
+    since: str | None = None,
     limit: int = 50,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
@@ -2370,8 +2373,8 @@ def get_qc_failures(
     - since: ISO datetime string to filter by qc_checked_at
     - limit: Max results (default 50, max 200)
     """
+
     from app import models
-    from sqlalchemy import cast, String
 
     limit = min(limit, 200)
 
@@ -2394,17 +2397,9 @@ def get_qc_failures(
 
     # Filter by check or category using JSONB containment
     if check:
-        query = query.filter(
-            models.StoryNeutralized.qc_failures.op("@>")(
-                f'[{{"check": "{check}"}}]'
-            )
-        )
+        query = query.filter(models.StoryNeutralized.qc_failures.op("@>")(f'[{{"check": "{check}"}}]'))
     if category:
-        query = query.filter(
-            models.StoryNeutralized.qc_failures.op("@>")(
-                f'[{{"category": "{category}"}}]'
-            )
-        )
+        query = query.filter(models.StoryNeutralized.qc_failures.op("@>")(f'[{{"category": "{category}"}}]'))
 
     query = query.order_by(models.StoryNeutralized.qc_checked_at.desc())
 
@@ -2412,17 +2407,19 @@ def get_qc_failures(
 
     items = []
     for neutralized, raw, source in results:
-        items.append(QCFailureItem(
-            story_neutralized_id=str(neutralized.id),
-            story_raw_id=str(raw.id),
-            feed_title=neutralized.feed_title,
-            source_name=source.name if source else None,
-            original_url=raw.original_url,
-            published_at=raw.published_at,
-            qc_status=neutralized.qc_status or "unknown",
-            qc_checked_at=neutralized.qc_checked_at,
-            qc_failures=neutralized.qc_failures,
-        ))
+        items.append(
+            QCFailureItem(
+                story_neutralized_id=str(neutralized.id),
+                story_raw_id=str(raw.id),
+                feed_title=neutralized.feed_title,
+                source_name=source.name if source else None,
+                original_url=raw.original_url,
+                published_at=raw.published_at,
+                qc_status=neutralized.qc_status or "unknown",
+                qc_checked_at=neutralized.qc_checked_at,
+                qc_failures=neutralized.qc_failures,
+            )
+        )
 
     return QCFailuresResponse(
         total=len(items),
@@ -2438,16 +2435,18 @@ def get_qc_failures(
 
 class QCRecheckRequest(BaseModel):
     """Request to force re-check all articles through QC gate."""
+
     dry_run: bool = False
 
 
 class QCRecheckResponse(BaseModel):
     """Response from QC re-check."""
+
     total_checked: int
     passed: int
     failed: int
     newly_failed: int = 0
-    failures_by_check: Dict[str, int] = Field(default_factory=dict)
+    failures_by_check: dict[str, int] = Field(default_factory=dict)
     dry_run: bool
 
 
@@ -2510,7 +2509,7 @@ def recheck_qc(
 @router.get("/pipeline/jobs", response_model=PipelineJobListResponse)
 def list_jobs(
     limit: int = 10,
-    status: Optional[str] = None,
+    status: str | None = None,
     db: Session = Depends(get_db),
     _: None = Depends(require_admin_key),
 ) -> PipelineJobListResponse:

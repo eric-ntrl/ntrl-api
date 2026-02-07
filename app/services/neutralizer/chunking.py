@@ -12,7 +12,6 @@ gets equal attention during span detection.
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +25,11 @@ MIN_CHUNK_SIZE = 1000  # Don't create tiny chunks
 @dataclass
 class ArticleChunk:
     """A chunk of article text with position metadata."""
+
     text: str
     start_offset: int  # Where this chunk starts in the original body
-    end_offset: int    # Where this chunk ends in the original body
-    chunk_index: int   # 0-based index of this chunk
+    end_offset: int  # Where this chunk ends in the original body
+    chunk_index: int  # 0-based index of this chunk
 
 
 class ArticleChunker:
@@ -43,11 +43,7 @@ class ArticleChunker:
     - Overlap regions to catch phrases at chunk boundaries
     """
 
-    def __init__(
-        self,
-        chunk_size: int = DEFAULT_CHUNK_SIZE,
-        overlap_size: int = DEFAULT_OVERLAP_SIZE
-    ):
+    def __init__(self, chunk_size: int = DEFAULT_CHUNK_SIZE, overlap_size: int = DEFAULT_OVERLAP_SIZE):
         """
         Initialize the chunker.
 
@@ -58,9 +54,9 @@ class ArticleChunker:
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
         # Sentence ending patterns
-        self._sentence_end = re.compile(r'[.!?][\s\n]+')
+        self._sentence_end = re.compile(r"[.!?][\s\n]+")
         # Paragraph break patterns
-        self._para_break = re.compile(r'\n\n+')
+        self._para_break = re.compile(r"\n\n+")
 
     def needs_chunking(self, body: str) -> bool:
         """
@@ -76,7 +72,7 @@ class ArticleChunker:
         # (1.5x threshold to avoid unnecessary chunking for borderline cases)
         return len(body) > self.chunk_size * 1.5
 
-    def chunk(self, body: str) -> List[ArticleChunk]:
+    def chunk(self, body: str) -> list[ArticleChunk]:
         """
         Split article body into overlapping chunks.
 
@@ -91,12 +87,7 @@ class ArticleChunker:
 
         if not self.needs_chunking(body):
             # Single chunk for short articles
-            return [ArticleChunk(
-                text=body,
-                start_offset=0,
-                end_offset=len(body),
-                chunk_index=0
-            )]
+            return [ArticleChunk(text=body, start_offset=0, end_offset=len(body), chunk_index=0)]
 
         chunks = []
         current_pos = 0
@@ -109,12 +100,11 @@ class ArticleChunker:
             if target_end >= len(body):
                 # Last chunk - take everything remaining
                 chunk_text = body[current_pos:]
-                chunks.append(ArticleChunk(
-                    text=chunk_text,
-                    start_offset=current_pos,
-                    end_offset=len(body),
-                    chunk_index=chunk_index
-                ))
+                chunks.append(
+                    ArticleChunk(
+                        text=chunk_text, start_offset=current_pos, end_offset=len(body), chunk_index=chunk_index
+                    )
+                )
                 break
 
             # Find best split point (prefer paragraph > sentence > word)
@@ -128,12 +118,9 @@ class ArticleChunker:
                 current_pos = split_pos
                 continue
 
-            chunks.append(ArticleChunk(
-                text=chunk_text,
-                start_offset=current_pos,
-                end_offset=split_pos,
-                chunk_index=chunk_index
-            ))
+            chunks.append(
+                ArticleChunk(text=chunk_text, start_offset=current_pos, end_offset=split_pos, chunk_index=chunk_index)
+            )
 
             chunk_index += 1
 
@@ -190,21 +177,18 @@ class ArticleChunker:
         sentence_matches = list(self._sentence_end.finditer(search_region))
         if sentence_matches:
             # Prefer sentence end closest to target
-            best_match = min(
-                sentence_matches,
-                key=lambda m: abs((search_start + m.end()) - target_end)
-            )
+            best_match = min(sentence_matches, key=lambda m: abs((search_start + m.end()) - target_end))
             return search_start + best_match.end()
 
         # 3. Fall back to word boundary (space)
-        space_pos = search_region.rfind(' ')
+        space_pos = search_region.rfind(" ")
         if space_pos > 0:
             return search_start + space_pos + 1
 
         # 4. Last resort: split at target
         return min(target_end, len(body))
 
-    def get_chunk_boundaries(self, body: str) -> List[Tuple[int, int]]:
+    def get_chunk_boundaries(self, body: str) -> list[tuple[int, int]]:
         """
         Get chunk boundaries without creating full chunk objects.
 
@@ -221,10 +205,8 @@ class ArticleChunker:
 
 
 def chunk_article(
-    body: str,
-    chunk_size: int = DEFAULT_CHUNK_SIZE,
-    overlap_size: int = DEFAULT_OVERLAP_SIZE
-) -> List[ArticleChunk]:
+    body: str, chunk_size: int = DEFAULT_CHUNK_SIZE, overlap_size: int = DEFAULT_OVERLAP_SIZE
+) -> list[ArticleChunk]:
     """
     Convenience function to chunk an article.
 

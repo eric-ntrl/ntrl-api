@@ -1,9 +1,9 @@
 # tests/unit/test_retention/test_policy_service.py
 """Unit tests for retention policy service."""
 
-import pytest
-from datetime import datetime
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestGetActivePolicy:
@@ -11,8 +11,8 @@ class TestGetActivePolicy:
 
     def test_returns_active_policy(self):
         """Should return the currently active policy."""
-        from app.services.retention.policy_service import get_active_policy
         from app.models import RetentionPolicy
+        from app.services.retention.policy_service import get_active_policy
 
         # Create mock policy
         mock_policy = MagicMock(spec=RetentionPolicy)
@@ -45,8 +45,8 @@ class TestSetPolicy:
 
     def test_activates_named_policy(self):
         """Should deactivate all policies and activate the named one."""
-        from app.services.retention.policy_service import set_policy
         from app.models import RetentionPolicy
+        from app.services.retention.policy_service import set_policy
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.name = "production"
@@ -98,8 +98,8 @@ class TestCreatePolicy:
 
     def test_raises_error_if_policy_exists(self):
         """Should raise ValueError if policy already exists."""
-        from app.services.retention.policy_service import create_policy
         from app.models import RetentionPolicy
+        from app.services.retention.policy_service import create_policy
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.name = "custom"
@@ -114,11 +114,10 @@ class TestCreatePolicy:
 class TestEnsureDefaultPolicies:
     """Tests for ensure_default_policies()."""
 
-    @patch.dict('os.environ', {'ENVIRONMENT': 'development'})
+    @patch.dict("os.environ", {"ENVIRONMENT": "development"})
     def test_creates_default_policies_if_missing(self):
         """Should create development and production policies if they don't exist."""
         from app.services.retention.policy_service import ensure_default_policies
-        from app.models import RetentionPolicy
 
         mock_db = MagicMock()
         # First two calls for get_policy_by_name (dev, prod) return None
@@ -131,15 +130,15 @@ class TestEnsureDefaultPolicies:
             MagicMock(name="development", is_active=False),  # set_policy lookup
         ]
 
-        with patch('app.services.retention.policy_service.create_policy') as mock_create:
-            with patch('app.services.retention.policy_service.set_policy') as mock_set:
+        with patch("app.services.retention.policy_service.create_policy") as mock_create:
+            with patch("app.services.retention.policy_service.set_policy") as mock_set:
                 mock_set.return_value = MagicMock(name="development")
                 result = ensure_default_policies(mock_db)
 
         # Should have tried to create both default policies
         assert mock_create.call_count == 2
 
-    @patch.dict('os.environ', {'ENVIRONMENT': 'production'})
+    @patch.dict("os.environ", {"ENVIRONMENT": "production"})
     def test_activates_production_in_production_env(self):
         """Should activate production policy when ENVIRONMENT=production."""
         from app.services.retention.policy_service import ensure_default_policies
@@ -150,12 +149,12 @@ class TestEnsureDefaultPolicies:
         # Policies exist, no active policy
         mock_db.query.return_value.filter.return_value.first.side_effect = [
             MagicMock(name="development"),  # development exists
-            MagicMock(name="production"),   # production exists
+            MagicMock(name="production"),  # production exists
             None,  # no active policy
             mock_policy,  # set_policy lookup
         ]
 
-        with patch('app.services.retention.policy_service.set_policy') as mock_set:
+        with patch("app.services.retention.policy_service.set_policy") as mock_set:
             mock_set.return_value = mock_policy
             result = ensure_default_policies(mock_db)
 
@@ -180,8 +179,8 @@ class TestRetentionConfig:
 
     def test_returns_policy_config(self):
         """Should return active policy configuration."""
-        from app.services.retention.policy_service import get_retention_config
         from app.models import RetentionPolicy
+        from app.services.retention.policy_service import get_retention_config
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.name = "production"

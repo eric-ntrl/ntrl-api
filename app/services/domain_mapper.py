@@ -9,7 +9,6 @@ geography tag (us/local/international) to route between World, U.S., and Local.
 
 from app.models import Domain, FeedCategory
 
-
 # Direct mappings: domain → feed_category (geography-independent)
 DIRECT_MAPPINGS: dict[str, FeedCategory] = {
     Domain.GLOBAL_AFFAIRS: FeedCategory.WORLD,

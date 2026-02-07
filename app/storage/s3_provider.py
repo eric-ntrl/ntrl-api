@@ -10,20 +10,19 @@ Supports:
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from app.storage.base import (
-    StorageProvider,
-    StorageObject,
-    StorageMetadata,
-    ContentType,
     ContentEncoding,
-    compute_content_hash,
+    ContentType,
+    StorageMetadata,
+    StorageObject,
+    StorageProvider,
     compress_content,
+    compute_content_hash,
     decompress_content,
 )
 
@@ -44,9 +43,9 @@ class S3StorageProvider(StorageProvider):
 
     def __init__(
         self,
-        bucket: Optional[str] = None,
-        endpoint_url: Optional[str] = None,
-        region: Optional[str] = None,
+        bucket: str | None = None,
+        endpoint_url: str | None = None,
+        region: str | None = None,
     ):
         """
         Initialize S3 provider.
@@ -101,8 +100,8 @@ class S3StorageProvider(StorageProvider):
         key: str,
         content: bytes,
         content_type: ContentType = ContentType.TEXT_PLAIN,
-        expires_days: Optional[int] = None,
-        metadata: Optional[Dict[str, str]] = None,
+        expires_days: int | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> StorageMetadata:
         """Upload content to S3 with gzip compression."""
         # Compute hash of original content
@@ -115,10 +114,12 @@ class S3StorageProvider(StorageProvider):
 
         # Prepare S3 metadata
         s3_metadata = metadata or {}
-        s3_metadata.update({
-            "original-size": str(original_size),
-            "content-hash": content_hash,
-        })
+        s3_metadata.update(
+            {
+                "original-size": str(original_size),
+                "content-hash": content_hash,
+            }
+        )
 
         # Calculate expiration
         expires_at = None
@@ -140,10 +141,7 @@ class S3StorageProvider(StorageProvider):
                 **extra_args,
             )
 
-            logger.debug(
-                f"Uploaded to S3: {key} "
-                f"(original={original_size}, compressed={compressed_size})"
-            )
+            logger.debug(f"Uploaded to S3: {key} (original={original_size}, compressed={compressed_size})")
 
             return StorageMetadata(
                 uri=key,
@@ -161,7 +159,7 @@ class S3StorageProvider(StorageProvider):
             logger.error(f"S3 upload failed for {key}: {e}")
             raise
 
-    def download(self, key: str) -> Optional[StorageObject]:
+    def download(self, key: str) -> StorageObject | None:
         """Download and decompress content from S3."""
         try:
             response = self._client.get_object(
@@ -223,7 +221,7 @@ class S3StorageProvider(StorageProvider):
             logger.error(f"S3 delete failed for {key}: {e}")
             return False
 
-    def get_metadata(self, key: str) -> Optional[StorageMetadata]:
+    def get_metadata(self, key: str) -> StorageMetadata | None:
         """Get object metadata without downloading content."""
         try:
             response = self._client.head_object(
@@ -296,7 +294,7 @@ class S3StorageProvider(StorageProvider):
 
         # S3 batch delete supports up to 1000 objects at a time
         for i in range(0, len(keys), 1000):
-            batch = keys[i:i + 1000]
+            batch = keys[i : i + 1000]
             try:
                 self._client.delete_objects(
                     Bucket=self._bucket,

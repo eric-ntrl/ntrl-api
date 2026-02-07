@@ -4,6 +4,7 @@ Unit tests for the NTRL-SCAN Structural Detector.
 """
 
 import pytest
+
 from app.services.ntrl_scan.structural_detector import (
     StructuralDetector,
     get_structural_detector,
@@ -44,9 +45,7 @@ class TestPassiveVoiceDetection:
         result = detector.detect(text, ArticleSegment.BODY)
 
         # Should find passive voice
-        passive_detections = [
-            d for d in result.spans if d.type_id_primary in ("D.3.1", "D.3.2")
-        ]
+        passive_detections = [d for d in result.spans if d.type_id_primary in ("D.3.1", "D.3.2")]
         assert len(passive_detections) >= 1
 
     def test_detect_passive_with_agent(self, detector):
@@ -63,9 +62,7 @@ class TestPassiveVoiceDetection:
         text = "The committee wrote the report."
         result = detector.detect(text, ArticleSegment.BODY)
 
-        passive_detections = [
-            d for d in result.spans if d.type_id_primary in ("D.3.1", "D.3.2")
-        ]
+        passive_detections = [d for d in result.spans if d.type_id_primary in ("D.3.1", "D.3.2")]
         assert len(passive_detections) == 0
 
 

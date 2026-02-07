@@ -6,9 +6,8 @@ Uses pydantic-settings to load and validate all environment variables at startup
 Fail fast with clear error messages if required config is missing.
 """
 
-import os
 from functools import lru_cache
-from typing import ClassVar, Optional, Set
+from typing import ClassVar
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -30,19 +29,19 @@ class Settings(BaseSettings):
     )
 
     # LLM Providers
-    OPENAI_API_KEY: Optional[str] = Field(
+    OPENAI_API_KEY: str | None = Field(
         default=None,
         description="OpenAI API key for neutralization",
     )
-    GOOGLE_API_KEY: Optional[str] = Field(
+    GOOGLE_API_KEY: str | None = Field(
         default=None,
         description="Google/Gemini API key",
     )
-    GEMINI_API_KEY: Optional[str] = Field(
+    GEMINI_API_KEY: str | None = Field(
         default=None,
         description="Alternative Gemini API key env var",
     )
-    ANTHROPIC_API_KEY: Optional[str] = Field(
+    ANTHROPIC_API_KEY: str | None = Field(
         default=None,
         description="Anthropic API key",
     )
@@ -106,9 +105,9 @@ class Settings(BaseSettings):
         default="./storage",
         description="Path for local storage provider",
     )
-    AWS_ACCESS_KEY_ID: Optional[str] = None
-    AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    S3_BUCKET: Optional[str] = None
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
+    S3_BUCKET: str | None = None
 
     # CORS
     CORS_ORIGINS: str = Field(
@@ -127,7 +126,7 @@ class Settings(BaseSettings):
     )
 
     # Email Notifications
-    RESEND_API_KEY: Optional[str] = Field(
+    RESEND_API_KEY: str | None = Field(
         default=None,
         description="Resend API key for email notifications",
     )
@@ -145,7 +144,7 @@ class Settings(BaseSettings):
     )
 
     # News API Sources (additive to RSS)
-    PERIGON_API_KEY: Optional[str] = Field(
+    PERIGON_API_KEY: str | None = Field(
         default=None,
         description="Perigon News API key for article ingestion",
     )
@@ -153,7 +152,7 @@ class Settings(BaseSettings):
         default=False,
         description="Enable Perigon News API ingestion",
     )
-    NEWSDATA_API_KEY: Optional[str] = Field(
+    NEWSDATA_API_KEY: str | None = Field(
         default=None,
         description="NewsData.io API key for article ingestion",
     )
@@ -163,17 +162,17 @@ class Settings(BaseSettings):
     )
 
     # Deprecated models that will be retired or have been retired
-    DEPRECATED_MODELS: ClassVar[Set[str]] = {"gpt-4o", "gpt-4o-2024-08-06", "gpt-4-turbo"}
+    DEPRECATED_MODELS: ClassVar[set[str]] = {"gpt-4o", "gpt-4o-2024-08-06", "gpt-4-turbo"}
 
     @field_validator("SPAN_DETECTION_MODEL", "OPTIMIZER_MODEL", "OPENAI_MODEL")
     @classmethod
     def warn_deprecated_model(cls, v: str) -> str:
         """Log a warning if a deprecated/retiring model is configured."""
         import logging
+
         if v in cls.DEPRECATED_MODELS:
             logging.getLogger(__name__).warning(
-                f"Model '{v}' is deprecated or retiring soon. "
-                f"Consider switching to gpt-5-mini or gpt-5.1."
+                f"Model '{v}' is deprecated or retiring soon. Consider switching to gpt-5-mini or gpt-5.1."
             )
         return v
 

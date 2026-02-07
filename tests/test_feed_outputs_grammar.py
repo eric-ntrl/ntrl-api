@@ -12,7 +12,6 @@ compression, leaving incomplete sentences like:
 - "the seizure of a of a" (garbled repeated words)
 """
 
-import pytest
 from app.services.neutralizer import (
     MockNeutralizerProvider,
     _validate_feed_outputs,
@@ -164,9 +163,7 @@ class TestFeedOutputsGrammar:
                 words = result.feed_title.rstrip(".,!?:;").split()
                 if words:
                     last_word = words[-1].lower()
-                    assert last_word not in dangling, (
-                        f"Title '{result.feed_title}' ends with dangling '{last_word}'"
-                    )
+                    assert last_word not in dangling, f"Title '{result.feed_title}' ends with dangling '{last_word}'"
 
 
 class TestGarbledExamplesFromPlan:
@@ -234,8 +231,8 @@ class TestHeadlineSystemPromptIntegration:
         since the DB prompts can be customized per deployment.
         """
         from app.services.neutralizer import (
-            DEFAULT_HEADLINE_SYSTEM_PROMPT,
             DEFAULT_ARTICLE_SYSTEM_PROMPT,
+            DEFAULT_HEADLINE_SYSTEM_PROMPT,
         )
 
         # Headline prompt should NOT contain aggressive word banning

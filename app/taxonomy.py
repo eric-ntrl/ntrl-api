@@ -17,39 +17,41 @@ Type ID Format: {Category}.{L2}.{L3}
     Example: A.1.1 = Attention > Curiosity Gap > Curiosity gap
 """
 
-from enum import Enum
 from dataclasses import dataclass, field
-from typing import Optional
-
+from enum import Enum
 
 # -----------------------------------------------------------------------------
 # Enums
 # -----------------------------------------------------------------------------
 
+
 class ManipulationCategory(str, Enum):
     """Level 1 categories (A-F)"""
-    ATTENTION_ENGAGEMENT = "A"      # Attention & Engagement
-    EMOTIONAL_AFFECTIVE = "B"       # Emotional & Affective
-    COGNITIVE_EPISTEMIC = "C"       # Cognitive & Epistemic
-    LINGUISTIC_FRAMING = "D"        # Linguistic & Framing
-    STRUCTURAL_EDITORIAL = "E"      # Structural & Editorial
-    INCENTIVE_META = "F"            # Incentive & Meta
+
+    ATTENTION_ENGAGEMENT = "A"  # Attention & Engagement
+    EMOTIONAL_AFFECTIVE = "B"  # Emotional & Affective
+    COGNITIVE_EPISTEMIC = "C"  # Cognitive & Epistemic
+    LINGUISTIC_FRAMING = "D"  # Linguistic & Framing
+    STRUCTURAL_EDITORIAL = "E"  # Structural & Editorial
+    INCENTIVE_META = "F"  # Incentive & Meta
 
 
 class SpanAction(str, Enum):
     """Action to take on a detected manipulation span"""
-    REMOVE = "remove"           # Delete entirely (no factual content)
-    REPLACE = "replace"         # Direct word substitution
-    REWRITE = "rewrite"         # Rewrite while preserving facts
-    ANNOTATE = "annotate"       # Keep text, note in transparency
-    PRESERVE = "preserve"       # Keep unchanged (exemption applied)
+
+    REMOVE = "remove"  # Delete entirely (no factual content)
+    REPLACE = "replace"  # Direct word substitution
+    REWRITE = "rewrite"  # Rewrite while preserving facts
+    ANNOTATE = "annotate"  # Keep text, note in transparency
+    PRESERVE = "preserve"  # Keep unchanged (exemption applied)
 
 
 class ArticleSegment(str, Enum):
     """Segments of an article for detection"""
+
     TITLE = "title"
-    DECK = "deck"               # Subheadline
-    LEDE = "lede"               # First paragraph
+    DECK = "deck"  # Subheadline
+    LEDE = "lede"  # First paragraph
     BODY = "body"
     CAPTION = "caption"
     PULLQUOTE = "pullquote"
@@ -74,6 +76,7 @@ SEGMENT_MULTIPLIERS = {
 # Data Classes
 # -----------------------------------------------------------------------------
 
+
 @dataclass
 class ManipulationType:
     """
@@ -91,6 +94,7 @@ class ManipulationType:
         default_action: Recommended action to take
         lexical_patterns: Regex patterns for lexical detection (optional)
     """
+
     type_id: str
     category: ManipulationCategory
     l2_name: str
@@ -135,6 +139,7 @@ class DetectionInstance:
         detector_source: Which detector found this (lexical/structural/semantic)
         exemptions_applied: Any guardrails that prevented action
     """
+
     detection_id: str
     type_id_primary: str
     segment: ArticleSegment
@@ -148,7 +153,7 @@ class DetectionInstance:
     severity_weighted: float = 0.0
     rationale: str = ""
     recommended_action: SpanAction = SpanAction.REWRITE
-    rewrite_template_id: Optional[str] = None
+    rewrite_template_id: str | None = None
     exemptions_applied: list[str] = field(default_factory=list)
 
 
@@ -171,11 +176,9 @@ CATEGORY_NAMES = {
 # -----------------------------------------------------------------------------
 
 MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
-
     # =========================================================================
     # A. ATTENTION & ENGAGEMENT MANIPULATION
     # =========================================================================
-
     # A.1 Curiosity Gap / Engagement Hooks
     "A.1.1": ManipulationType(
         type_id="A.1.1",
@@ -260,7 +263,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"what (came|happened) next",
         ],
     ),
-
     # A.2 Urgency / Time Manipulation
     "A.2.1": ManipulationType(
         type_id="A.2.1",
@@ -350,7 +352,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"spiraled",
         ],
     ),
-
     # A.3 Social Proof / Virality
     "A.3.1": ManipulationType(
         type_id="A.3.1",
@@ -443,7 +444,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
         default_action=SpanAction.ANNOTATE,
         lexical_patterns=[],  # Requires semantic detection
     ),
-
     # A.4 Sensational Formatting
     "A.4.1": ManipulationType(
         type_id="A.4.1",
@@ -490,11 +490,9 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"[!?]{2,}",
         ],
     ),
-
     # =========================================================================
     # B. EMOTIONAL & AFFECTIVE MANIPULATION
     # =========================================================================
-
     # B.1 Fear Appeals
     "B.1.1": ManipulationType(
         type_id="B.1.1",
@@ -579,7 +577,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"your (family|children|home).{0,20}(risk|danger|threat)",
         ],
     ),
-
     # B.2 Anger/Outrage Engineering
     "B.2.1": ManipulationType(
         type_id="B.2.1",
@@ -672,7 +669,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"(they|them|those people) are (responsible|to blame)",
         ],
     ),
-
     # B.3 Shame/Guilt Coercion
     "B.3.1": ManipulationType(
         type_id="B.3.1",
@@ -722,7 +718,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"would never accept",
         ],
     ),
-
     # B.4 Identity/Tribal Priming
     "B.4.1": ManipulationType(
         type_id="B.4.1",
@@ -790,7 +785,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"under attack",
         ],
     ),
-
     # B.5 Sentiment Steering
     "B.5.1": ManipulationType(
         type_id="B.5.1",
@@ -844,11 +838,9 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"(gut-wrenching|soul-crushing)",
         ],
     ),
-
     # =========================================================================
     # C. COGNITIVE & EPISTEMIC MANIPULATION
     # =========================================================================
-
     # C.1 Certainty Manipulation
     "C.1.1": ManipulationType(
         type_id="C.1.1",
@@ -918,7 +910,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"we all knew",
         ],
     ),
-
     # C.2 Speculation/Intent Attribution
     "C.2.1": ManipulationType(
         type_id="C.2.1",
@@ -984,7 +975,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"meant to (deceive|manipulate|control)",
         ],
     ),
-
     # C.3 Evidence Distortion
     "C.3.1": ManipulationType(
         type_id="C.3.1",
@@ -1123,7 +1113,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"research (shows|suggests|indicates)",
         ],
     ),
-
     # C.4 Authority Manipulation
     "C.4.1": ManipulationType(
         type_id="C.4.1",
@@ -1219,7 +1208,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"a (new |recent )?(report|study|analysis) (says|shows|finds)",
         ],
     ),
-
     # C.5 Trust/Epistemic Posture
     "C.5.1": ManipulationType(
         type_id="C.5.1",
@@ -1284,7 +1272,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"makes you wonder",
         ],
     ),
-
     # C.6 False Balance
     "C.6.1": ManipulationType(
         type_id="C.6.1",
@@ -1325,7 +1312,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
         default_action=SpanAction.ANNOTATE,
         lexical_patterns=[],  # Requires semantic detection
     ),
-
     # C.7 Translation Bias
     "C.7.1": ManipulationType(
         type_id="C.7.1",
@@ -1342,11 +1328,9 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"confessed",
         ],
     ),
-
     # =========================================================================
     # D. LINGUISTIC & FRAMING MANIPULATION
     # =========================================================================
-
     # D.1 Loaded Language
     "D.1.1": ManipulationType(
         type_id="D.1.1",
@@ -1436,7 +1420,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"\bplague\b",
         ],
     ),
-
     # D.2 Metaphor Escalation
     "D.2.1": ManipulationType(
         type_id="D.2.1",
@@ -1491,7 +1474,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"body blow",
         ],
     ),
-
     # D.3 Agency Hiding
     "D.3.1": ManipulationType(
         type_id="D.3.1",
@@ -1537,7 +1519,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"were (implemented|executed|undertaken)",
         ],
     ),
-
     # D.4 Presupposition/Implicature
     "D.4.1": ManipulationType(
         type_id="D.4.1",
@@ -1600,7 +1581,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"so-called",
         ],
     ),
-
     # D.5 Vagueness
     "D.5.1": ManipulationType(
         type_id="D.5.1",
@@ -1666,7 +1646,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"\bnever\b",
         ],
     ),
-
     # D.6 Humor/Sarcasm Shield
     "D.6.1": ManipulationType(
         type_id="D.6.1",
@@ -1700,11 +1679,9 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"who could have (seen|predicted)",
         ],
     ),
-
     # =========================================================================
     # E. STRUCTURAL & EDITORIAL MANIPULATION
     # =========================================================================
-
     # E.1 Headline Mismatch
     "E.1.1": ManipulationType(
         type_id="E.1.1",
@@ -1730,7 +1707,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
         default_action=SpanAction.REWRITE,
         lexical_patterns=[],  # Requires cross-segment analysis
     ),
-
     # E.2 Information Burial
     "E.2.1": ManipulationType(
         type_id="E.2.1",
@@ -1756,7 +1732,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
         default_action=SpanAction.ANNOTATE,
         lexical_patterns=[],  # Requires structural analysis
     ),
-
     # E.3 Omission
     "E.3.1": ManipulationType(
         type_id="E.3.1",
@@ -1784,7 +1759,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"\b(surge|spike|jump|soar|plunge|crash)\b",
         ],
     ),
-
     # E.4 Quote Manipulation
     "E.4.1": ManipulationType(
         type_id="E.4.1",
@@ -1822,7 +1796,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
         default_action=SpanAction.ANNOTATE,
         lexical_patterns=[],  # Requires semantic detection
     ),
-
     # E.5 Visual Manipulation
     "E.5.1": ManipulationType(
         type_id="E.5.1",
@@ -1848,7 +1821,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
         default_action=SpanAction.ANNOTATE,
         lexical_patterns=[],  # Requires image analysis
     ),
-
     # E.6 Data Visualization Tricks
     "E.6.1": ManipulationType(
         type_id="E.6.1",
@@ -1886,11 +1858,9 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
         default_action=SpanAction.ANNOTATE,
         lexical_patterns=[],  # Requires image analysis
     ),
-
     # =========================================================================
     # F. INCENTIVE & META MANIPULATION
     # =========================================================================
-
     # F.1 Incentive Hiding
     "F.1.1": ManipulationType(
         type_id="F.1.1",
@@ -1948,7 +1918,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"we (recommend|love|tried)",
         ],
     ),
-
     # F.2 Market Manipulation
     "F.2.1": ManipulationType(
         type_id="F.2.1",
@@ -1966,7 +1935,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"(stock|market) (bloodbath|carnage|rout)",
         ],
     ),
-
     # F.3 Agenda Masking
     "F.3.1": ManipulationType(
         type_id="F.3.1",
@@ -1997,7 +1965,6 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
             r"(donate|contribute) (now|today)",
         ],
     ),
-
     # F.4 Normalization/Minimization
     "F.4.1": ManipulationType(
         type_id="F.4.1",
@@ -2038,6 +2005,7 @@ MANIPULATION_TAXONOMY: dict[str, ManipulationType] = {
 # Helper Functions
 # -----------------------------------------------------------------------------
 
+
 def get_type(type_id: str) -> ManipulationType | None:
     """Get a manipulation type by its ID."""
     return MANIPULATION_TAXONOMY.get(type_id)
@@ -2077,13 +2045,9 @@ TAXONOMY_DATE = "2026-01-24"
 TOTAL_TYPES = len(MANIPULATION_TAXONOMY)
 
 # Counts by category
-COUNTS_BY_CATEGORY = {
-    cat: len(get_types_by_category(cat))
-    for cat in ManipulationCategory
-}
+COUNTS_BY_CATEGORY = {cat: len(get_types_by_category(cat)) for cat in ManipulationCategory}
 
 # Counts by severity
 COUNTS_BY_SEVERITY = {
-    sev: len([t for t in MANIPULATION_TAXONOMY.values() if t.default_severity == sev])
-    for sev in range(1, 6)
+    sev: len([t for t in MANIPULATION_TAXONOMY.values() if t.default_severity == sev]) for sev in range(1, 6)
 }

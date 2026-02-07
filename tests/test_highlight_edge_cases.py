@@ -14,13 +14,12 @@ Tests specific edge cases:
 
 import pytest
 
+from app.models import SpanAction, SpanReason
 from app.services.neutralizer import (
     MockNeutralizerProvider,
     TransparencySpan,
-    find_phrase_positions,
     filter_spans_in_quotes,
 )
-from app.models import SpanAction, SpanReason
 
 
 class TestOverlappingSpans:
@@ -56,9 +55,7 @@ class TestOverlappingSpans:
 
         # Should not have duplicate detection of same text
         original_texts = [s.original_text.lower() for s in spans]
-        assert len(original_texts) == len(set(original_texts)), (
-            f"Duplicate spans detected: {original_texts}"
-        )
+        assert len(original_texts) == len(set(original_texts)), f"Duplicate spans detected: {original_texts}"
 
 
 class TestPositionAccuracy:
@@ -75,7 +72,7 @@ class TestPositionAccuracy:
         spans = self.provider._find_spans(body, "body")
 
         for span in spans:
-            extracted = body[span.start_char:span.end_char]
+            extracted = body[span.start_char : span.end_char]
             assert extracted.lower() == span.original_text.lower(), (
                 f"Position mismatch: extracted '{extracted}' but span says '{span.original_text}' "
                 f"at positions {span.start_char}-{span.end_char}"
@@ -116,7 +113,7 @@ class TestUnicodeHandling:
     def test_curly_quotes(self):
         """Test handling of curly quotes around manipulative text."""
         # Using raw string with curly quotes
-        body = '\u201cSHOCKING news,\u201d said the reporter. \u201cIt\u2019s absolutely devastating.\u201d'
+        body = "\u201cSHOCKING news,\u201d said the reporter. \u201cIt\u2019s absolutely devastating.\u201d"
 
         spans = self.provider._find_spans(body, "body")
 
@@ -176,8 +173,7 @@ class TestCleanArticles:
         for headline in clean_headlines:
             spans = self.provider._find_spans(headline, "title")
             assert len(spans) == 0, (
-                f"Clean headline falsely flagged: '{headline}' - "
-                f"detected: {[s.original_text for s in spans]}"
+                f"Clean headline falsely flagged: '{headline}' - detected: {[s.original_text for s in spans]}"
             )
 
     @pytest.mark.xfail(reason="Pattern-based detection has false positives - LLM-based should fix")
@@ -195,10 +191,7 @@ class TestCleanArticles:
 
         # Allow at most 1 false positive for edge cases
         # (e.g., "historic" could be flagged as selling)
-        assert len(spans) <= 1, (
-            f"Too many false positives in clean text: "
-            f"{[s.original_text for s in spans]}"
-        )
+        assert len(spans) <= 1, f"Too many false positives in clean text: {[s.original_text for s in spans]}"
 
 
 class TestQuotedContent:
@@ -255,10 +248,7 @@ class TestLiteralVsFigurative:
 
         # Current pattern-based will flag this (known limitation)
         # LLM-based should not flag literal usage
-        slams_detected = any(
-            s.original_text.lower() in ("slams", "slammed")
-            for s in spans
-        )
+        slams_detected = any(s.original_text.lower() in ("slams", "slammed") for s in spans)
 
         if slams_detected:
             # Document this as known limitation of pattern-based
@@ -433,7 +423,7 @@ class TestQuoteFiltering:
 
     def test_mixed_quote_types(self):
         """Test handling of mixed quote types in same text."""
-        body = '''The "shocking" news and 'devastating' impact were discussed.'''
+        body = """The "shocking" news and 'devastating' impact were discussed."""
         # Both "shocking" and "devastating" are in quotes (different types)
         spans = [
             self._make_span(5, 13, "shocking"),
@@ -479,7 +469,7 @@ class TestQuoteFiltering:
 
     def test_nested_quotes_inner_filtered(self):
         """Test handling of nested quotes."""
-        body = '''He said "she called it 'romantic' and left" yesterday.'''
+        body = """He said "she called it 'romantic' and left" yesterday."""
         # 'romantic' is nested inside outer quotes
         # Both should be filtered since 'romantic' is inside quotes
         start = body.index("romantic")
@@ -524,15 +514,15 @@ class TestContractionApostropheDetection:
 
         # Common contractions should return True
         # Position is the index of the apostrophe character
-        assert is_contraction_apostrophe("won't", 3) is True   # w-o-n-'-t -> apostrophe at 3
-        assert is_contraction_apostrophe("can't", 3) is True   # c-a-n-'-t -> apostrophe at 3
-        assert is_contraction_apostrophe("don't", 3) is True   # d-o-n-'-t -> apostrophe at 3
-        assert is_contraction_apostrophe("it's", 2) is True    # i-t-'-s -> apostrophe at 2
-        assert is_contraction_apostrophe("he's", 2) is True    # h-e-'-s -> apostrophe at 2
-        assert is_contraction_apostrophe("they're", 4) is True # t-h-e-y-'-r-e -> apostrophe at 4
-        assert is_contraction_apostrophe("we've", 2) is True   # w-e-'-v-e -> apostrophe at 2
-        assert is_contraction_apostrophe("I'll", 1) is True    # I-'-l-l -> apostrophe at 1
-        assert is_contraction_apostrophe("I'd", 1) is True     # I-'-d -> apostrophe at 1
+        assert is_contraction_apostrophe("won't", 3) is True  # w-o-n-'-t -> apostrophe at 3
+        assert is_contraction_apostrophe("can't", 3) is True  # c-a-n-'-t -> apostrophe at 3
+        assert is_contraction_apostrophe("don't", 3) is True  # d-o-n-'-t -> apostrophe at 3
+        assert is_contraction_apostrophe("it's", 2) is True  # i-t-'-s -> apostrophe at 2
+        assert is_contraction_apostrophe("he's", 2) is True  # h-e-'-s -> apostrophe at 2
+        assert is_contraction_apostrophe("they're", 4) is True  # t-h-e-y-'-r-e -> apostrophe at 4
+        assert is_contraction_apostrophe("we've", 2) is True  # w-e-'-v-e -> apostrophe at 2
+        assert is_contraction_apostrophe("I'll", 1) is True  # I-'-l-l -> apostrophe at 1
+        assert is_contraction_apostrophe("I'd", 1) is True  # I-'-d -> apostrophe at 1
 
     def test_quote_boundaries_not_contractions(self):
         """Test that actual quote boundaries are not detected as contractions."""
@@ -588,18 +578,20 @@ class TestContractionApostropheDetection:
         start = body.index("shocking")
         end = start + len("shocking")
 
-        from app.services.neutralizer import TransparencySpan
         from app.models import SpanAction, SpanReason
+        from app.services.neutralizer import TransparencySpan
 
-        spans = [TransparencySpan(
-            field="body",
-            start_char=start,
-            end_char=end,
-            original_text="shocking",
-            action=SpanAction.REMOVED,
-            reason=SpanReason.EMOTIONAL_TRIGGER,
-            replacement_text=None,
-        )]
+        spans = [
+            TransparencySpan(
+                field="body",
+                start_char=start,
+                end_char=end,
+                original_text="shocking",
+                action=SpanAction.REMOVED,
+                reason=SpanReason.EMOTIONAL_TRIGGER,
+                replacement_text=None,
+            )
+        ]
 
         filtered = filter_spans_in_quotes(body, spans)
         # "shocking" is inside actual quotes (not contractions), so should be filtered
@@ -607,8 +599,8 @@ class TestContractionApostropheDetection:
 
     def test_contractions_dont_break_quote_detection(self):
         """Test that contractions don't interfere with actual quote detection."""
-        from app.services.neutralizer import filter_spans_in_quotes, TransparencySpan
         from app.models import SpanAction, SpanReason
+        from app.services.neutralizer import TransparencySpan, filter_spans_in_quotes
 
         # Article with contractions and a quoted phrase
         body = "Officials say they won't comment on 'devastating' news that can't be confirmed."
@@ -616,15 +608,17 @@ class TestContractionApostropheDetection:
         start = body.index("devastating")
         end = start + len("devastating")
 
-        spans = [TransparencySpan(
-            field="body",
-            start_char=start,
-            end_char=end,
-            original_text="devastating",
-            action=SpanAction.REMOVED,
-            reason=SpanReason.EMOTIONAL_TRIGGER,
-            replacement_text=None,
-        )]
+        spans = [
+            TransparencySpan(
+                field="body",
+                start_char=start,
+                end_char=end,
+                original_text="devastating",
+                action=SpanAction.REMOVED,
+                reason=SpanReason.EMOTIONAL_TRIGGER,
+                replacement_text=None,
+            )
+        ]
 
         filtered = filter_spans_in_quotes(body, spans)
         # "devastating" is inside single quotes (not contractions)

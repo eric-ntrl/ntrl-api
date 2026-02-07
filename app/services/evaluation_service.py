@@ -13,13 +13,12 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app import models
-from app.models import ChangeSource
 
 logger = logging.getLogger(__name__)
 
@@ -52,8 +51,7 @@ def _calculate_cost(input_tokens: int, output_tokens: int, model: str = "claude-
     # Find matching pricing tier
     for model_key, pricing in MODEL_PRICING.items():
         if model_key in model:
-            return (input_tokens * pricing["input"] / 1_000_000 +
-                    output_tokens * pricing["output"] / 1_000_000)
+            return input_tokens * pricing["input"] / 1_000_000 + output_tokens * pricing["output"] / 1_000_000
     return 0.0
 
 
@@ -177,46 +175,49 @@ Respond with JSON:
 # Result types
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ArticleEvaluationData:
     """Evaluation data for a single article."""
+
     story_raw_id: str
     original_title: str
 
     # Classification
-    classification_correct: Optional[bool] = None
-    expected_domain: Optional[str] = None
-    expected_feed_category: Optional[str] = None
-    classification_feedback: Optional[str] = None
+    classification_correct: bool | None = None
+    expected_domain: str | None = None
+    expected_feed_category: str | None = None
+    classification_feedback: str | None = None
 
     # Neutralization
-    neutralization_score: Optional[float] = None
-    meaning_preservation_score: Optional[float] = None
-    neutrality_score: Optional[float] = None
-    grammar_score: Optional[float] = None
-    rule_violations: Optional[List[Dict]] = None
-    neutralization_feedback: Optional[str] = None
+    neutralization_score: float | None = None
+    meaning_preservation_score: float | None = None
+    neutrality_score: float | None = None
+    grammar_score: float | None = None
+    rule_violations: list[dict] | None = None
+    neutralization_feedback: str | None = None
 
     # Spans
-    span_precision: Optional[float] = None
-    span_recall: Optional[float] = None
-    missed_manipulations: Optional[List[Dict]] = None
-    false_positives: Optional[List[Dict]] = None
-    span_feedback: Optional[str] = None
+    span_precision: float | None = None
+    span_recall: float | None = None
+    missed_manipulations: list[dict] | None = None
+    false_positives: list[dict] | None = None
+    span_feedback: str | None = None
     # Title-body consistency (new)
-    title_spans_count: Optional[int] = None
-    body_spans_count: Optional[int] = None
-    title_body_inconsistencies: Optional[List[Dict]] = None
+    title_spans_count: int | None = None
+    body_spans_count: int | None = None
+    title_body_inconsistencies: list[dict] | None = None
 
     # Suggestions
-    classification_prompt_suggestion: Optional[str] = None
-    neutralization_prompt_suggestion: Optional[str] = None
-    span_prompt_suggestion: Optional[str] = None
+    classification_prompt_suggestion: str | None = None
+    neutralization_prompt_suggestion: str | None = None
+    span_prompt_suggestion: str | None = None
 
 
 @dataclass
 class EvaluationResult:
     """Result of a complete evaluation run."""
+
     evaluation_run_id: str
     pipeline_run_id: str
     sample_size: int
@@ -229,7 +230,7 @@ class EvaluationResult:
     overall_quality_score: float = 0.0
 
     # Recommendations
-    recommendations: List[Dict] = field(default_factory=list)
+    recommendations: list[dict] = field(default_factory=list)
 
     # Token tracking
     input_tokens: int = 0
@@ -238,12 +239,13 @@ class EvaluationResult:
 
     # Status
     status: str = "completed"
-    error: Optional[str] = None
+    error: str | None = None
 
 
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
+
 
 class EvaluationService:
     """
@@ -256,9 +258,10 @@ class EvaluationService:
     4. Computes aggregate metrics and recommendations
     """
 
-    def __init__(self, teacher_model: Optional[str] = None):
+    def __init__(self, teacher_model: str | None = None):
         """Initialize the evaluation service."""
         from app.config import get_settings
+
         self.teacher_model = teacher_model or get_settings().EVAL_MODEL
         self._total_input_tokens = 0
         self._total_output_tokens = 0
@@ -280,7 +283,7 @@ class EvaluationService:
         Returns:
             EvaluationResult with aggregate metrics and recommendations
         """
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         self._total_input_tokens = 0
         self._total_output_tokens = 0
 
@@ -304,7 +307,7 @@ class EvaluationService:
             if not sample:
                 logger.warning("[EVAL] No articles found for evaluation")
                 eval_run.status = "completed"
-                eval_run.finished_at = datetime.now(timezone.utc)
+                eval_run.finished_at = datetime.now(UTC)
                 db.commit()
                 return EvaluationResult(
                     evaluation_run_id=str(eval_run.id),
@@ -316,7 +319,7 @@ class EvaluationService:
             logger.info(f"[EVAL] Selected {len(sample)} articles for evaluation")
 
             # Evaluate each article
-            article_evals: List[ArticleEvaluationData] = []
+            article_evals: list[ArticleEvaluationData] = []
             for story_raw, story_neutralized in sample:
                 eval_data = self._evaluate_article(db, story_raw, story_neutralized)
                 article_evals.append(eval_data)
@@ -348,45 +351,27 @@ class EvaluationService:
                 db.add(article_eval)
 
             # Compute aggregate metrics
-            classification_correct_count = sum(
-                1 for e in article_evals if e.classification_correct is True
-            )
-            classification_accuracy = (
-                classification_correct_count / len(article_evals) if article_evals else 0.0
-            )
+            classification_correct_count = sum(1 for e in article_evals if e.classification_correct is True)
+            classification_accuracy = classification_correct_count / len(article_evals) if article_evals else 0.0
 
             neutralization_scores = [
-                e.neutralization_score for e in article_evals
-                if e.neutralization_score is not None
+                e.neutralization_score for e in article_evals if e.neutralization_score is not None
             ]
             avg_neutralization_score = (
-                sum(neutralization_scores) / len(neutralization_scores)
-                if neutralization_scores else 0.0
+                sum(neutralization_scores) / len(neutralization_scores) if neutralization_scores else 0.0
             )
 
-            span_precisions = [
-                e.span_precision for e in article_evals
-                if e.span_precision is not None
-            ]
-            avg_span_precision = (
-                sum(span_precisions) / len(span_precisions)
-                if span_precisions else 0.0
-            )
+            span_precisions = [e.span_precision for e in article_evals if e.span_precision is not None]
+            avg_span_precision = sum(span_precisions) / len(span_precisions) if span_precisions else 0.0
 
-            span_recalls = [
-                e.span_recall for e in article_evals
-                if e.span_recall is not None
-            ]
-            avg_span_recall = (
-                sum(span_recalls) / len(span_recalls)
-                if span_recalls else 0.0
-            )
+            span_recalls = [e.span_recall for e in article_evals if e.span_recall is not None]
+            avg_span_recall = sum(span_recalls) / len(span_recalls) if span_recalls else 0.0
 
             # Overall quality score (weighted average)
             overall_quality_score = (
-                0.2 * (classification_accuracy * 10) +
-                0.5 * avg_neutralization_score +
-                0.3 * ((avg_span_precision + avg_span_recall) / 2 * 10)
+                0.2 * (classification_accuracy * 10)
+                + 0.5 * avg_neutralization_score
+                + 0.3 * ((avg_span_precision + avg_span_recall) / 2 * 10)
             )
 
             # Generate recommendations
@@ -400,7 +385,7 @@ class EvaluationService:
             )
 
             # Update evaluation run
-            finished_at = datetime.now(timezone.utc)
+            finished_at = datetime.now(UTC)
             duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
             eval_run.classification_accuracy = classification_accuracy
@@ -445,7 +430,7 @@ class EvaluationService:
         except Exception as e:
             logger.error(f"[EVAL] Evaluation failed: {e}")
             eval_run.status = "failed"
-            eval_run.finished_at = datetime.now(timezone.utc)
+            eval_run.finished_at = datetime.now(UTC)
             db.commit()
 
             return EvaluationResult(
@@ -461,7 +446,7 @@ class EvaluationService:
         db: Session,
         pipeline_run_id: str,
         sample_size: int,
-    ) -> List[tuple]:
+    ) -> list[tuple]:
         """
         Select a stratified sample of articles for evaluation.
 
@@ -477,9 +462,11 @@ class EvaluationService:
         quality_slugs = {"ap", "reuters", "bbc", "npr"}
 
         # Get pipeline run to find the time window
-        pipeline_run = db.query(models.PipelineRunSummary).filter(
-            models.PipelineRunSummary.id == uuid.UUID(pipeline_run_id)
-        ).first()
+        pipeline_run = (
+            db.query(models.PipelineRunSummary)
+            .filter(models.PipelineRunSummary.id == uuid.UUID(pipeline_run_id))
+            .first()
+        )
 
         if not pipeline_run:
             logger.warning(f"[EVAL] Pipeline run {pipeline_run_id} not found")
@@ -586,6 +573,7 @@ class EvaluationService:
             eval_data.classification_prompt_suggestion = class_result.get("prompt_improvement_suggestion")
         except Exception as e:
             import traceback
+
             logger.error(f"[EVAL] Classification eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
             eval_data.classification_feedback = f"ERROR: {str(e)}"
 
@@ -608,6 +596,7 @@ class EvaluationService:
             eval_data.neutralization_prompt_suggestion = neut_result.get("prompt_improvement_suggestion")
         except Exception as e:
             import traceback
+
             logger.error(f"[EVAL] Neutralization eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
             eval_data.neutralization_feedback = f"ERROR: {str(e)}"
 
@@ -630,6 +619,7 @@ class EvaluationService:
             eval_data.title_body_inconsistencies = span_result.get("title_body_inconsistencies", [])
         except Exception as e:
             import traceback
+
             logger.error(f"[EVAL] Span eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
             eval_data.span_feedback = f"ERROR: {str(e)}"
 
@@ -642,6 +632,7 @@ class EvaluationService:
 
         try:
             from app.storage.factory import get_storage_provider
+
             storage = get_storage_provider()
             result = storage.download(story_raw.raw_content_uri)
             if result and result.exists:
@@ -658,7 +649,7 @@ class EvaluationService:
         original_body: str,
         assigned_domain: str,
         assigned_feed_category: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Use teacher LLM to evaluate classification correctness."""
         user_prompt = f"""ARTICLE:
 Title: {original_title}
@@ -681,7 +672,7 @@ Evaluate if this classification is correct."""
         feed_summary: str,
         detail_brief: str,
         detail_full: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Use teacher LLM to evaluate neutralization quality."""
         user_prompt = f"""ORIGINAL ARTICLE:
 Title: {original_title}
@@ -701,8 +692,8 @@ Evaluate the neutralization quality."""
         self,
         original_title: str,
         original_body: str,
-        detected_spans: List[Dict],
-    ) -> Dict[str, Any]:
+        detected_spans: list[dict],
+    ) -> dict[str, Any]:
         """Use teacher LLM to evaluate span detection quality."""
         spans_text = json.dumps(detected_spans, indent=2) if detected_spans else "[]"
 
@@ -717,7 +708,7 @@ Evaluate the span detection quality (precision and recall)."""
 
         return self._call_teacher(SPAN_EVAL_PROMPT, user_prompt)
 
-    def _call_teacher(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+    def _call_teacher(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call the teacher LLM (supports OpenAI and Anthropic)."""
         # Match both old and new Claude model naming conventions
         # Old: claude-3-5-sonnet-latest, claude-3-5-sonnet
@@ -727,9 +718,10 @@ Evaluate the span detection quality (precision and recall)."""
         else:
             return self._call_teacher_openai(system_prompt, user_prompt)
 
-    def _call_teacher_anthropic(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+    def _call_teacher_anthropic(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call Anthropic Claude for evaluation."""
         import re
+
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
@@ -758,7 +750,7 @@ Evaluate the span detection quality (precision and recall)."""
                 return json.loads(content)
             except json.JSONDecodeError:
                 # Extract JSON from response (Claude may include text before/after)
-                json_match = re.search(r'\{[\s\S]*\}', content)
+                json_match = re.search(r"\{[\s\S]*\}", content)
                 if json_match:
                     return json.loads(json_match.group())
                 raise ValueError(f"No valid JSON found in response: {content[:200]}")
@@ -767,7 +759,7 @@ Evaluate the span detection quality (precision and recall)."""
             logger.error(f"[EVAL] Anthropic teacher LLM call failed: {e}")
             raise
 
-    def _call_teacher_openai(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+    def _call_teacher_openai(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call OpenAI GPT for evaluation."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -802,8 +794,8 @@ Evaluate the span detection quality (precision and recall)."""
 
     def _generate_recommendations(
         self,
-        article_evals: List[ArticleEvaluationData],
-    ) -> List[Dict]:
+        article_evals: list[ArticleEvaluationData],
+    ) -> list[dict]:
         """Generate actionable recommendations from evaluation results.
 
         CONTINUOUS IMPROVEMENT MODE (Jan 2026):
@@ -821,61 +813,32 @@ Evaluate the span detection quality (precision and recall)."""
 
         # Collect all suggestions from teacher LLM
         classification_suggestions = [
-            e.classification_prompt_suggestion for e in article_evals
-            if e.classification_prompt_suggestion
+            e.classification_prompt_suggestion for e in article_evals if e.classification_prompt_suggestion
         ]
         neutralization_suggestions = [
-            e.neutralization_prompt_suggestion for e in article_evals
-            if e.neutralization_prompt_suggestion
+            e.neutralization_prompt_suggestion for e in article_evals if e.neutralization_prompt_suggestion
         ]
-        span_suggestions = [
-            e.span_prompt_suggestion for e in article_evals
-            if e.span_prompt_suggestion
-        ]
+        span_suggestions = [e.span_prompt_suggestion for e in article_evals if e.span_prompt_suggestion]
 
         # Calculate aggregate metrics
-        classification_correct_count = sum(
-            1 for e in article_evals if e.classification_correct is True
-        )
-        classification_accuracy = (
-            classification_correct_count / len(article_evals) if article_evals else 0.0
-        )
+        classification_correct_count = sum(1 for e in article_evals if e.classification_correct is True)
+        classification_accuracy = classification_correct_count / len(article_evals) if article_evals else 0.0
 
-        neutralization_scores = [
-            e.neutralization_score for e in article_evals
-            if e.neutralization_score is not None
-        ]
-        avg_neutralization = (
-            sum(neutralization_scores) / len(neutralization_scores)
-            if neutralization_scores else 0.0
-        )
+        neutralization_scores = [e.neutralization_score for e in article_evals if e.neutralization_score is not None]
+        avg_neutralization = sum(neutralization_scores) / len(neutralization_scores) if neutralization_scores else 0.0
 
-        span_precisions = [
-            e.span_precision for e in article_evals
-            if e.span_precision is not None
-        ]
-        avg_span_precision = (
-            sum(span_precisions) / len(span_precisions)
-            if span_precisions else 0.0
-        )
+        span_precisions = [e.span_precision for e in article_evals if e.span_precision is not None]
+        avg_span_precision = sum(span_precisions) / len(span_precisions) if span_precisions else 0.0
 
-        span_recalls = [
-            e.span_recall for e in article_evals
-            if e.span_recall is not None
-        ]
-        avg_span_recall = (
-            sum(span_recalls) / len(span_recalls)
-            if span_recalls else 0.0
-        )
+        span_recalls = [e.span_recall for e in article_evals if e.span_recall is not None]
+        avg_span_recall = sum(span_recalls) / len(span_recalls) if span_recalls else 0.0
 
         # =====================================================================
         # CLASSIFICATION RECOMMENDATIONS
         # =====================================================================
 
         # Critical: any misclassifications
-        incorrect_classifications = [
-            e for e in article_evals if e.classification_correct is False
-        ]
+        incorrect_classifications = [e for e in article_evals if e.classification_correct is False]
         if incorrect_classifications:
             # Group by expected domain to find patterns
             domain_misses = {}
@@ -885,26 +848,34 @@ Evaluate the span detection quality (precision and recall)."""
 
             for domain, article_ids in domain_misses.items():
                 if len(article_ids) >= 2:  # Pattern: 2+ misses for same domain
-                    recommendations.append({
-                        "prompt_name": "classification_system_prompt",
-                        "issue_category": "classification",
-                        "issue_description": f"Multiple articles misclassified (should be {domain})",
-                        "suggested_change": classification_suggestions[0] if classification_suggestions else f"Improve examples for {domain} domain",
-                        "priority": "high" if len(article_ids) >= 3 else "medium",
-                        "affected_articles": article_ids,
-                    })
+                    recommendations.append(
+                        {
+                            "prompt_name": "classification_system_prompt",
+                            "issue_category": "classification",
+                            "issue_description": f"Multiple articles misclassified (should be {domain})",
+                            "suggested_change": classification_suggestions[0]
+                            if classification_suggestions
+                            else f"Improve examples for {domain} domain",
+                            "priority": "high" if len(article_ids) >= 3 else "medium",
+                            "affected_articles": article_ids,
+                        }
+                    )
 
         # Continuous improvement: classification below 90% (was 100% — too aggressive)
         # Only trigger optimization when there's meaningful room for improvement
         if classification_accuracy < 0.90 and incorrect_classifications:
-            recommendations.append({
-                "prompt_name": "classification_system_prompt",
-                "issue_category": "continuous_improvement",
-                "issue_description": f"Classification accuracy at {classification_accuracy:.1%}, targeting 90%+",
-                "suggested_change": classification_suggestions[0] if classification_suggestions else "Review misclassified examples and add clarifying guidance",
-                "priority": "low" if classification_accuracy >= 0.8 else "medium",
-                "affected_articles": [e.story_raw_id for e in incorrect_classifications],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "classification_system_prompt",
+                    "issue_category": "continuous_improvement",
+                    "issue_description": f"Classification accuracy at {classification_accuracy:.1%}, targeting 90%+",
+                    "suggested_change": classification_suggestions[0]
+                    if classification_suggestions
+                    else "Review misclassified examples and add clarifying guidance",
+                    "priority": "low" if classification_accuracy >= 0.8 else "medium",
+                    "affected_articles": [e.story_raw_id for e in incorrect_classifications],
+                }
+            )
 
         # =====================================================================
         # NEUTRALIZATION RECOMMENDATIONS
@@ -912,35 +883,41 @@ Evaluate the span detection quality (precision and recall)."""
 
         # Critical: articles with low neutralization scores (<7.0)
         low_neutralization_scores = [
-            e for e in article_evals
-            if e.neutralization_score is not None and e.neutralization_score < 7.0
+            e for e in article_evals if e.neutralization_score is not None and e.neutralization_score < 7.0
         ]
         if low_neutralization_scores:
-            recommendations.append({
-                "prompt_name": "article_system_prompt",
-                "issue_category": "neutralization",
-                "issue_description": f"{len(low_neutralization_scores)} articles scored below 7.0",
-                "suggested_change": neutralization_suggestions[0] if neutralization_suggestions else "Review neutralization rules",
-                "priority": "high" if len(low_neutralization_scores) >= 3 else "medium",
-                "affected_articles": [e.story_raw_id for e in low_neutralization_scores],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "article_system_prompt",
+                    "issue_category": "neutralization",
+                    "issue_description": f"{len(low_neutralization_scores)} articles scored below 7.0",
+                    "suggested_change": neutralization_suggestions[0]
+                    if neutralization_suggestions
+                    else "Review neutralization rules",
+                    "priority": "high" if len(low_neutralization_scores) >= 3 else "medium",
+                    "affected_articles": [e.story_raw_id for e in low_neutralization_scores],
+                }
+            )
 
         # Continuous improvement: neutralization below 8.0/10 (was 9.5 — too aggressive)
         # Only optimize when clearly below acceptable quality
         if avg_neutralization < 8.0 and neutralization_scores:
             below_target = [
-                e for e in article_evals
-                if e.neutralization_score is not None and e.neutralization_score < 8.0
+                e for e in article_evals if e.neutralization_score is not None and e.neutralization_score < 8.0
             ]
             if below_target:
-                recommendations.append({
-                    "prompt_name": "article_system_prompt",
-                    "issue_category": "continuous_improvement",
-                    "issue_description": f"Neutralization avg {avg_neutralization:.1f}/10, targeting 8.0+/10",
-                    "suggested_change": neutralization_suggestions[0] if neutralization_suggestions else "Refine neutralization rules for edge cases",
-                    "priority": "low" if avg_neutralization >= 7.5 else "medium",
-                    "affected_articles": [e.story_raw_id for e in below_target[:5]],
-                })
+                recommendations.append(
+                    {
+                        "prompt_name": "article_system_prompt",
+                        "issue_category": "continuous_improvement",
+                        "issue_description": f"Neutralization avg {avg_neutralization:.1f}/10, targeting 8.0+/10",
+                        "suggested_change": neutralization_suggestions[0]
+                        if neutralization_suggestions
+                        else "Refine neutralization rules for edge cases",
+                        "priority": "low" if avg_neutralization >= 7.5 else "medium",
+                        "affected_articles": [e.story_raw_id for e in below_target[:5]],
+                    }
+                )
 
         # =====================================================================
         # SPAN DETECTION RECOMMENDATIONS
@@ -962,60 +939,70 @@ Evaluate the span detection quality (precision and recall)."""
                     all_misses.append(m_copy)
 
         # Critical: precision below 80%
-        low_precision = [
-            e for e in article_evals
-            if e.span_precision is not None and e.span_precision < 0.8
-        ]
+        low_precision = [e for e in article_evals if e.span_precision is not None and e.span_precision < 0.8]
         if low_precision:
-            recommendations.append({
-                "prompt_name": "span_detection_prompt",
-                "issue_category": "span_detection",
-                "issue_description": f"{len(low_precision)} articles with low span precision (<80%)",
-                "suggested_change": span_suggestions[0] if span_suggestions else "Add false positives to exclusion list",
-                "priority": "high",
-                "affected_articles": [e.story_raw_id for e in low_precision],
-                "false_positives_sample": all_fps[:5],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "span_detection_prompt",
+                    "issue_category": "span_detection",
+                    "issue_description": f"{len(low_precision)} articles with low span precision (<80%)",
+                    "suggested_change": span_suggestions[0]
+                    if span_suggestions
+                    else "Add false positives to exclusion list",
+                    "priority": "high",
+                    "affected_articles": [e.story_raw_id for e in low_precision],
+                    "false_positives_sample": all_fps[:5],
+                }
+            )
 
         # Critical: recall below 70%
-        low_recall = [
-            e for e in article_evals
-            if e.span_recall is not None and e.span_recall < 0.7
-        ]
+        low_recall = [e for e in article_evals if e.span_recall is not None and e.span_recall < 0.7]
         if low_recall:
-            recommendations.append({
-                "prompt_name": "span_detection_prompt",
-                "issue_category": "span_detection",
-                "issue_description": f"{len(low_recall)} articles with low span recall (<70%)",
-                "suggested_change": span_suggestions[0] if span_suggestions else "Add missing categories to detection prompt",
-                "priority": "high",
-                "affected_articles": [e.story_raw_id for e in low_recall],
-                "missed_phrases_sample": all_misses[:5],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "span_detection_prompt",
+                    "issue_category": "span_detection",
+                    "issue_description": f"{len(low_recall)} articles with low span recall (<70%)",
+                    "suggested_change": span_suggestions[0]
+                    if span_suggestions
+                    else "Add missing categories to detection prompt",
+                    "priority": "high",
+                    "affected_articles": [e.story_raw_id for e in low_recall],
+                    "missed_phrases_sample": all_misses[:5],
+                }
+            )
 
         # Continuous improvement: precision below 80% (was 99% — too aggressive)
         if avg_span_precision < 0.80 and span_precisions and all_fps:
-            recommendations.append({
-                "prompt_name": "span_detection_prompt",
-                "issue_category": "continuous_improvement",
-                "issue_description": f"Span precision at {avg_span_precision:.1%}, targeting 80%+",
-                "suggested_change": span_suggestions[0] if span_suggestions else "Review and add false positive patterns to exclusion list",
-                "priority": "low" if avg_span_precision >= 0.7 else "medium",
-                "affected_articles": [e.story_raw_id for e in article_evals if e.false_positives][:5],
-                "false_positives_sample": all_fps[:10],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "span_detection_prompt",
+                    "issue_category": "continuous_improvement",
+                    "issue_description": f"Span precision at {avg_span_precision:.1%}, targeting 80%+",
+                    "suggested_change": span_suggestions[0]
+                    if span_suggestions
+                    else "Review and add false positive patterns to exclusion list",
+                    "priority": "low" if avg_span_precision >= 0.7 else "medium",
+                    "affected_articles": [e.story_raw_id for e in article_evals if e.false_positives][:5],
+                    "false_positives_sample": all_fps[:10],
+                }
+            )
 
         # Continuous improvement: recall below 80% (was 99% — too aggressive)
         if avg_span_recall < 0.80 and span_recalls and all_misses:
-            recommendations.append({
-                "prompt_name": "span_detection_prompt",
-                "issue_category": "continuous_improvement",
-                "issue_description": f"Span recall at {avg_span_recall:.1%}, targeting 80%+",
-                "suggested_change": span_suggestions[0] if span_suggestions else "Add missed manipulation patterns to detection prompt",
-                "priority": "low" if avg_span_recall >= 0.7 else "medium",
-                "affected_articles": [e.story_raw_id for e in article_evals if e.missed_manipulations][:5],
-                "missed_phrases_sample": all_misses[:10],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "span_detection_prompt",
+                    "issue_category": "continuous_improvement",
+                    "issue_description": f"Span recall at {avg_span_recall:.1%}, targeting 80%+",
+                    "suggested_change": span_suggestions[0]
+                    if span_suggestions
+                    else "Add missed manipulation patterns to detection prompt",
+                    "priority": "low" if avg_span_recall >= 0.7 else "medium",
+                    "affected_articles": [e.story_raw_id for e in article_evals if e.missed_manipulations][:5],
+                    "missed_phrases_sample": all_misses[:10],
+                }
+            )
 
         # =====================================================================
         # TITLE-BODY CONSISTENCY RECOMMENDATIONS
@@ -1037,27 +1024,33 @@ Evaluate the span detection quality (precision and recall)."""
                 title_misses.append(m)
 
         if title_misses:
-            recommendations.append({
-                "prompt_name": "span_detection_prompt",
-                "issue_category": "title_detection_consistency",
-                "issue_description": f"{len(title_misses)} phrases missed in titles",
-                "suggested_change": "Emphasize that HEADLINE section should be analyzed with same rigor as body. Ensure title manipulations are detected.",
-                "priority": "high" if len(title_misses) >= 3 else "medium",
-                "affected_articles": list(set(m.get("story_raw_id") for m in title_misses if m.get("story_raw_id")))[:5],
-                "missed_title_phrases": title_misses[:5],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "span_detection_prompt",
+                    "issue_category": "title_detection_consistency",
+                    "issue_description": f"{len(title_misses)} phrases missed in titles",
+                    "suggested_change": "Emphasize that HEADLINE section should be analyzed with same rigor as body. Ensure title manipulations are detected.",
+                    "priority": "high" if len(title_misses) >= 3 else "medium",
+                    "affected_articles": list(
+                        set(m.get("story_raw_id") for m in title_misses if m.get("story_raw_id"))
+                    )[:5],
+                    "missed_title_phrases": title_misses[:5],
+                }
+            )
 
         # Check for title-body inconsistencies (phrase in both but only flagged in one)
         if all_inconsistencies:
-            recommendations.append({
-                "prompt_name": "span_detection_prompt",
-                "issue_category": "title_body_inconsistency",
-                "issue_description": f"{len(all_inconsistencies)} title-body inconsistencies detected",
-                "suggested_change": "If a phrase appears in BOTH the title and body, ensure BOTH occurrences are flagged.",
-                "priority": "high" if len(all_inconsistencies) >= 2 else "medium",
-                "affected_articles": list(set(inc.get("story_raw_id") for inc in all_inconsistencies))[:5],
-                "inconsistencies_sample": all_inconsistencies[:5],
-            })
+            recommendations.append(
+                {
+                    "prompt_name": "span_detection_prompt",
+                    "issue_category": "title_body_inconsistency",
+                    "issue_description": f"{len(all_inconsistencies)} title-body inconsistencies detected",
+                    "suggested_change": "If a phrase appears in BOTH the title and body, ensure BOTH occurrences are flagged.",
+                    "priority": "high" if len(all_inconsistencies) >= 2 else "medium",
+                    "affected_articles": list(set(inc.get("story_raw_id") for inc in all_inconsistencies))[:5],
+                    "inconsistencies_sample": all_inconsistencies[:5],
+                }
+            )
 
         logger.info(
             f"[EVAL] Generated {len(recommendations)} recommendations "

@@ -17,19 +17,19 @@ These patterns are too context-dependent for regex or simple NLP.
 import json
 import os
 import time
-from typing import Optional
 from dataclasses import dataclass
+
 import httpx
 
-from app.taxonomy import get_type, MANIPULATION_TAXONOMY
+from app.taxonomy import get_type
+
 from .types import (
-    DetectionInstance,
-    ScanResult,
     ArticleSegment,
+    DetectionInstance,
     DetectorSource,
+    ScanResult,
     SpanAction,
 )
-
 
 # Detection prompt for the LLM
 DETECTION_PROMPT = """Analyze this text for manipulation patterns that require semantic understanding.
@@ -79,9 +79,10 @@ Return ONLY valid JSON, no other text."""
 @dataclass
 class LLMConfig:
     """Configuration for LLM provider."""
+
     provider: str  # "anthropic", "openai", "mock"
     model: str
-    api_key: Optional[str] = None
+    api_key: str | None = None
     timeout: float = 30.0
     max_tokens: int = 1024
 
@@ -107,7 +108,7 @@ class SemanticDetector:
         "F.1.1",  # Incentive opacity
     }
 
-    def __init__(self, config: Optional[LLMConfig] = None):
+    def __init__(self, config: LLMConfig | None = None):
         """
         Initialize semantic detector with LLM configuration.
 
@@ -118,7 +119,7 @@ class SemanticDetector:
         if config is None:
             config = self._auto_configure()
         self.config = config
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     def _auto_configure(self) -> LLMConfig:
         """Auto-configure from environment variables."""
@@ -201,11 +202,7 @@ class SemanticDetector:
             detector_source=DetectorSource.SEMANTIC,
         )
 
-    def _mock_detect(
-        self,
-        text: str,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    def _mock_detect(self, text: str, segment: ArticleSegment) -> list[DetectionInstance]:
         """Mock detection for testing without LLM."""
         detections = []
         text_lower = text.lower()
@@ -228,7 +225,7 @@ class SemanticDetector:
                         segment=segment,
                         span_start=idx,
                         span_end=idx + len(pattern),
-                        text=text[idx:idx + len(pattern)],
+                        text=text[idx : idx + len(pattern)],
                         confidence=0.75,
                         severity=manip_type.default_severity,
                         detector_source=DetectorSource.SEMANTIC,
@@ -239,11 +236,7 @@ class SemanticDetector:
 
         return detections
 
-    async def _anthropic_detect(
-        self,
-        text: str,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    async def _anthropic_detect(self, text: str, segment: ArticleSegment) -> list[DetectionInstance]:
         """Detect using Anthropic Claude API."""
         client = await self._get_client()
 
@@ -259,9 +252,7 @@ class SemanticDetector:
             json={
                 "model": self.config.model,
                 "max_tokens": self.config.max_tokens,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
+                "messages": [{"role": "user", "content": prompt}],
             },
         )
 
@@ -273,11 +264,7 @@ class SemanticDetector:
 
         return self._parse_llm_response(content, segment)
 
-    async def _openai_detect(
-        self,
-        text: str,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    async def _openai_detect(self, text: str, segment: ArticleSegment) -> list[DetectionInstance]:
         """Detect using OpenAI API."""
         client = await self._get_client()
 
@@ -292,9 +279,7 @@ class SemanticDetector:
             json={
                 "model": self.config.model,
                 "max_tokens": self.config.max_tokens,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
+                "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "json_object"},
             },
         )
@@ -307,11 +292,7 @@ class SemanticDetector:
 
         return self._parse_llm_response(content, segment)
 
-    def _parse_llm_response(
-        self,
-        content: str,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    def _parse_llm_response(self, content: str, segment: ArticleSegment) -> list[DetectionInstance]:
         """Parse LLM JSON response into DetectionInstance objects."""
         detections = []
 
@@ -382,7 +363,7 @@ class SemanticDetector:
 # Factory function for creating detector with specific provider
 def create_semantic_detector(
     provider: str = "auto",
-    model: Optional[str] = None,
+    model: str | None = None,
 ) -> SemanticDetector:
     """
     Create a semantic detector with specified provider.

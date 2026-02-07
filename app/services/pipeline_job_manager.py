@@ -9,7 +9,6 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
@@ -27,7 +26,7 @@ class PipelineJobManager:
     """
 
     # Class-level storage for running job tasks
-    _running_jobs: Dict[str, asyncio.Task] = {}
+    _running_jobs: dict[str, asyncio.Task] = {}
 
     @classmethod
     async def start_job(
@@ -64,7 +63,7 @@ class PipelineJobManager:
 
         logger.info(
             f"Created pipeline job {job_id} with trace_id {trace_id}",
-            extra={"event": "job_created", "job_id": str(job_id), "trace_id": trace_id}
+            extra={"event": "job_created", "job_id": str(job_id), "trace_id": trace_id},
         )
 
         # Create and start the background task
@@ -111,8 +110,7 @@ class PipelineJobManager:
             db.commit()
 
             logger.info(
-                f"Pipeline job {job_id} started",
-                extra={"event": "job_started", "job_id": job_id, "trace_id": trace_id}
+                f"Pipeline job {job_id} started", extra={"event": "job_started", "job_id": job_id, "trace_id": trace_id}
             )
 
             # Create and run the orchestrator
@@ -137,7 +135,7 @@ class PipelineJobManager:
                     "job_id": job_id,
                     "trace_id": trace_id,
                     "status": job.status,
-                }
+                },
             )
 
         except asyncio.CancelledError:
@@ -151,7 +149,7 @@ class PipelineJobManager:
 
             logger.warning(
                 f"Pipeline job {job_id} was cancelled",
-                extra={"event": "job_cancelled", "job_id": job_id, "trace_id": trace_id}
+                extra={"event": "job_cancelled", "job_id": job_id, "trace_id": trace_id},
             )
 
         except Exception as e:
@@ -169,7 +167,7 @@ class PipelineJobManager:
             db.close()
 
     @classmethod
-    def get_job_status(cls, db: Session, job_id: str) -> Optional[PipelineJob]:
+    def get_job_status(cls, db: Session, job_id: str) -> PipelineJob | None:
         """
         Get job status by ID.
 
@@ -215,8 +213,7 @@ class PipelineJobManager:
             task.cancel()
 
         logger.info(
-            f"Cancellation requested for job {job_id}",
-            extra={"event": "job_cancel_requested", "job_id": job_id}
+            f"Cancellation requested for job {job_id}", extra={"event": "job_cancel_requested", "job_id": job_id}
         )
 
         return True
@@ -226,8 +223,8 @@ class PipelineJobManager:
         cls,
         db: Session,
         limit: int = 10,
-        status: Optional[str] = None,
-    ) -> List[PipelineJob]:
+        status: str | None = None,
+    ) -> list[PipelineJob]:
         """
         List recent pipeline jobs.
 
@@ -263,13 +260,19 @@ class PipelineJobManager:
         """
         cutoff = datetime.utcnow() - timedelta(hours=stale_hours)
 
-        stale_jobs = db.query(PipelineJob).filter(
-            PipelineJob.status.in_([
-                PipelineJobStatus.PENDING.value,
-                PipelineJobStatus.RUNNING.value,
-            ]),
-            PipelineJob.created_at < cutoff,
-        ).all()
+        stale_jobs = (
+            db.query(PipelineJob)
+            .filter(
+                PipelineJob.status.in_(
+                    [
+                        PipelineJobStatus.PENDING.value,
+                        PipelineJobStatus.RUNNING.value,
+                    ]
+                ),
+                PipelineJob.created_at < cutoff,
+            )
+            .all()
+        )
 
         count = 0
         for job in stale_jobs:
@@ -281,8 +284,7 @@ class PipelineJobManager:
         if count > 0:
             db.commit()
             logger.warning(
-                f"Cleaned up {count} stale pipeline jobs",
-                extra={"event": "stale_jobs_cleanup", "count": count}
+                f"Cleaned up {count} stale pipeline jobs", extra={"event": "stale_jobs_cleanup", "count": count}
             )
 
         return count

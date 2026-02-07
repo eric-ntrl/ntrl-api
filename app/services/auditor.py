@@ -14,7 +14,7 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +61,11 @@ class SuggestedAction:
 @dataclass
 class AuditResult:
     verdict: AuditVerdict
-    reasons: List[AuditReason]
+    reasons: list[AuditReason]
     checks: AuditChecks
     suggested_action: SuggestedAction
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "verdict": self.verdict.value,
             "reasons": [{"code": r.code, "detail": r.detail} for r in self.reasons],
@@ -178,9 +178,9 @@ class Auditor:
     def audit(
         self,
         original_title: str,
-        original_description: Optional[str],
-        original_body: Optional[str],
-        model_output: Dict[str, Any],
+        original_description: str | None,
+        original_body: str | None,
+        model_output: dict[str, Any],
     ) -> AuditResult:
         """
         Audit neutralizer output against NTRL constraints.
@@ -194,28 +194,25 @@ class Auditor:
         # Basic rule-based audit is sufficient for current quality level.
         # To re-enable: tune AUDITOR_SYSTEM_PROMPT to reduce false positives,
         # then remove the early return below.
-        return self._basic_audit(
-            original_title, original_description, model_output
-        )
+        return self._basic_audit(original_title, original_description, model_output)
 
         # LLM audit code below is unreachable — kept for future re-enablement.
         if not self._api_key:
             # Fallback to basic validation if no API key
-            return self._basic_audit(
-                original_title, original_description, model_output
-            )
+            return self._basic_audit(original_title, original_description, model_output)
 
         try:
             from openai import OpenAI
+
             client = OpenAI(api_key=self._api_key)
 
             user_prompt = f"""Audit this neutralization output.
 
 ORIGINAL TITLE: {original_title}
 
-ORIGINAL DESCRIPTION: {original_description or 'N/A'}
+ORIGINAL DESCRIPTION: {original_description or "N/A"}
 
-ORIGINAL BODY EXCERPT: {(original_body or '')[:1500]}
+ORIGINAL BODY EXCERPT: {(original_body or "")[:1500]}
 
 MODEL OUTPUT:
 {json.dumps(model_output, indent=2)}
@@ -238,15 +235,13 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         except Exception as e:
             logger.error(f"Auditor failed: {e}")
             # Fallback to basic validation
-            return self._basic_audit(
-                original_title, original_description, model_output
-            )
+            return self._basic_audit(original_title, original_description, model_output)
 
     def _basic_audit(
         self,
         original_title: str,
-        original_description: Optional[str],
-        model_output: Dict[str, Any],
+        original_description: str | None,
+        model_output: dict[str, Any],
     ) -> AuditResult:
         """Basic rule-based audit when LLM is unavailable."""
         checks = AuditChecks()
@@ -264,33 +259,46 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         # Check for question marks
         if "?" in neutral_headline:
             checks.has_question_mark_in_headline = True
-            reasons.append(AuditReason(
-                code="RHETORICAL_QUESTION_HEADLINE",
-                detail="Question mark in neutral headline violates NTRL rules"
-            ))
+            reasons.append(
+                AuditReason(
+                    code="RHETORICAL_QUESTION_HEADLINE", detail="Question mark in neutral headline violates NTRL rules"
+                )
+            )
 
         # Check for rhetorical question structures (even without ?)
         question_patterns = [
-            "is it time", "is this the", "could this be", "will this",
-            "are we", "should we", "can we", "what if", "why is",
-            "how can", "how will", "what happens"
+            "is it time",
+            "is this the",
+            "could this be",
+            "will this",
+            "are we",
+            "should we",
+            "can we",
+            "what if",
+            "why is",
+            "how can",
+            "how will",
+            "what happens",
         ]
         headline_lower = neutral_headline.lower()
         for pattern in question_patterns:
             if headline_lower.startswith(pattern):
                 checks.has_question_mark_in_headline = True
-                reasons.append(AuditReason(
-                    code="RHETORICAL_QUESTION_STRUCTURE",
-                    detail=f"Headline starts with rhetorical question pattern '{pattern}'. Convert to factual statement."
-                ))
+                reasons.append(
+                    AuditReason(
+                        code="RHETORICAL_QUESTION_STRUCTURE",
+                        detail=f"Headline starts with rhetorical question pattern '{pattern}'. Convert to factual statement.",
+                    )
+                )
                 break
 
         if "?" in neutral_summary:
             checks.has_question_mark_in_summary = True
-            reasons.append(AuditReason(
-                code="RHETORICAL_QUESTION_SUMMARY",
-                detail="Question mark in neutral summary violates NTRL rules"
-            ))
+            reasons.append(
+                AuditReason(
+                    code="RHETORICAL_QUESTION_SUMMARY", detail="Question mark in neutral summary violates NTRL rules"
+                )
+            )
 
         # Check consistency contract
         headline_unchanged = self._normalize(neutral_headline) == self._normalize(original_title)
@@ -299,17 +307,15 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         if has_manipulative and headline_unchanged and summary_unchanged:
             checks.headline_or_summary_unchanged_when_manipulative = True
             checks.consistency_contract_failed = True
-            reasons.append(AuditReason(
-                code="CONSISTENCY_CONTRACT_VIOLATED",
-                detail="Flagged as manipulative but no changes made"
-            ))
+            reasons.append(
+                AuditReason(code="CONSISTENCY_CONTRACT_VIOLATED", detail="Flagged as manipulative but no changes made")
+            )
 
         if has_manipulative and not has_transparency_data:
             checks.spans_missing_when_manipulative = True
-            reasons.append(AuditReason(
-                code="SPANS_MISSING",
-                detail="Flagged as manipulative but no transparency spans identified"
-            ))
+            reasons.append(
+                AuditReason(code="SPANS_MISSING", detail="Flagged as manipulative but no transparency spans identified")
+            )
 
         # Check for thin content
         desc = original_description or ""
@@ -339,7 +345,7 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         """Normalize text for comparison (lowercase, strip whitespace)."""
         return " ".join(text.lower().split())
 
-    def _parse_audit_response(self, data: Dict[str, Any]) -> AuditResult:
+    def _parse_audit_response(self, data: dict[str, Any]) -> AuditResult:
         """Parse LLM audit response into AuditResult."""
         verdict_str = data.get("verdict", "fail")
         try:
@@ -354,7 +360,7 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
         reasons = [
             AuditReason(
                 code=r.get("code", "UNKNOWN") if isinstance(r, dict) else "UNKNOWN",
-                detail=r.get("detail", "") if isinstance(r, dict) else str(r)
+                detail=r.get("detail", "") if isinstance(r, dict) else str(r),
             )
             for r in raw_reasons
         ]
@@ -368,7 +374,9 @@ Return a single JSON object with verdict, reasons, checks, and suggested_action.
             has_question_mark_in_summary=checks_data.get("has_question_mark_in_summary", False),
             consistency_contract_failed=checks_data.get("consistency_contract_failed", False),
             spans_missing_when_manipulative=checks_data.get("spans_missing_when_manipulative", False),
-            headline_or_summary_unchanged_when_manipulative=checks_data.get("headline_or_summary_unchanged_when_manipulative", False),
+            headline_or_summary_unchanged_when_manipulative=checks_data.get(
+                "headline_or_summary_unchanged_when_manipulative", False
+            ),
             core_fact_downshift_suspected=checks_data.get("core_fact_downshift_suspected", False),
             added_new_facts_suspected=checks_data.get("added_new_facts_suspected", False),
             removed_factual_tension_suspected=checks_data.get("removed_factual_tension_suspected", False),

@@ -8,7 +8,6 @@ one policy is active at any time.
 
 import logging
 import os
-from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -34,27 +33,19 @@ DEFAULT_POLICIES = {
 }
 
 
-def get_active_policy(db: Session) -> Optional[RetentionPolicy]:
+def get_active_policy(db: Session) -> RetentionPolicy | None:
     """
     Get the currently active retention policy.
 
     If no policy is active, returns None. Callers should use
     ensure_default_policies() at startup to guarantee a policy exists.
     """
-    return (
-        db.query(RetentionPolicy)
-        .filter(RetentionPolicy.is_active == True)
-        .first()
-    )
+    return db.query(RetentionPolicy).filter(RetentionPolicy.is_active == True).first()
 
 
-def get_policy_by_name(db: Session, name: str) -> Optional[RetentionPolicy]:
+def get_policy_by_name(db: Session, name: str) -> RetentionPolicy | None:
     """Get a retention policy by name."""
-    return (
-        db.query(RetentionPolicy)
-        .filter(RetentionPolicy.name == name)
-        .first()
-    )
+    return db.query(RetentionPolicy).filter(RetentionPolicy.name == name).first()
 
 
 def set_policy(db: Session, name: str) -> RetentionPolicy:
@@ -69,9 +60,7 @@ def set_policy(db: Session, name: str) -> RetentionPolicy:
         raise ValueError(f"Retention policy '{name}' not found")
 
     # Deactivate all policies
-    db.query(RetentionPolicy).filter(
-        RetentionPolicy.is_active == True
-    ).update({"is_active": False})
+    db.query(RetentionPolicy).filter(RetentionPolicy.is_active == True).update({"is_active": False})
 
     # Activate the requested policy
     policy.is_active = True
@@ -113,9 +102,7 @@ def create_policy(
 
     if activate:
         # Deactivate all policies first
-        db.query(RetentionPolicy).filter(
-            RetentionPolicy.is_active == True
-        ).update({"is_active": False})
+        db.query(RetentionPolicy).filter(RetentionPolicy.is_active == True).update({"is_active": False})
 
     policy = RetentionPolicy(
         name=name,
@@ -174,10 +161,10 @@ def ensure_default_policies(db: Session) -> RetentionPolicy:
 def update_policy(
     db: Session,
     name: str,
-    active_days: Optional[int] = None,
-    compliance_days: Optional[int] = None,
-    auto_archive: Optional[bool] = None,
-    hard_delete_mode: Optional[bool] = None,
+    active_days: int | None = None,
+    compliance_days: int | None = None,
+    auto_archive: bool | None = None,
+    hard_delete_mode: bool | None = None,
 ) -> RetentionPolicy:
     """
     Update an existing retention policy.

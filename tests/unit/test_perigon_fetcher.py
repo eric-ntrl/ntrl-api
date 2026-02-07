@@ -6,15 +6,15 @@ Tests article normalization, category mapping, error handling,
 and API response processing.
 """
 
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
 from app.services.api_fetchers.perigon_fetcher import (
-    PerigonFetcher,
     PERIGON_CATEGORY_MAP,
+    PerigonFetcher,
 )
 
 
@@ -154,9 +154,7 @@ class TestPerigonFetcher:
         mock_response.json.return_value = sample_api_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             articles = await fetcher.fetch_articles(max_results=10)
@@ -172,9 +170,7 @@ class TestPerigonFetcher:
         mock_response.json.return_value = sample_api_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             await fetcher.fetch_articles(categories=["Technology", "Business"])
@@ -192,9 +188,7 @@ class TestPerigonFetcher:
 
         from_date = datetime(2024, 1, 1, 12, 0, 0)
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             await fetcher.fetch_articles(from_date=from_date)
@@ -215,9 +209,7 @@ class TestPerigonFetcher:
             response=mock_response,
         )
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             with pytest.raises(httpx.HTTPStatusError):
@@ -239,9 +231,7 @@ class TestPerigonFetcher:
         mock_response.json.return_value = stories_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             stories = await fetcher.fetch_stories(max_results=10)

@@ -4,12 +4,12 @@ Unit tests for the NTRL Scanner orchestrator.
 """
 
 import pytest
-import asyncio
+
 from app.services.ntrl_scan import (
-    NTRLScanner,
-    ScannerConfig,
     ArticleSegment,
     DetectorSource,
+    NTRLScanner,
+    ScannerConfig,
     scan_text,
 )
 
@@ -97,12 +97,12 @@ class TestBasicScanning:
         text = "BREAKING: The investigation was closed. Mistakes were made."
         result = await scanner_no_semantic.scan(text, ArticleSegment.BODY)
 
-        assert hasattr(result, 'spans')
-        assert hasattr(result, 'segment')
-        assert hasattr(result, 'text_length')
-        assert hasattr(result, 'total_scan_duration_ms')
-        assert hasattr(result, 'detector_durations')
-        assert hasattr(result, 'summary_stats')
+        assert hasattr(result, "spans")
+        assert hasattr(result, "segment")
+        assert hasattr(result, "text_length")
+        assert hasattr(result, "total_scan_duration_ms")
+        assert hasattr(result, "detector_durations")
+        assert hasattr(result, "summary_stats")
 
 
 class TestParallelExecution:
@@ -144,16 +144,13 @@ class TestSpanMerging:
 
         # Check spans don't have significant overlap
         for i, span1 in enumerate(result.spans):
-            for span2 in result.spans[i+1:]:
+            for span2 in result.spans[i + 1 :]:
                 # Calculate overlap
                 start = max(span1.span_start, span2.span_start)
                 end = min(span1.span_end, span2.span_end)
                 overlap = max(0, end - start)
 
-                smaller_len = min(
-                    span1.span_end - span1.span_start,
-                    span2.span_end - span2.span_start
-                )
+                smaller_len = min(span1.span_end - span1.span_start, span2.span_end - span2.span_start)
 
                 if smaller_len > 0:
                     overlap_ratio = overlap / smaller_len
@@ -232,10 +229,7 @@ class TestSemanticDetector:
         text = "They did this to silence critics. Officials want you to be scared."
         result = await scanner_mock_semantic.semantic.detect(text, ArticleSegment.BODY)
 
-        semantic_spans = [
-            s for s in result.spans
-            if s.detector_source == DetectorSource.SEMANTIC
-        ]
+        semantic_spans = [s for s in result.spans if s.detector_source == DetectorSource.SEMANTIC]
         assert len(semantic_spans) > 0
 
     @pytest.mark.asyncio
@@ -244,10 +238,7 @@ class TestSemanticDetector:
         text = "They did this to silence critics."
         result = await scanner_no_semantic.scan(text, ArticleSegment.BODY)
 
-        semantic_spans = [
-            s for s in result.spans
-            if s.detector_source == DetectorSource.SEMANTIC
-        ]
+        semantic_spans = [s for s in result.spans if s.detector_source == DetectorSource.SEMANTIC]
         assert len(semantic_spans) == 0
 
 

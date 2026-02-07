@@ -29,23 +29,23 @@ Usage:
     )
 """
 
-from .types import (
-    DetectionInstance,
-    ScanResult,
-    MergedScanResult,
-    ArticleSegment,
-    DetectorSource,
-    SpanAction,
-    SEGMENT_MULTIPLIERS,
-)
 from .lexical_detector import LexicalDetector, get_lexical_detector
-from .structural_detector import StructuralDetector, get_structural_detector
+from .scanner import NTRLScanner, ScannerConfig, scan_text
 from .semantic_detector import (
+    LLMConfig,
     SemanticDetector,
     create_semantic_detector,
-    LLMConfig,
 )
-from .scanner import NTRLScanner, ScannerConfig, scan_text
+from .structural_detector import StructuralDetector, get_structural_detector
+from .types import (
+    SEGMENT_MULTIPLIERS,
+    ArticleSegment,
+    DetectionInstance,
+    DetectorSource,
+    MergedScanResult,
+    ScanResult,
+    SpanAction,
+)
 
 __all__ = [
     # Types

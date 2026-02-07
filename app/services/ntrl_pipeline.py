@@ -21,33 +21,32 @@ Usage:
 """
 
 import asyncio
-import time
 import hashlib
-from typing import Optional
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
 from enum import Enum
 
-from .ntrl_scan import (
-    NTRLScanner,
-    ScannerConfig,
-    MergedScanResult,
-    ArticleSegment,
-)
 from .ntrl_fix import (
-    NTRLFixer,
+    ChangeRecord,
     FixerConfig,
     FixResult,
-    GeneratorConfig,
-    ChangeRecord,
+    NTRLFixer,
     ValidationResult,
+)
+from .ntrl_scan import (
+    ArticleSegment,
+    MergedScanResult,
+    NTRLScanner,
+    ScannerConfig,
 )
 
 
 class ProcessingMode(str, Enum):
     """Processing mode for the pipeline."""
-    REALTIME = "realtime"      # Single article, lowest latency
+
+    REALTIME = "realtime"  # Single article, lowest latency
     BACKGROUND = "background"  # Batch processing, higher throughput
-    SCAN_ONLY = "scan_only"    # Detection only, no rewriting
+    SCAN_ONLY = "scan_only"  # Detection only, no rewriting
 
 
 @dataclass
@@ -58,10 +57,10 @@ class PipelineConfig:
     mode: ProcessingMode = ProcessingMode.REALTIME
 
     # Scanner configuration
-    scanner_config: Optional[ScannerConfig] = None
+    scanner_config: ScannerConfig | None = None
 
     # Fixer configuration
-    fixer_config: Optional[FixerConfig] = None
+    fixer_config: FixerConfig | None = None
 
     # Caching
     enable_cache: bool = True
@@ -81,6 +80,7 @@ class TransparencyPackage:
 
     Contains all information needed to show users what was changed and why.
     """
+
     # Summary statistics
     total_detections: int
     detections_by_category: dict[str, int]
@@ -112,25 +112,26 @@ class PipelineResult:
     - Transparency package
     - Processing metadata
     """
+
     # Original content
     original_body: str
     original_title: str
 
     # Neutralized content
-    detail_full: str          # Full neutralized article
-    detail_brief: str         # Brief synthesis
-    feed_title: str           # Neutralized title
-    feed_summary: str         # Short summary
+    detail_full: str  # Full neutralized article
+    detail_brief: str  # Brief synthesis
+    feed_title: str  # Neutralized title
+    feed_summary: str  # Short summary
 
     # Detection results
     body_scan: MergedScanResult
-    title_scan: Optional[MergedScanResult]
+    title_scan: MergedScanResult | None
 
     # Fix results
-    fix_result: Optional[FixResult]
+    fix_result: FixResult | None
 
     # Transparency
-    transparency: Optional[TransparencyPackage]
+    transparency: TransparencyPackage | None
 
     # Processing metadata
     total_processing_time_ms: float
@@ -168,13 +169,13 @@ class NTRLPipeline:
 
     VERSION = "2.0.0"
 
-    def __init__(self, config: Optional[PipelineConfig] = None):
+    def __init__(self, config: PipelineConfig | None = None):
         """Initialize pipeline with configuration."""
         self.config = config or PipelineConfig()
 
         # Initialize components lazily
-        self._scanner: Optional[NTRLScanner] = None
-        self._fixer: Optional[NTRLFixer] = None
+        self._scanner: NTRLScanner | None = None
+        self._fixer: NTRLFixer | None = None
 
         # Simple in-memory cache (would use Redis in production)
         self._cache: dict[str, PipelineResult] = {}
@@ -199,7 +200,7 @@ class NTRLPipeline:
         self,
         body: str,
         title: str = "",
-        deck: Optional[str] = None,
+        deck: str | None = None,
         force: bool = False,
     ) -> PipelineResult:
         """
@@ -283,11 +284,8 @@ class NTRLPipeline:
         return result
 
     async def _run_detection(
-        self,
-        body: str,
-        title: str,
-        deck: Optional[str]
-    ) -> tuple[MergedScanResult, Optional[MergedScanResult]]:
+        self, body: str, title: str, deck: str | None
+    ) -> tuple[MergedScanResult, MergedScanResult | None]:
         """Run detection phase on all content."""
         # Run body and title scans in parallel
         tasks = [
@@ -300,8 +298,10 @@ class NTRLPipeline:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Extract results
-        body_scan = results[0] if not isinstance(results[0], Exception) else MergedScanResult(
-            spans=[], segment=ArticleSegment.BODY, text_length=len(body)
+        body_scan = (
+            results[0]
+            if not isinstance(results[0], Exception)
+            else MergedScanResult(spans=[], segment=ArticleSegment.BODY, text_length=len(body))
         )
 
         title_scan = None
@@ -311,11 +311,7 @@ class NTRLPipeline:
         return body_scan, title_scan
 
     async def _run_fixing(
-        self,
-        body: str,
-        title: str,
-        body_scan: MergedScanResult,
-        title_scan: Optional[MergedScanResult]
+        self, body: str, title: str, body_scan: MergedScanResult, title_scan: MergedScanResult | None
     ) -> FixResult:
         """Run fixing phase on detected content."""
         return await self.fixer.fix(
@@ -326,10 +322,7 @@ class NTRLPipeline:
         )
 
     def _build_transparency(
-        self,
-        body_scan: MergedScanResult,
-        title_scan: Optional[MergedScanResult],
-        fix_result: FixResult
+        self, body_scan: MergedScanResult, title_scan: MergedScanResult | None, fix_result: FixResult
     ) -> TransparencyPackage:
         """Build transparency package from results."""
         # Combine scans
@@ -402,7 +395,7 @@ class NTRLPipeline:
         content = f"{title}|||{body}"
         return hashlib.sha256(content.encode()).hexdigest()[:16]
 
-    def _get_cached(self, content_hash: str) -> Optional[PipelineResult]:
+    def _get_cached(self, content_hash: str) -> PipelineResult | None:
         """Get cached result if available."""
         return self._cache.get(content_hash)
 
@@ -417,12 +410,7 @@ class NTRLPipeline:
 
         self._cache[content_hash] = result
 
-    def _empty_result(
-        self,
-        body: str,
-        title: str,
-        content_hash: str
-    ) -> PipelineResult:
+    def _empty_result(self, body: str, title: str, content_hash: str) -> PipelineResult:
         """Return empty result for empty input."""
         empty_scan = MergedScanResult(
             spans=[],
@@ -452,7 +440,7 @@ class NTRLPipeline:
         self,
         body: str,
         title: str = "",
-    ) -> tuple[MergedScanResult, Optional[MergedScanResult]]:
+    ) -> tuple[MergedScanResult, MergedScanResult | None]:
         """
         Run detection only (no rewriting).
 
@@ -486,7 +474,7 @@ class NTRLPipeline:
 async def process_article(
     body: str,
     title: str = "",
-    config: Optional[PipelineConfig] = None,
+    config: PipelineConfig | None = None,
 ) -> PipelineResult:
     """
     Convenience function to process an article.

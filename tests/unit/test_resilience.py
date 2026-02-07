@@ -6,7 +6,6 @@ Tests circuit breaker, retry decorators, and rate limiter.
 
 import asyncio
 import time
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -14,9 +13,9 @@ from app.services.resilience import (
     CircuitBreaker,
     CircuitOpenError,
     CircuitState,
-    RateLimiter,
     LLMRateLimitError,
     LLMTimeoutError,
+    RateLimiter,
     with_retry,
     with_sync_retry,
     with_timeout,

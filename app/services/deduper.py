@@ -10,7 +10,6 @@ Dedupe rules:
 
 import hashlib
 import re
-from typing import Optional, Tuple
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
@@ -32,21 +31,21 @@ class Deduper:
         # Lowercase
         text = text.lower()
         # Remove punctuation
-        text = re.sub(r'[^\w\s]', '', text)
+        text = re.sub(r"[^\w\s]", "", text)
         # Collapse whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
         return text
 
     @staticmethod
     def hash_url(url: str) -> str:
         """Generate SHA256 hash of URL."""
-        return hashlib.sha256(url.encode('utf-8')).hexdigest()
+        return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
     @staticmethod
     def hash_title(title: str) -> str:
         """Generate SHA256 hash of normalized title."""
         normalized = Deduper.normalize_text(title)
-        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
     @staticmethod
     def jaccard_similarity(text1: str, text2: str) -> float:
@@ -68,7 +67,7 @@ class Deduper:
         url: str,
         title: str,
         lookback_hours: int = 72,
-    ) -> Tuple[bool, Optional[models.StoryRaw]]:
+    ) -> tuple[bool, models.StoryRaw | None]:
         """
         Check if a story is a duplicate.
 
@@ -80,11 +79,7 @@ class Deduper:
         cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
 
         # Check 1: Exact URL match
-        existing = (
-            db.query(models.StoryRaw)
-            .filter(models.StoryRaw.url_hash == url_hash)
-            .first()
-        )
+        existing = db.query(models.StoryRaw).filter(models.StoryRaw.url_hash == url_hash).first()
         if existing:
             return True, existing
 
@@ -138,12 +133,12 @@ class Deduper:
         for idx, story in enumerate(stories):
             is_dup, original = self.is_duplicate(
                 db,
-                url=story.get('url', ''),
-                title=story.get('title', ''),
+                url=story.get("url", ""),
+                title=story.get("title", ""),
                 lookback_hours=lookback_hours,
             )
             results[idx] = {
-                'is_duplicate': is_dup,
-                'duplicate_of_id': str(original.id) if original else None,
+                "is_duplicate": is_dup,
+                "duplicate_of_id": str(original.id) if original else None,
             }
         return results

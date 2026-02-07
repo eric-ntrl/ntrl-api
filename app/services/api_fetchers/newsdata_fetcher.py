@@ -11,7 +11,7 @@ API Documentation: https://newsdata.io/documentation
 import logging
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -86,11 +86,11 @@ class NewsDataFetcher(BaseFetcher):
 
     async def fetch_articles(
         self,
-        categories: Optional[List[str]] = None,
+        categories: list[str] | None = None,
         language: str = "en",
         max_results: int = 50,
-        from_date: Optional[datetime] = None,
-    ) -> List[NormalizedEntry]:
+        from_date: datetime | None = None,
+    ) -> list[NormalizedEntry]:
         """
         Fetch and normalize articles from NewsData.io.
 
@@ -104,14 +104,14 @@ class NewsDataFetcher(BaseFetcher):
             List of normalized article entries
         """
         start_time = time.time()
-        articles: List[NormalizedEntry] = []
+        articles: list[NormalizedEntry] = []
         page_size = min(max_results, self.DEFAULT_PAGE_SIZE)
-        next_page: Optional[str] = None
+        next_page: str | None = None
 
         try:
             while len(articles) < max_results:
                 # Build query parameters
-                params: Dict[str, Any] = {
+                params: dict[str, Any] = {
                     "apikey": self.api_key,
                     "language": language,
                     "size": page_size,
@@ -166,10 +166,7 @@ class NewsDataFetcher(BaseFetcher):
             # Trim to max_results
             articles = articles[:max_results]
 
-            logger.info(
-                f"NewsData.io fetched {len(articles)} articles in "
-                f"{int((time.time() - start_time) * 1000)}ms"
-            )
+            logger.info(f"NewsData.io fetched {len(articles)} articles in {int((time.time() - start_time) * 1000)}ms")
 
         except httpx.HTTPStatusError as e:
             logger.error(f"NewsData.io API error: {e.response.status_code} - {e.response.text}")
@@ -182,10 +179,10 @@ class NewsDataFetcher(BaseFetcher):
 
     async def fetch_by_keywords(
         self,
-        keywords: List[str],
+        keywords: list[str],
         language: str = "en",
         max_results: int = 50,
-    ) -> List[NormalizedEntry]:
+    ) -> list[NormalizedEntry]:
         """
         Fetch articles by keyword search.
 
@@ -198,9 +195,9 @@ class NewsDataFetcher(BaseFetcher):
             List of normalized article entries
         """
         start_time = time.time()
-        articles: List[NormalizedEntry] = []
+        articles: list[NormalizedEntry] = []
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "apikey": self.api_key,
             "language": language,
             "q": " OR ".join(keywords),  # OR search
@@ -230,9 +227,9 @@ class NewsDataFetcher(BaseFetcher):
 
     def _normalize_article(
         self,
-        article: Dict[str, Any],
+        article: dict[str, Any],
         start_time: float,
-    ) -> Optional[NormalizedEntry]:
+    ) -> NormalizedEntry | None:
         """
         Convert NewsData.io article to NTRL NormalizedEntry.
 
@@ -262,9 +259,7 @@ class NewsDataFetcher(BaseFetcher):
             except (ValueError, TypeError):
                 try:
                     # Try ISO format
-                    published_at = datetime.fromisoformat(
-                        pub_date_str.replace("Z", "+00:00")
-                    )
+                    published_at = datetime.fromisoformat(pub_date_str.replace("Z", "+00:00"))
                 except (ValueError, TypeError):
                     published_at = datetime.utcnow()
         else:
@@ -294,7 +289,7 @@ class NewsDataFetcher(BaseFetcher):
 
         # Extract keywords/tags as entities
         keywords = article.get("keywords", []) or []
-        entities: Dict[str, Any] = {}
+        entities: dict[str, Any] = {}
         if keywords:
             entities["keywords"] = keywords
 

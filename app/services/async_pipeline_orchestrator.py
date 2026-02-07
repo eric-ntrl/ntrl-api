@@ -13,22 +13,20 @@ Runs pipeline stages with maximum parallelism while respecting dependencies:
 import asyncio
 import logging
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.logging_config import (
-    log_stage,
     MetricsCollector,
-    ProgressTracker,
+    log_stage,
     trace_id_var,
 )
 from app.models import PipelineJobStatus, PipelineRunSummary
 from app.services.pipeline_job_manager import PipelineJobManager
-from app.services.resilience import CircuitBreaker, with_timeout
+from app.services.resilience import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -36,20 +34,22 @@ logger = logging.getLogger(__name__)
 @dataclass
 class StageResult:
     """Result from a single pipeline stage."""
+
     stage: str
     status: str  # 'completed', 'partial', 'failed', 'skipped'
     duration_ms: int
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
+    metrics: dict[str, Any] = field(default_factory=dict)
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
 class PipelineResult:
     """Final result from complete pipeline execution."""
+
     status: str
-    summary_id: Optional[str]
-    stage_progress: Dict[str, Any]
-    errors: List[Dict[str, Any]]
+    summary_id: str | None
+    stage_progress: dict[str, Any]
+    errors: list[dict[str, Any]]
     duration_ms: int
 
 
@@ -63,10 +63,10 @@ class AsyncPipelineOrchestrator:
     """
 
     # Concurrency limits for each stage
-    INGEST_CONCURRENCY = 10      # Max parallel RSS fetches
-    CLASSIFY_CONCURRENCY = 5     # Max parallel LLM classifications
-    NEUTRALIZE_CONCURRENCY = 5   # Max parallel LLM neutralizations
-    EVAL_CONCURRENCY = 3         # Max parallel LLM evaluations
+    INGEST_CONCURRENCY = 10  # Max parallel RSS fetches
+    CLASSIFY_CONCURRENCY = 5  # Max parallel LLM classifications
+    NEUTRALIZE_CONCURRENCY = 5  # Max parallel LLM neutralizations
+    EVAL_CONCURRENCY = 3  # Max parallel LLM evaluations
 
     # Timeout for stages (in seconds)
     STAGE_TIMEOUT = 600  # 10 minutes per stage
@@ -75,7 +75,7 @@ class AsyncPipelineOrchestrator:
         self,
         job_id: str,
         trace_id: str,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         db: Session,
     ):
         """
@@ -96,7 +96,7 @@ class AsyncPipelineOrchestrator:
         self.metrics = MetricsCollector(job_id)
 
         # Stage results
-        self.stage_results: Dict[str, StageResult] = {}
+        self.stage_results: dict[str, StageResult] = {}
 
         # Circuit breakers for external services
         self.llm_breaker = CircuitBreaker(
@@ -106,12 +106,12 @@ class AsyncPipelineOrchestrator:
         )
 
         # Errors collected during execution
-        self.errors: List[Dict[str, Any]] = []
+        self.errors: list[dict[str, Any]] = []
 
         # Set logging context
         trace_id_var.set(trace_id)
 
-    async def execute(self) -> Dict[str, Any]:
+    async def execute(self) -> dict[str, Any]:
         """
         Execute the full pipeline with progress tracking.
 
@@ -126,7 +126,7 @@ class AsyncPipelineOrchestrator:
                 "job_id": self.job_id,
                 "trace_id": self.trace_id,
                 "config": self.config,
-            }
+            },
         )
 
         try:
@@ -188,7 +188,7 @@ class AsyncPipelineOrchestrator:
                     "trace_id": self.trace_id,
                     "status": overall_status,
                     "duration_ms": duration_ms,
-                }
+                },
             )
 
             return PipelineResult(
@@ -201,10 +201,12 @@ class AsyncPipelineOrchestrator:
 
         except Exception as e:
             logger.exception(f"Pipeline orchestrator failed: {e}")
-            self.errors.append({
-                "stage": "orchestrator",
-                "message": str(e),
-            })
+            self.errors.append(
+                {
+                    "stage": "orchestrator",
+                    "message": str(e),
+                }
+            )
 
             finished_at = datetime.utcnow()
             duration_ms = int((finished_at - self._started_at).total_seconds() * 1000)
@@ -221,7 +223,7 @@ class AsyncPipelineOrchestrator:
         """Check if the job has been cancelled."""
         return PipelineJobManager.is_job_cancelled(self.db, self.job_id)
 
-    def _build_cancelled_result(self) -> Dict[str, Any]:
+    def _build_cancelled_result(self) -> dict[str, Any]:
         """Build result for a cancelled job."""
         return PipelineResult(
             status=PipelineJobStatus.CANCELLED.value,
@@ -252,7 +254,7 @@ class AsyncPipelineOrchestrator:
                         self.db,
                         max_items_per_source=self.config.get("max_items_per_source", 25),
                         trace_id=self.trace_id,
-                    )
+                    ),
                 )
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -273,8 +275,7 @@ class AsyncPipelineOrchestrator:
                 )
 
                 PipelineJobManager.update_job_stage(
-                    self.db, self.job_id, stage_name,
-                    progress=self.stage_results[stage_name].metrics
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
 
         except Exception as e:
@@ -308,7 +309,7 @@ class AsyncPipelineOrchestrator:
                     lambda: classifier.classify_pending(
                         self.db,
                         limit=self.config.get("classify_limit", 200),
-                    )
+                    ),
                 )
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -329,8 +330,7 @@ class AsyncPipelineOrchestrator:
                 )
 
                 PipelineJobManager.update_job_stage(
-                    self.db, self.job_id, stage_name,
-                    progress=self.stage_results[stage_name].metrics
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
 
         except Exception as e:
@@ -365,7 +365,7 @@ class AsyncPipelineOrchestrator:
                         self.db,
                         limit=self.config.get("neutralize_limit", 25),
                         max_workers=self.config.get("max_workers", 5),
-                    )
+                    ),
                 )
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -388,8 +388,7 @@ class AsyncPipelineOrchestrator:
                 )
 
                 PipelineJobManager.update_job_stage(
-                    self.db, self.job_id, stage_name,
-                    progress=self.stage_results[stage_name].metrics
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
 
         except Exception as e:
@@ -417,10 +416,7 @@ class AsyncPipelineOrchestrator:
                 service = QualityGateService()
 
                 loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: service.run_batch(self.db, trace_id=self.trace_id)
-                )
+                result = await loop.run_in_executor(None, lambda: service.run_batch(self.db, trace_id=self.trace_id))
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
@@ -438,8 +434,7 @@ class AsyncPipelineOrchestrator:
                 )
 
                 PipelineJobManager.update_job_stage(
-                    self.db, self.job_id, stage_name,
-                    progress=self.stage_results[stage_name].metrics
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
 
         except Exception as e:
@@ -474,7 +469,7 @@ class AsyncPipelineOrchestrator:
                         self.db,
                         cutoff_hours=self.config.get("cutoff_hours", 24),
                         force=True,
-                    )
+                    ),
                 )
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -493,12 +488,12 @@ class AsyncPipelineOrchestrator:
                 )
 
                 PipelineJobManager.update_job_stage(
-                    self.db, self.job_id, stage_name,
-                    progress=self.stage_results[stage_name].metrics
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
 
                 # Invalidate brief cache
                 from app.routers.brief import invalidate_brief_cache
+
                 invalidate_brief_cache()
 
         except Exception as e:
@@ -514,8 +509,8 @@ class AsyncPipelineOrchestrator:
 
     async def _run_evaluation(self, summary_id: str) -> None:
         """Run the evaluation stage."""
-        from app.services.evaluation_service import EvaluationService
         from app.config import get_settings
+        from app.services.evaluation_service import EvaluationService
 
         stage_name = "evaluation"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
@@ -539,7 +534,7 @@ class AsyncPipelineOrchestrator:
                         self.db,
                         pipeline_run_id=summary_id,
                         sample_size=self.config.get("eval_sample_size", 10),
-                    )
+                    ),
                 )
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -547,7 +542,7 @@ class AsyncPipelineOrchestrator:
 
                 self.stage_results[stage_name] = StageResult(
                     stage=stage_name,
-                    status=result.status if hasattr(result, 'status') else "completed",
+                    status=result.status if hasattr(result, "status") else "completed",
                     duration_ms=duration_ms,
                     metrics={
                         "classification_accuracy": result.classification_accuracy,
@@ -562,15 +557,13 @@ class AsyncPipelineOrchestrator:
                 self._eval_result = result
 
                 # Send email notification
-                if hasattr(result, 'evaluation_run_id') and result.evaluation_run_id:
+                if hasattr(result, "evaluation_run_id") and result.evaluation_run_id:
                     try:
                         from app.services.email_service import EmailService
+
                         email_service = EmailService()
                         email_result = await loop.run_in_executor(
-                            None,
-                            lambda: email_service.send_evaluation_results(
-                                self.db, str(result.evaluation_run_id)
-                            )
+                            None, lambda: email_service.send_evaluation_results(self.db, str(result.evaluation_run_id))
                         )
                         if email_result.get("status") == "sent":
                             logger.info(f"Evaluation email sent: {email_result.get('message_id')}")
@@ -581,8 +574,7 @@ class AsyncPipelineOrchestrator:
                         # Don't fail the stage for email errors
 
                 PipelineJobManager.update_job_stage(
-                    self.db, self.job_id, stage_name,
-                    progress=self.stage_results[stage_name].metrics
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
 
         except Exception as e:
@@ -598,9 +590,9 @@ class AsyncPipelineOrchestrator:
 
     async def _run_optimization(self) -> None:
         """Run the prompt optimization stage."""
+        from app.config import get_settings
         from app.services.prompt_optimizer import PromptOptimizer
         from app.services.rollback_service import RollbackService
-        from app.config import get_settings
 
         stage_name = "optimization"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
@@ -610,7 +602,7 @@ class AsyncPipelineOrchestrator:
 
         try:
             with log_stage(stage_name, self.trace_id):
-                if not hasattr(self, '_eval_result') or not self._eval_result:
+                if not hasattr(self, "_eval_result") or not self._eval_result:
                     self.stage_results[stage_name] = StageResult(
                         stage=stage_name,
                         status="skipped",
@@ -636,14 +628,11 @@ class AsyncPipelineOrchestrator:
                     # Don't optimize until we have at least 3 eval runs with
                     # the current prompt versions to avoid knee-jerk reactions
                     min_runs = self.config.get("min_runs_before_optimize", 3)
-                    runs_since_change = self._count_runs_since_last_prompt_change(
-                        self.db
-                    )
+                    runs_since_change = self._count_runs_since_last_prompt_change(self.db)
 
                     if runs_since_change < min_runs:
                         logger.info(
-                            f"[OPTIMIZE] Skipping: only {runs_since_change}/{min_runs} "
-                            f"runs since last prompt change"
+                            f"[OPTIMIZE] Skipping: only {runs_since_change}/{min_runs} runs since last prompt change"
                         )
                         prompts_updated = 0
                     else:
@@ -657,7 +646,7 @@ class AsyncPipelineOrchestrator:
                                 self.db,
                                 evaluation_run_id=self._eval_result.evaluation_run_id,
                                 auto_apply=True,
-                            )
+                            ),
                         )
 
                         prompts_updated = len([p for p in opt_result.prompts_updated if p.get("applied")])
@@ -677,8 +666,7 @@ class AsyncPipelineOrchestrator:
                 )
 
                 PipelineJobManager.update_job_stage(
-                    self.db, self.job_id, stage_name,
-                    progress=self.stage_results[stage_name].metrics
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
 
         except Exception as e:
@@ -698,7 +686,7 @@ class AsyncPipelineOrchestrator:
         Returns the number of completed evaluation runs that occurred
         after the most recent auto-optimize prompt version was created.
         """
-        from app.models import PromptVersion, EvaluationRun, ChangeSource
+        from app.models import ChangeSource, EvaluationRun, PromptVersion
 
         # Find the most recent auto-optimize version
         latest_change = (
@@ -788,7 +776,7 @@ class AsyncPipelineOrchestrator:
         else:
             return PipelineJobStatus.PARTIAL.value
 
-    def _build_stage_progress(self) -> Dict[str, Any]:
+    def _build_stage_progress(self) -> dict[str, Any]:
         """Build stage progress dict for job record."""
         return {
             stage: {
@@ -804,7 +792,7 @@ class AsyncPipelineOrchestrator:
 def create_orchestrator(
     job_id: str,
     trace_id: str,
-    config: Dict[str, Any],
+    config: dict[str, Any],
     db: Session,
 ) -> AsyncPipelineOrchestrator:
     """Factory function for creating orchestrators."""

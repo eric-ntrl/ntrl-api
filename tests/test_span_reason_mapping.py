@@ -4,7 +4,6 @@ are properly mapped to valid SpanReason enum values.
 """
 
 import logging
-import pytest
 
 from app.models import SpanReason
 from app.services.neutralizer.spans import _parse_span_reason

@@ -15,19 +15,17 @@ Key features:
 import json
 import os
 import time
-from typing import Optional
 from dataclasses import dataclass
+
 import httpx
 
-from .types import (
-    ChangeRecord,
-    FixAction,
-    SpanContext,
-    GeneratorConfig,
-)
-from ..ntrl_scan.types import MergedScanResult, DetectionInstance
-from app.taxonomy import get_type, CATEGORY_NAMES
+from app.taxonomy import get_type
 
+from ..ntrl_scan.types import DetectionInstance, MergedScanResult
+from .types import (
+    GeneratorConfig,
+    SpanContext,
+)
 
 DETAIL_FULL_PROMPT = """You are a professional news editor. Your task is to neutralize manipulation in this article while preserving ALL facts.
 
@@ -113,6 +111,7 @@ Return ONLY valid JSON, no other text."""
 @dataclass
 class DetailFullResult:
     """Result from detail full generation."""
+
     text: str
     changes: list[dict]
     processing_time_ms: float = 0.0
@@ -126,10 +125,10 @@ class DetailFullGenerator:
     all factual content and following strict invariance rules.
     """
 
-    def __init__(self, config: Optional[GeneratorConfig] = None):
+    def __init__(self, config: GeneratorConfig | None = None):
         """Initialize with configuration."""
         self.config = config or GeneratorConfig()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
         # Auto-configure provider if needed
         if self.config.provider == "auto":
@@ -173,19 +172,11 @@ class DetailFullGenerator:
         start_time = time.perf_counter()
 
         if not body or not body.strip():
-            return DetailFullResult(
-                text="",
-                changes=[],
-                processing_time_ms=0.0
-            )
+            return DetailFullResult(text="", changes=[], processing_time_ms=0.0)
 
         # If no detections, return original
         if not scan_result.spans:
-            return DetailFullResult(
-                text=body,
-                changes=[],
-                processing_time_ms=(time.perf_counter() - start_time) * 1000
-            )
+            return DetailFullResult(text=body, changes=[], processing_time_ms=(time.perf_counter() - start_time) * 1000)
 
         # Determine if we should use editorial synthesis
         # Use synthesis when:
@@ -196,6 +187,7 @@ class DetailFullGenerator:
 
         if should_use_synthesis:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info(f"Using editorial synthesis mode (use_synthesis={use_synthesis}, span_count={span_count})")
 
@@ -237,17 +229,13 @@ class DetailFullGenerator:
                 text=span.text,
                 action=span.recommended_action.value,
                 severity=span.severity,
-                rationale=span.rationale or f"Detected {type_label}"
+                rationale=span.rationale or f"Detected {type_label}",
             )
             lines.append(context.to_prompt_line())
 
         return "\n".join(lines)
 
-    def _mock_generate(
-        self,
-        body: str,
-        spans: list[DetectionInstance]
-    ) -> DetailFullResult:
+    def _mock_generate(self, body: str, spans: list[DetectionInstance]) -> DetailFullResult:
         """Mock generation for testing without LLM."""
         # Simple rule-based substitutions
         result_text = body
@@ -262,31 +250,20 @@ class DetailFullGenerator:
             # Apply simple rules based on action
             if span.recommended_action.value == "remove":
                 # Remove the text
-                result_text = (
-                    result_text[:span.span_start] +
-                    result_text[span.span_end:]
-                )
+                result_text = result_text[: span.span_start] + result_text[span.span_end :]
                 replacement = None
                 action_taken = "removed"
 
             elif span.recommended_action.value == "replace":
                 # Use simple replacements for common patterns
                 replacement = self._get_mock_replacement(original)
-                result_text = (
-                    result_text[:span.span_start] +
-                    replacement +
-                    result_text[span.span_end:]
-                )
+                result_text = result_text[: span.span_start] + replacement + result_text[span.span_end :]
                 action_taken = "replaced"
 
             elif span.recommended_action.value == "rewrite":
                 # For rewrite, just use replacement
                 replacement = self._get_mock_replacement(original)
-                result_text = (
-                    result_text[:span.span_start] +
-                    replacement +
-                    result_text[span.span_end:]
-                )
+                result_text = result_text[: span.span_start] + replacement + result_text[span.span_end :]
                 action_taken = "rewritten"
 
             else:
@@ -294,18 +271,17 @@ class DetailFullGenerator:
                 replacement = original
                 action_taken = "preserved"
 
-            changes.append({
-                "detection_id": span.detection_id,
-                "action_taken": action_taken,
-                "original": original,
-                "replacement": replacement,
-                "rationale": f"Mock {action_taken} for {span.type_id_primary}"
-            })
+            changes.append(
+                {
+                    "detection_id": span.detection_id,
+                    "action_taken": action_taken,
+                    "original": original,
+                    "replacement": replacement,
+                    "rationale": f"Mock {action_taken} for {span.type_id_primary}",
+                }
+            )
 
-        return DetailFullResult(
-            text=result_text.strip(),
-            changes=changes
-        )
+        return DetailFullResult(text=result_text.strip(), changes=changes)
 
     def _get_mock_replacement(self, original: str) -> str:
         """Get simple mock replacement for common manipulation patterns."""
@@ -350,28 +326,21 @@ class DetailFullGenerator:
         # Default: return slightly modified version
         return original
 
-    async def _openai_generate(
-        self,
-        body: str,
-        spans_formatted: str,
-        retry_count: int = 0
-    ) -> DetailFullResult:
+    async def _openai_generate(self, body: str, spans_formatted: str, retry_count: int = 0) -> DetailFullResult:
         """
         Generate using OpenAI API with retry logic.
 
         Retries on API errors and JSON parse failures.
         """
         import logging
+
         logger = logging.getLogger(__name__)
         MAX_RETRIES = 2
 
         try:
             client = await self._get_client()
 
-            prompt = DETAIL_FULL_PROMPT.format(
-                body=body,
-                spans_formatted=spans_formatted
-            )
+            prompt = DETAIL_FULL_PROMPT.format(body=body, spans_formatted=spans_formatted)
 
             response = await client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -383,9 +352,7 @@ class DetailFullGenerator:
                     "model": self.config.model,
                     "max_tokens": self.config.max_tokens,
                     "temperature": self.config.temperature,
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
+                    "messages": [{"role": "user", "content": prompt}],
                     "response_format": {"type": "json_object"},
                 },
             )
@@ -404,36 +371,29 @@ class DetailFullGenerator:
                     f"OpenAI detail_full failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 import asyncio
+
                 await asyncio.sleep(1)  # Brief backoff
                 return await self._openai_generate(body, spans_formatted, retry_count + 1)
             else:
                 logger.error(f"OpenAI detail_full failed after {MAX_RETRIES + 1} attempts: {e}")
                 # Fall back to mock which does rule-based neutralization
-                from ..ntrl_scan.types import DetectionInstance
                 return self._mock_generate(body, [])
 
-    async def _anthropic_generate(
-        self,
-        body: str,
-        spans_formatted: str,
-        retry_count: int = 0
-    ) -> DetailFullResult:
+    async def _anthropic_generate(self, body: str, spans_formatted: str, retry_count: int = 0) -> DetailFullResult:
         """
         Generate using Anthropic API with retry logic.
 
         Retries on API errors and JSON parse failures.
         """
         import logging
+
         logger = logging.getLogger(__name__)
         MAX_RETRIES = 2
 
         try:
             client = await self._get_client()
 
-            prompt = DETAIL_FULL_PROMPT.format(
-                body=body,
-                spans_formatted=spans_formatted
-            )
+            prompt = DETAIL_FULL_PROMPT.format(body=body, spans_formatted=spans_formatted)
 
             response = await client.post(
                 "https://api.anthropic.com/v1/messages",
@@ -446,9 +406,7 @@ class DetailFullGenerator:
                     "model": self.config.model,
                     "max_tokens": self.config.max_tokens,
                     "temperature": self.config.temperature,
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
+                    "messages": [{"role": "user", "content": prompt}],
                 },
             )
 
@@ -466,6 +424,7 @@ class DetailFullGenerator:
                     f"Anthropic detail_full failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 import asyncio
+
                 await asyncio.sleep(1)  # Brief backoff
                 return await self._anthropic_generate(body, spans_formatted, retry_count + 1)
             else:
@@ -473,17 +432,14 @@ class DetailFullGenerator:
                 # Fall back to mock which does rule-based neutralization
                 return self._mock_generate(body, [])
 
-    async def _openai_synthesis(
-        self,
-        body: str,
-        retry_count: int = 0
-    ) -> DetailFullResult:
+    async def _openai_synthesis(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
         Generate using OpenAI with editorial synthesis prompt.
 
         Used for heavily editorial content that needs full rewrite.
         """
         import logging
+
         logger = logging.getLogger(__name__)
         MAX_RETRIES = 2
 
@@ -502,9 +458,7 @@ class DetailFullGenerator:
                     "model": self.config.model,
                     "max_tokens": self.config.max_tokens,
                     "temperature": self.config.temperature,
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
+                    "messages": [{"role": "user", "content": prompt}],
                     "response_format": {"type": "json_object"},
                 },
             )
@@ -523,23 +477,21 @@ class DetailFullGenerator:
                     f"OpenAI synthesis failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 import asyncio
+
                 await asyncio.sleep(1)
                 return await self._openai_synthesis(body, retry_count + 1)
             else:
                 logger.error(f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
                 return self._mock_generate(body, [])
 
-    async def _anthropic_synthesis(
-        self,
-        body: str,
-        retry_count: int = 0
-    ) -> DetailFullResult:
+    async def _anthropic_synthesis(self, body: str, retry_count: int = 0) -> DetailFullResult:
         """
         Generate using Anthropic with editorial synthesis prompt.
 
         Used for heavily editorial content that needs full rewrite.
         """
         import logging
+
         logger = logging.getLogger(__name__)
         MAX_RETRIES = 2
 
@@ -559,9 +511,7 @@ class DetailFullGenerator:
                     "model": self.config.model,
                     "max_tokens": self.config.max_tokens,
                     "temperature": self.config.temperature,
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
+                    "messages": [{"role": "user", "content": prompt}],
                 },
             )
 
@@ -579,18 +529,14 @@ class DetailFullGenerator:
                     f"Anthropic synthesis failed (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 import asyncio
+
                 await asyncio.sleep(1)
                 return await self._anthropic_synthesis(body, retry_count + 1)
             else:
                 logger.error(f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {e}")
                 return self._mock_generate(body, [])
 
-    def _parse_response(
-        self,
-        content: str,
-        fallback_body: str,
-        retry_count: int = 0
-    ) -> DetailFullResult:
+    def _parse_response(self, content: str, fallback_body: str, retry_count: int = 0) -> DetailFullResult:
         """
         Parse LLM response into DetailFullResult.
 
@@ -606,32 +552,32 @@ class DetailFullGenerator:
             neutralized_text = data.get("neutralized_text")
             if neutralized_text is None:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.error(
-                    f"V2 detail_full: LLM response missing 'neutralized_text' key. "
-                    f"Available keys: {list(data.keys())}"
+                    f"V2 detail_full: LLM response missing 'neutralized_text' key. Available keys: {list(data.keys())}"
                 )
                 # Don't silently return original - raise to trigger retry
                 raise ValueError("Missing neutralized_text in LLM response")
 
             # Validate that neutralization actually happened
             import difflib
+
             ratio = difflib.SequenceMatcher(None, fallback_body, neutralized_text).ratio()
             if ratio > 0.98:
                 import logging
+
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     f"V2 detail_full: neutralized text nearly identical to original "
                     f"(ratio={ratio:.3f}). Neutralization may have failed."
                 )
 
-            return DetailFullResult(
-                text=neutralized_text,
-                changes=data.get("changes", [])
-            )
+            return DetailFullResult(text=neutralized_text, changes=data.get("changes", []))
 
         except json.JSONDecodeError as e:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.error(f"V2 detail_full: JSON parse error: {e}")
 

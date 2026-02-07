@@ -11,24 +11,29 @@ Usage:
 """
 
 import argparse
-import sys
 
-import os
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
 def get_db_session():
     """Get a database session."""
     from app.database import SessionLocal
+
     return SessionLocal()
 
 
 def _download_body(uri: str) -> str | None:
     """Download body content from S3 URI."""
-    from app.services.storage import download_content
+    from app.storage.factory import get_storage_provider
+
     try:
-        return download_content(uri)
+        storage = get_storage_provider()
+        result = storage.download(uri)
+        if result is None:
+            return None
+        return result.content.decode("utf-8") if isinstance(result.content, bytes) else result.content
     except Exception as e:
         print(f"    Failed to download {uri}: {e}")
         return None

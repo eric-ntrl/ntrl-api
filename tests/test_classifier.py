@@ -3,9 +3,8 @@
 Unit tests for section classification.
 """
 
-import pytest
-from app.services.classifier import SectionClassifier
 from app.models import Section
+from app.services.classifier import SectionClassifier
 
 
 class TestSectionClassifier:
@@ -63,16 +62,10 @@ class TestSectionClassifier:
     def test_classify_with_source_hint(self):
         """Test that source hints override keywords."""
         # Source hint should take precedence
-        result = self.classifier.classify(
-            "Generic headline without keywords",
-            source_slug="ap-technology"
-        )
+        result = self.classifier.classify("Generic headline without keywords", source_slug="ap-technology")
         assert result == Section.TECHNOLOGY
 
-        result = self.classifier.classify(
-            "Generic headline without keywords",
-            source_slug="ap-business"
-        )
+        result = self.classifier.classify("Generic headline without keywords", source_slug="ap-business")
         assert result == Section.BUSINESS
 
     def test_classify_ambiguous_defaults_to_world(self):

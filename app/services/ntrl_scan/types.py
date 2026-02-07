@@ -3,14 +3,14 @@
 Data types for NTRL-SCAN detection module.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional
-from enum import Enum
 import uuid
+from dataclasses import dataclass, field
+from enum import Enum
 
 
 class DetectorSource(str, Enum):
     """Which detector found this manipulation."""
+
     LEXICAL = "lexical"
     STRUCTURAL = "structural"
     SEMANTIC = "semantic"
@@ -18,6 +18,7 @@ class DetectorSource(str, Enum):
 
 class ArticleSegment(str, Enum):
     """Segments of an article for detection."""
+
     TITLE = "title"
     DECK = "deck"
     LEDE = "lede"
@@ -30,6 +31,7 @@ class ArticleSegment(str, Enum):
 
 class SpanAction(str, Enum):
     """Action to take on a detected manipulation span."""
+
     REMOVE = "remove"
     REPLACE = "replace"
     REWRITE = "rewrite"
@@ -72,6 +74,7 @@ class DetectionInstance:
         pattern_matched: The regex pattern that matched (for lexical)
         exemptions_applied: Any guardrails that prevented action
     """
+
     type_id_primary: str
     segment: ArticleSegment
     span_start: int
@@ -85,7 +88,7 @@ class DetectionInstance:
     severity_weighted: float = 0.0
     rationale: str = ""
     recommended_action: SpanAction = SpanAction.REWRITE
-    pattern_matched: Optional[str] = None
+    pattern_matched: str | None = None
     exemptions_applied: list[str] = field(default_factory=list)
 
     def __post_init__(self):
@@ -112,11 +115,12 @@ class ScanResult:
         detector_source: Which detector produced this result
         summary_stats: Aggregated statistics
     """
+
     spans: list[DetectionInstance]
     segment: ArticleSegment
     text_length: int
     scan_duration_ms: float = 0.0
-    detector_source: Optional[DetectorSource] = None
+    detector_source: DetectorSource | None = None
     summary_stats: dict = field(default_factory=dict)
 
     def __post_init__(self):
@@ -181,6 +185,7 @@ class MergedScanResult:
         detector_durations: Time per detector
         summary_stats: Aggregated statistics
     """
+
     spans: list[DetectionInstance]
     segment: ArticleSegment
     text_length: int
@@ -192,11 +197,7 @@ class MergedScanResult:
         """Calculate summary statistics."""
         if not self.summary_stats:
             # Reuse the same logic as ScanResult
-            result = ScanResult(
-                spans=self.spans,
-                segment=self.segment,
-                text_length=self.text_length
-            )
+            result = ScanResult(spans=self.spans, segment=self.segment, text_length=self.text_length)
             self.summary_stats = result.summary_stats
 
     @property

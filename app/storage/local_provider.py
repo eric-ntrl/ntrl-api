@@ -12,16 +12,15 @@ import os
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Dict
 
 from app.storage.base import (
-    StorageProvider,
-    StorageObject,
-    StorageMetadata,
-    ContentType,
     ContentEncoding,
-    compute_content_hash,
+    ContentType,
+    StorageMetadata,
+    StorageObject,
+    StorageProvider,
     compress_content,
+    compute_content_hash,
     decompress_content,
 )
 
@@ -39,16 +38,14 @@ class LocalStorageProvider(StorageProvider):
     - LOCAL_STORAGE_PATH: Base directory (default: ./storage)
     """
 
-    def __init__(self, base_path: Optional[str] = None):
+    def __init__(self, base_path: str | None = None):
         """
         Initialize local storage.
 
         Args:
             base_path: Base directory for storage (or LOCAL_STORAGE_PATH env)
         """
-        self._base_path = Path(
-            base_path or os.getenv("LOCAL_STORAGE_PATH", "./storage")
-        )
+        self._base_path = Path(base_path or os.getenv("LOCAL_STORAGE_PATH", "./storage"))
         self._base_path.mkdir(parents=True, exist_ok=True)
         self._metadata_suffix = ".meta.json"
 
@@ -71,8 +68,8 @@ class LocalStorageProvider(StorageProvider):
         key: str,
         content: bytes,
         content_type: ContentType = ContentType.TEXT_PLAIN,
-        expires_days: Optional[int] = None,
-        metadata: Optional[Dict[str, str]] = None,
+        expires_days: int | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> StorageMetadata:
         """Upload content to local filesystem."""
         # Compute hash and compress
@@ -124,7 +121,7 @@ class LocalStorageProvider(StorageProvider):
         logger.debug(f"Uploaded to local: {key}")
         return storage_metadata
 
-    def download(self, key: str) -> Optional[StorageObject]:
+    def download(self, key: str) -> StorageObject | None:
         """Download and decompress content from local filesystem."""
         file_path = self._get_path(key)
         meta_path = self._get_metadata_path(key)
@@ -161,7 +158,7 @@ class LocalStorageProvider(StorageProvider):
             exists=True,
         )
 
-    def _load_metadata(self, key: str) -> Optional[StorageMetadata]:
+    def _load_metadata(self, key: str) -> StorageMetadata | None:
         """Load metadata from file."""
         meta_path = self._get_metadata_path(key)
         if not meta_path.exists():
@@ -203,7 +200,7 @@ class LocalStorageProvider(StorageProvider):
 
         return deleted
 
-    def get_metadata(self, key: str) -> Optional[StorageMetadata]:
+    def get_metadata(self, key: str) -> StorageMetadata | None:
         """Get metadata without downloading content."""
         if not self.exists(key):
             return None
@@ -223,9 +220,7 @@ class LocalStorageProvider(StorageProvider):
             return []
 
         for meta_file in prefix_path.rglob(f"*{self._metadata_suffix}"):
-            key = str(meta_file.relative_to(self._base_path)).replace(
-                self._metadata_suffix, ""
-            )
+            key = str(meta_file.relative_to(self._base_path)).replace(self._metadata_suffix, "")
             metadata = self._load_metadata(key)
             if metadata and metadata.uploaded_at < cutoff:
                 expired_keys.append(key)
@@ -241,9 +236,7 @@ class LocalStorageProvider(StorageProvider):
             return []
 
         for meta_file in prefix_path.rglob(f"*{self._metadata_suffix}"):
-            key = str(meta_file.relative_to(self._base_path)).replace(
-                self._metadata_suffix, ""
-            )
+            key = str(meta_file.relative_to(self._base_path)).replace(self._metadata_suffix, "")
             all_keys.append(key)
 
         return all_keys

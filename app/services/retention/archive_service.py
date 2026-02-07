@@ -13,16 +13,15 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List, Optional
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.models import (
-    StoryRaw,
+    ArchiveStatus,
     ContentLifecycleEvent,
     LifecycleEventType,
-    ArchiveStatus,
+    StoryRaw,
 )
 from app.services.retention.policy_service import get_active_policy
 from app.storage.factory import get_storage_provider
@@ -33,20 +32,21 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ArchiveResult:
     """Result of an archive operation."""
+
     success: bool
     stories_processed: int = 0
     stories_archived: int = 0
     stories_skipped: int = 0
     stories_failed: int = 0
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     dry_run: bool = False
 
 
 def find_archivable_stories(
     db: Session,
-    cutoff_date: Optional[datetime] = None,
+    cutoff_date: datetime | None = None,
     limit: int = 100,
-) -> List[StoryRaw]:
+) -> list[StoryRaw]:
     """
     Find stories ready to transition from active to compliance tier.
 
@@ -88,10 +88,7 @@ def find_archivable_stories(
                 # Not under legal hold
                 StoryRaw.legal_hold == False,
                 # Not preserved by user (or preservation expired)
-                (
-                    StoryRaw.preserve_until.is_(None) |
-                    (StoryRaw.preserve_until < now)
-                ),
+                (StoryRaw.preserve_until.is_(None) | (StoryRaw.preserve_until < now)),
             )
         )
         .order_by(StoryRaw.ingested_at.asc())  # Oldest first
@@ -105,8 +102,8 @@ def _log_lifecycle_event(
     story_id: uuid.UUID,
     event_type: LifecycleEventType,
     initiated_by: str,
-    idempotency_key: Optional[str] = None,
-    event_metadata: Optional[dict] = None,
+    idempotency_key: str | None = None,
+    event_metadata: dict | None = None,
 ) -> ContentLifecycleEvent:
     """
     Log a lifecycle event for audit trail.
@@ -115,9 +112,7 @@ def _log_lifecycle_event(
     """
     if idempotency_key:
         existing = (
-            db.query(ContentLifecycleEvent)
-            .filter(ContentLifecycleEvent.idempotency_key == idempotency_key)
-            .first()
+            db.query(ContentLifecycleEvent).filter(ContentLifecycleEvent.idempotency_key == idempotency_key).first()
         )
         if existing:
             return existing
@@ -164,9 +159,7 @@ def archive_story(
     try:
         # Check idempotency
         existing_event = (
-            db.query(ContentLifecycleEvent)
-            .filter(ContentLifecycleEvent.idempotency_key == idempotency_key)
-            .first()
+            db.query(ContentLifecycleEvent).filter(ContentLifecycleEvent.idempotency_key == idempotency_key).first()
         )
         if existing_event:
             logger.debug(f"Story {story.id} already archived today (idempotent)")
@@ -303,18 +296,15 @@ def archive_batch(
     if result.stories_failed > 0:
         result.success = False
 
-    logger.info(
-        f"Archive batch complete: {result.stories_archived} archived, "
-        f"{result.stories_failed} failed"
-    )
+    logger.info(f"Archive batch complete: {result.stories_archived} archived, {result.stories_failed} failed")
     return result
 
 
 def find_stories_for_deletion(
     db: Session,
-    cutoff_date: Optional[datetime] = None,
+    cutoff_date: datetime | None = None,
     limit: int = 100,
-) -> List[StoryRaw]:
+) -> list[StoryRaw]:
     """
     Find stories ready for permanent deletion (past compliance window).
 
@@ -348,11 +338,8 @@ def find_stories_for_deletion(
                 StoryRaw.legal_hold == False,
                 # Either archived or soft-deleted with grace period
                 (
-                    (StoryRaw.archived_at.isnot(None)) |
-                    (
-                        StoryRaw.deleted_at.isnot(None) &
-                        (StoryRaw.deleted_at < grace_period)
-                    )
+                    (StoryRaw.archived_at.isnot(None))
+                    | (StoryRaw.deleted_at.isnot(None) & (StoryRaw.deleted_at < grace_period))
                 ),
             )
         )
@@ -381,20 +368,13 @@ def get_retention_stats(db: Session) -> dict:
     # Count by tier
     total = db.query(func.count(StoryRaw.id)).scalar() or 0
 
-    deleted = (
-        db.query(func.count(StoryRaw.id))
-        .filter(StoryRaw.deleted_at.isnot(None))
-        .scalar()
-    ) or 0
+    deleted = (db.query(func.count(StoryRaw.id)).filter(StoryRaw.deleted_at.isnot(None)).scalar()) or 0
 
     preserved = (
         db.query(func.count(StoryRaw.id))
         .filter(
             StoryRaw.deleted_at.is_(None),
-            (
-                (StoryRaw.legal_hold == True) |
-                (StoryRaw.preserve_until > now)
-            ),
+            ((StoryRaw.legal_hold == True) | (StoryRaw.preserve_until > now)),
         )
         .scalar()
     ) or 0

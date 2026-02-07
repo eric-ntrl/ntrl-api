@@ -7,25 +7,24 @@ pipeline stages, plus specialized context managers for LLM and S3 operations.
 
 import json
 import logging
-import os
 import sys
 import time
-import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 # Context variables for trace correlation
-trace_id_var: ContextVar[Optional[str]] = ContextVar("trace_id", default=None)
-stage_var: ContextVar[Optional[str]] = ContextVar("stage", default=None)
-component_var: ContextVar[Optional[str]] = ContextVar("component", default=None)
+trace_id_var: ContextVar[str | None] = ContextVar("trace_id", default=None)
+stage_var: ContextVar[str | None] = ContextVar("stage", default=None)
+component_var: ContextVar[str | None] = ContextVar("component", default=None)
 
 
 # -----------------------------------------------------------------------------
 # JSON Formatter
 # -----------------------------------------------------------------------------
+
 
 class JSONFormatter(logging.Formatter):
     """
@@ -61,9 +60,22 @@ class JSONFormatter(logging.Formatter):
             log_data["exception"] = self.formatException(record.exc_info)
 
         # Add extra fields from record
-        for key in ["event", "duration_ms", "items_processed", "items_failed",
-                    "model", "provider", "tokens_in", "tokens_out", "cost_usd",
-                    "operation", "key", "size_bytes", "job_id", "article_id"]:
+        for key in [
+            "event",
+            "duration_ms",
+            "items_processed",
+            "items_failed",
+            "model",
+            "provider",
+            "tokens_in",
+            "tokens_out",
+            "cost_usd",
+            "operation",
+            "key",
+            "size_bytes",
+            "job_id",
+            "article_id",
+        ]:
             if hasattr(record, key):
                 log_data[key] = getattr(record, key)
 
@@ -92,9 +104,7 @@ def configure_logging(json_format: bool = True, level: str = "INFO") -> None:
     if json_format:
         handler.setFormatter(JSONFormatter())
     else:
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        ))
+        handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 
     root_logger.addHandler(handler)
 
@@ -109,6 +119,7 @@ def configure_logging(json_format: bool = True, level: str = "INFO") -> None:
 # Pipeline Logger
 # -----------------------------------------------------------------------------
 
+
 class PipelineLogger:
     """
     Structured logger for pipeline operations.
@@ -119,7 +130,7 @@ class PipelineLogger:
     def __init__(self, name: str = "pipeline"):
         self._logger = logging.getLogger(name)
 
-    def set_context(self, trace_id: str, stage: Optional[str] = None, component: Optional[str] = None) -> None:
+    def set_context(self, trace_id: str, stage: str | None = None, component: str | None = None) -> None:
         """Set logging context for the current execution."""
         trace_id_var.set(trace_id)
         if stage:
@@ -164,8 +175,9 @@ pipeline_logger = PipelineLogger()
 # Context Managers
 # -----------------------------------------------------------------------------
 
+
 @contextmanager
-def log_stage(stage: str, trace_id: Optional[str] = None):
+def log_stage(stage: str, trace_id: str | None = None):
     """
     Context manager for stage-level logging.
 
@@ -182,10 +194,7 @@ def log_stage(stage: str, trace_id: Optional[str] = None):
     start_time = time.time()
     logger = logging.getLogger("pipeline")
 
-    logger.info(
-        f"Stage {stage} started",
-        extra={"event": "stage_start", "stage": stage}
-    )
+    logger.info(f"Stage {stage} started", extra={"event": "stage_start", "stage": stage})
 
     try:
         yield
@@ -196,7 +205,7 @@ def log_stage(stage: str, trace_id: Optional[str] = None):
                 "event": "stage_complete",
                 "stage": stage,
                 "duration_ms": duration_ms,
-            }
+            },
         )
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -207,7 +216,7 @@ def log_stage(stage: str, trace_id: Optional[str] = None):
                 "stage": stage,
                 "duration_ms": duration_ms,
             },
-            exc_info=True
+            exc_info=True,
         )
         raise
     finally:
@@ -238,7 +247,7 @@ def log_llm_call(provider: str, model: str, call_type: str):
             "provider": provider,
             "model": model,
             "call_type": call_type,
-        }
+        },
     )
 
     try:
@@ -258,7 +267,7 @@ def log_llm_call(provider: str, model: str, call_type: str):
                 "tokens_in": metrics["tokens_in"],
                 "tokens_out": metrics["tokens_out"],
                 "cost_usd": cost_usd,
-            }
+            },
         )
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -270,7 +279,7 @@ def log_llm_call(provider: str, model: str, call_type: str):
                 "model": model,
                 "call_type": call_type,
                 "duration_ms": duration_ms,
-            }
+            },
         )
         raise
 
@@ -303,7 +312,7 @@ def log_s3_operation(operation: str, key: str):
                 "key": key,
                 "duration_ms": duration_ms,
                 "size_bytes": metrics["size_bytes"],
-            }
+            },
         )
     except Exception as e:
         duration_ms = int((time.time() - start_time) * 1000)
@@ -314,7 +323,7 @@ def log_s3_operation(operation: str, key: str):
                 "operation": operation,
                 "key": key,
                 "duration_ms": duration_ms,
-            }
+            },
         )
         raise
 
@@ -322,6 +331,7 @@ def log_s3_operation(operation: str, key: str):
 # -----------------------------------------------------------------------------
 # Progress Tracker
 # -----------------------------------------------------------------------------
+
 
 @dataclass
 class ProgressTracker:
@@ -335,6 +345,7 @@ class ProgressTracker:
             tracker.increment()
         tracker.finish()
     """
+
     total: int
     stage: str
     log_every: int = 10
@@ -378,7 +389,7 @@ class ProgressTracker:
                 "items_failed": self.failed,
                 "rate_per_second": round(rate, 2),
                 "elapsed_seconds": round(elapsed, 1),
-            }
+            },
         )
 
     def finish(self) -> dict:
@@ -398,7 +409,7 @@ class ProgressTracker:
                 "items_failed": self.failed,
                 "duration_seconds": round(elapsed, 1),
                 "rate_per_second": round(rate, 2),
-            }
+            },
         )
 
         return {
@@ -457,6 +468,7 @@ def _estimate_llm_cost(provider: str, model: str, tokens_in: int, tokens_out: in
 # Metrics Collector
 # -----------------------------------------------------------------------------
 
+
 @dataclass
 class MetricsCollector:
     """
@@ -464,6 +476,7 @@ class MetricsCollector:
 
     Aggregates timing, token usage, and cost across all operations.
     """
+
     job_id: str
 
     # Timing

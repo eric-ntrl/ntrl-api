@@ -8,19 +8,11 @@ service calls to handle transient failures gracefully.
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Optional, Type, TypeVar
-
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-    before_sleep_log,
-    RetryError,
-)
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +23,13 @@ T = TypeVar("T")
 # Circuit Breaker
 # -----------------------------------------------------------------------------
 
+
 class CircuitState(str, Enum):
     """Circuit breaker states."""
-    CLOSED = "closed"       # Normal operation, requests pass through
-    OPEN = "open"           # Failing, requests are blocked
-    HALF_OPEN = "half_open" # Testing if service recovered
+
+    CLOSED = "closed"  # Normal operation, requests pass through
+    OPEN = "open"  # Failing, requests are blocked
+    HALF_OPEN = "half_open"  # Testing if service recovered
 
 
 @dataclass
@@ -56,6 +50,7 @@ class CircuitBreaker:
             # Handle circuit open
             pass
     """
+
     name: str
     failure_threshold: int = 5
     reset_timeout_seconds: int = 60
@@ -89,15 +84,12 @@ class CircuitBreaker:
 
             if current_state == CircuitState.OPEN:
                 raise CircuitOpenError(
-                    f"Circuit '{self.name}' is open. "
-                    f"Will retry after {self.reset_timeout_seconds}s cooldown."
+                    f"Circuit '{self.name}' is open. Will retry after {self.reset_timeout_seconds}s cooldown."
                 )
 
             if current_state == CircuitState.HALF_OPEN:
                 if self._half_open_calls >= self.half_open_max_calls:
-                    raise CircuitOpenError(
-                        f"Circuit '{self.name}' is half-open with max test calls reached."
-                    )
+                    raise CircuitOpenError(f"Circuit '{self.name}' is half-open with max test calls reached.")
                 self._half_open_calls += 1
 
         try:
@@ -117,7 +109,7 @@ class CircuitBreaker:
 
             return result
 
-        except Exception as e:
+        except Exception:
             async with self._lock:
                 self._failure_count += 1
                 self._last_failure_time = time.time()
@@ -145,6 +137,7 @@ class CircuitBreaker:
 
 class CircuitOpenError(Exception):
     """Raised when circuit breaker is open."""
+
     pass
 
 
@@ -152,11 +145,12 @@ class CircuitOpenError(Exception):
 # Retry Decorators
 # -----------------------------------------------------------------------------
 
+
 def with_retry(
     max_attempts: int = 3,
     min_wait: float = 1.0,
     max_wait: float = 30.0,
-    retry_exceptions: tuple[Type[Exception], ...] = (Exception,),
+    retry_exceptions: tuple[type[Exception], ...] = (Exception,),
 ) -> Callable:
     """
     Decorator for async functions with exponential backoff retry.
@@ -172,10 +166,11 @@ def with_retry(
         async def call_llm(prompt: str) -> str:
             ...
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> T:
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
 
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -183,16 +178,11 @@ def with_retry(
                 except retry_exceptions as e:
                     last_exception = e
                     if attempt == max_attempts:
-                        logger.error(
-                            f"{func.__name__} failed after {max_attempts} attempts: {e}"
-                        )
+                        logger.error(f"{func.__name__} failed after {max_attempts} attempts: {e}")
                         raise
 
                     wait_time = min(min_wait * (2 ** (attempt - 1)), max_wait)
-                    logger.warning(
-                        f"{func.__name__} attempt {attempt} failed: {e}. "
-                        f"Retrying in {wait_time:.1f}s..."
-                    )
+                    logger.warning(f"{func.__name__} attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
                     await asyncio.sleep(wait_time)
 
             # Should not reach here, but just in case
@@ -201,6 +191,7 @@ def with_retry(
             raise RuntimeError(f"{func.__name__} failed without exception")
 
         return wrapper
+
     return decorator
 
 
@@ -208,7 +199,7 @@ def with_sync_retry(
     max_attempts: int = 3,
     min_wait: float = 1.0,
     max_wait: float = 30.0,
-    retry_exceptions: tuple[Type[Exception], ...] = (Exception,),
+    retry_exceptions: tuple[type[Exception], ...] = (Exception,),
 ) -> Callable:
     """
     Decorator for sync functions with exponential backoff retry.
@@ -219,10 +210,11 @@ def with_sync_retry(
         max_wait: Maximum wait time between retries (seconds)
         retry_exceptions: Tuple of exception types to retry on
     """
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
-            last_exception: Optional[Exception] = None
+            last_exception: Exception | None = None
 
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -230,16 +222,11 @@ def with_sync_retry(
                 except retry_exceptions as e:
                     last_exception = e
                     if attempt == max_attempts:
-                        logger.error(
-                            f"{func.__name__} failed after {max_attempts} attempts: {e}"
-                        )
+                        logger.error(f"{func.__name__} failed after {max_attempts} attempts: {e}")
                         raise
 
                     wait_time = min(min_wait * (2 ** (attempt - 1)), max_wait)
-                    logger.warning(
-                        f"{func.__name__} attempt {attempt} failed: {e}. "
-                        f"Retrying in {wait_time:.1f}s..."
-                    )
+                    logger.warning(f"{func.__name__} attempt {attempt} failed: {e}. Retrying in {wait_time:.1f}s...")
                     time.sleep(wait_time)
 
             if last_exception:
@@ -247,12 +234,14 @@ def with_sync_retry(
             raise RuntimeError(f"{func.__name__} failed without exception")
 
         return wrapper
+
     return decorator
 
 
 # -----------------------------------------------------------------------------
 # Rate Limiter
 # -----------------------------------------------------------------------------
+
 
 @dataclass
 class RateLimiter:
@@ -265,6 +254,7 @@ class RateLimiter:
         async with limiter:
             await call_api()
     """
+
     tokens_per_second: float
     max_tokens: int
 
@@ -282,10 +272,7 @@ class RateLimiter:
             while True:
                 now = time.time()
                 elapsed = now - self._last_update
-                self._tokens = min(
-                    self.max_tokens,
-                    self._tokens + elapsed * self.tokens_per_second
-                )
+                self._tokens = min(self.max_tokens, self._tokens + elapsed * self.tokens_per_second)
                 self._last_update = now
 
                 if self._tokens >= tokens:
@@ -309,18 +296,22 @@ class RateLimiter:
 # LLM-Specific Errors
 # -----------------------------------------------------------------------------
 
+
 class LLMRateLimitError(Exception):
     """Raised when LLM API returns rate limit error."""
+
     pass
 
 
 class LLMTimeoutError(Exception):
     """Raised when LLM API call times out."""
+
     pass
 
 
 class LLMServiceError(Exception):
     """Raised when LLM API returns service error (5xx)."""
+
     pass
 
 
@@ -349,6 +340,7 @@ def llm_retry(func: Callable[..., T]) -> Callable[..., T]:
 # Timeout Helper
 # -----------------------------------------------------------------------------
 
+
 async def with_timeout(coro, timeout_seconds: float, error_message: str = "Operation timed out"):
     """
     Execute a coroutine with a timeout.
@@ -363,5 +355,5 @@ async def with_timeout(coro, timeout_seconds: float, error_message: str = "Opera
     """
     try:
         return await asyncio.wait_for(coro, timeout=timeout_seconds)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         raise LLMTimeoutError(f"{error_message} (timeout: {timeout_seconds}s)")

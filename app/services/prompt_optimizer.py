@@ -11,8 +11,8 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -61,23 +61,25 @@ Respond with JSON:
 @dataclass
 class PromptImprovement:
     """Result of a prompt improvement generation."""
+
     prompt_name: str
     original_content: str
     improved_content: str
-    changes_made: List[str]
+    changes_made: list[str]
     rationale: str
-    issues_addressed: List[str]
+    issues_addressed: list[str]
 
 
 @dataclass
 class OptimizationResult:
     """Result of an optimization run."""
-    prompts_updated: List[Dict]
+
+    prompts_updated: list[dict]
     total_input_tokens: int
     total_output_tokens: int
     estimated_cost_usd: float
     status: str = "completed"
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class PromptOptimizer:
@@ -88,9 +90,10 @@ class PromptOptimizer:
     prompt improvements. All changes are versioned for rollback.
     """
 
-    def __init__(self, teacher_model: Optional[str] = None):
+    def __init__(self, teacher_model: str | None = None):
         """Initialize the optimizer."""
         from app.config import get_settings
+
         self.teacher_model = teacher_model or get_settings().OPTIMIZER_MODEL
         self._total_input_tokens = 0
         self._total_output_tokens = 0
@@ -118,9 +121,9 @@ class PromptOptimizer:
         logger.info(f"[OPTIMIZE] Analyzing evaluation run {evaluation_run_id}")
 
         # Get evaluation run with recommendations
-        eval_run = db.query(models.EvaluationRun).filter(
-            models.EvaluationRun.id == uuid.UUID(evaluation_run_id)
-        ).first()
+        eval_run = (
+            db.query(models.EvaluationRun).filter(models.EvaluationRun.id == uuid.UUID(evaluation_run_id)).first()
+        )
 
         if not eval_run:
             return OptimizationResult(
@@ -145,7 +148,7 @@ class PromptOptimizer:
         prompts_updated = []
 
         # Group recommendations by prompt (key = (name, model))
-        by_prompt: Dict[tuple, List[Dict]] = {}
+        by_prompt: dict[tuple, list[dict]] = {}
         for rec in eval_run.recommendations:
             prompt_name = rec.get("prompt_name")
             prompt_model = rec.get("model")  # None for model-agnostic prompts
@@ -161,18 +164,18 @@ class PromptOptimizer:
             try:
                 # Skip prompts where the corresponding metric is already at target
                 if self._should_skip_optimization(prompt_name, metric_scores):
-                    logger.info(
-                        f"[OPTIMIZE] SKIPPED '{prompt_name}': metric already at target"
+                    logger.info(f"[OPTIMIZE] SKIPPED '{prompt_name}': metric already at target")
+                    prompts_updated.append(
+                        {
+                            "prompt_name": prompt_name,
+                            "model": prompt_model,
+                            "old_version": None,
+                            "new_version": None,
+                            "change_reason": "SKIPPED: metric already at target",
+                            "applied": False,
+                            "skip_reason": "metric_at_target",
+                        }
                     )
-                    prompts_updated.append({
-                        "prompt_name": prompt_name,
-                        "model": prompt_model,
-                        "old_version": None,
-                        "new_version": None,
-                        "change_reason": "SKIPPED: metric already at target",
-                        "applied": False,
-                        "skip_reason": "metric_at_target",
-                    })
                     continue
 
                 # Get current prompt from DB
@@ -199,17 +202,19 @@ class PromptOptimizer:
                     logger.warning(
                         f"[OPTIMIZE] SKIPPED: Auto-optimize disabled for '{prompt_name}'. "
                         f"Recommendations exist but cannot be applied. "
-                        f"Enable via: POST /v1/prompts/{prompt_name}/auto-optimize with {{\"enabled\": true}}"
+                        f'Enable via: POST /v1/prompts/{prompt_name}/auto-optimize with {{"enabled": true}}'
                     )
-                    prompts_updated.append({
-                        "prompt_name": prompt_name,
-                        "model": prompt_model,
-                        "old_version": prompt.version,
-                        "new_version": None,
-                        "change_reason": "SKIPPED: auto_optimize_enabled=False",
-                        "applied": False,
-                        "skip_reason": "auto_optimize_disabled",
-                    })
+                    prompts_updated.append(
+                        {
+                            "prompt_name": prompt_name,
+                            "model": prompt_model,
+                            "old_version": prompt.version,
+                            "new_version": None,
+                            "change_reason": "SKIPPED: auto_optimize_enabled=False",
+                            "applied": False,
+                            "skip_reason": "auto_optimize_disabled",
+                        }
+                    )
                     continue
 
                 # Generate improvement
@@ -222,18 +227,18 @@ class PromptOptimizer:
                 # Quality gate: reject improvements that fail safety checks
                 rejection = self._check_quality_gate(prompt, improvement)
                 if rejection:
-                    logger.warning(
-                        f"[OPTIMIZE] REJECTED improvement for '{prompt_name}': {rejection}"
+                    logger.warning(f"[OPTIMIZE] REJECTED improvement for '{prompt_name}': {rejection}")
+                    prompts_updated.append(
+                        {
+                            "prompt_name": prompt_name,
+                            "model": prompt_model,
+                            "old_version": prompt.version,
+                            "new_version": None,
+                            "change_reason": f"REJECTED: {rejection}",
+                            "applied": False,
+                            "skip_reason": "quality_gate_rejected",
+                        }
                     )
-                    prompts_updated.append({
-                        "prompt_name": prompt_name,
-                        "model": prompt_model,
-                        "old_version": prompt.version,
-                        "new_version": None,
-                        "change_reason": f"REJECTED: {rejection}",
-                        "applied": False,
-                        "skip_reason": "quality_gate_rejected",
-                    })
                     continue
 
                 # Apply if requested
@@ -249,23 +254,22 @@ class PromptOptimizer:
                         f"[OPTIMIZE] Generated improvement for '{prompt_name}'{model_desc}: "
                         f"{len(improvement.changes_made)} changes"
                     )
-                    prompts_updated.append({
-                        "prompt_name": prompt_name,
-                        "model": prompt_model,
-                        "old_version": prompt.version,
-                        "new_version": None,  # Not applied
-                        "change_reason": improvement.rationale,
-                        "applied": False,
-                    })
+                    prompts_updated.append(
+                        {
+                            "prompt_name": prompt_name,
+                            "model": prompt_model,
+                            "old_version": prompt.version,
+                            "new_version": None,  # Not applied
+                            "change_reason": improvement.rationale,
+                            "applied": False,
+                        }
+                    )
 
             except Exception as e:
                 logger.error(f"[OPTIMIZE] Failed to process prompt '{prompt_name}': {e}")
 
         # Calculate cost
-        estimated_cost = (
-            self._total_input_tokens * 5.00 / 1_000_000 +
-            self._total_output_tokens * 15.00 / 1_000_000
-        )
+        estimated_cost = self._total_input_tokens * 5.00 / 1_000_000 + self._total_output_tokens * 15.00 / 1_000_000
 
         # Update evaluation run with prompts_updated
         if auto_apply and prompts_updated:
@@ -281,7 +285,7 @@ class PromptOptimizer:
             status="completed",
         )
 
-    def _compute_metric_scores(self, eval_run: models.EvaluationRun) -> Dict[str, float]:
+    def _compute_metric_scores(self, eval_run: models.EvaluationRun) -> dict[str, float]:
         """Extract metric scores from an evaluation run."""
         return {
             "classification_accuracy": eval_run.classification_accuracy or 0.0,
@@ -290,9 +294,7 @@ class PromptOptimizer:
             "avg_span_recall": eval_run.avg_span_recall or 0.0,
         }
 
-    def _should_skip_optimization(
-        self, prompt_name: str, metric_scores: Dict[str, float]
-    ) -> bool:
+    def _should_skip_optimization(self, prompt_name: str, metric_scores: dict[str, float]) -> bool:
         """Check if a prompt's corresponding metric is already at target.
 
         Skip optimization for prompts where the metric is already excellent
@@ -323,7 +325,7 @@ class PromptOptimizer:
         self,
         prompt: models.Prompt,
         improvement: "PromptImprovement",
-    ) -> Optional[str]:
+    ) -> str | None:
         """Check if an improvement passes quality gates.
 
         Returns a rejection reason string, or None if it passes.
@@ -332,10 +334,7 @@ class PromptOptimizer:
 
         # Gate 1: Reject if prompt exceeds max length
         if len(new_content) > MAX_PROMPT_LENGTH:
-            return (
-                f"Prompt would grow to {len(new_content)} chars "
-                f"(max {MAX_PROMPT_LENGTH})"
-            )
+            return f"Prompt would grow to {len(new_content)} chars (max {MAX_PROMPT_LENGTH})"
 
         # Gate 2: Reject if prompt grew by more than 30%
         original_len = len(prompt.content)
@@ -365,8 +364,8 @@ class PromptOptimizer:
     def _generate_improvement(
         self,
         prompt: models.Prompt,
-        issues: List[Dict],
-    ) -> Optional[PromptImprovement]:
+        issues: list[dict],
+    ) -> PromptImprovement | None:
         """Generate an improved prompt based on identified issues."""
         # Build issue summary
         issue_descriptions = []
@@ -417,17 +416,21 @@ Generate an improved prompt that fixes these issues while preserving all working
         prompt: models.Prompt,
         improvement: PromptImprovement,
         eval_run: models.EvaluationRun,
-    ) -> Optional[Dict]:
+    ) -> dict | None:
         """Apply a prompt improvement with version tracking."""
         try:
             old_version = prompt.version
             new_version = old_version + 1
 
             # Create version history entry for old version (if not exists)
-            existing_version = db.query(models.PromptVersion).filter(
-                models.PromptVersion.prompt_id == prompt.id,
-                models.PromptVersion.version == old_version,
-            ).first()
+            existing_version = (
+                db.query(models.PromptVersion)
+                .filter(
+                    models.PromptVersion.prompt_id == prompt.id,
+                    models.PromptVersion.version == old_version,
+                )
+                .first()
+            )
 
             if not existing_version:
                 # Create version entry for the current content before overwriting
@@ -464,7 +467,7 @@ Generate an improved prompt that fixes these issues while preserving all working
             prompt.content = improvement.improved_content
             prompt.version = new_version
             prompt.current_version_id = new_version_entry.id
-            prompt.updated_at = datetime.now(timezone.utc)
+            prompt.updated_at = datetime.now(UTC)
 
             db.flush()
 
@@ -491,8 +494,8 @@ Generate an improved prompt that fixes these issues while preserving all working
 
     def _summarize_diff(self, old_content: str, new_content: str) -> str:
         """Generate a brief summary of what changed between prompt versions."""
-        old_lines = old_content.strip().split('\n')
-        new_lines = new_content.strip().split('\n')
+        old_lines = old_content.strip().split("\n")
+        new_lines = new_content.strip().split("\n")
 
         old_len = len(old_content)
         new_len = len(new_content)
@@ -526,16 +529,17 @@ Generate an improved prompt that fixes these issues while preserving all working
 
         return ", ".join(parts) if parts else "Minor changes"
 
-    def _call_teacher(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+    def _call_teacher(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call the teacher LLM (supports GPT-4o and o1 models)."""
         if self.teacher_model.startswith("o1"):
             return self._call_teacher_o1(system_prompt, user_prompt)
         else:
             return self._call_teacher_openai(system_prompt, user_prompt)
 
-    def _call_teacher_o1(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+    def _call_teacher_o1(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call OpenAI o1 models (different API - no system prompt)."""
         import re
+
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY not set")
@@ -562,7 +566,7 @@ Generate an improved prompt that fixes these issues while preserving all working
             # Parse JSON from response (o1 returns plain text, need to extract JSON)
             content = response.choices[0].message.content.strip()
             # Try to find JSON in response
-            json_match = re.search(r'\{[\s\S]*\}', content)
+            json_match = re.search(r"\{[\s\S]*\}", content)
             if json_match:
                 return json.loads(json_match.group())
             return json.loads(content)
@@ -571,7 +575,7 @@ Generate an improved prompt that fixes these issues while preserving all working
             logger.error(f"[OPTIMIZE] o1 teacher LLM call failed: {e}")
             raise
 
-    def _call_teacher_openai(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+    def _call_teacher_openai(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call OpenAI GPT models for optimization."""
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -608,11 +612,12 @@ Generate an improved prompt that fixes these issues while preserving all working
 # Version management utilities
 # ---------------------------------------------------------------------------
 
+
 def get_prompt_versions(
     db: Session,
     prompt_name: str,
-    model: Optional[str] = None,
-) -> List[models.PromptVersion]:
+    model: str | None = None,
+) -> list[models.PromptVersion]:
     """Get version history for a prompt."""
     prompt = db.query(models.Prompt).filter(
         models.Prompt.name == prompt_name,

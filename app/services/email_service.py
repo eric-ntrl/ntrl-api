@@ -9,7 +9,7 @@ trend charts, and prompt change summaries.
 import logging
 import urllib.parse
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -35,6 +35,7 @@ class EmailService:
         """Lazy-load Resend client."""
         if self._resend_client is None and self.settings.RESEND_API_KEY:
             import resend
+
             resend.api_key = self.settings.RESEND_API_KEY
             self._resend_client = resend
         return self._resend_client
@@ -43,8 +44,8 @@ class EmailService:
         self,
         db: Session,
         evaluation_run_id: str,
-        recipient: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        recipient: str | None = None,
+    ) -> dict[str, Any]:
         """
         Send evaluation results email.
 
@@ -85,12 +86,14 @@ class EmailService:
 
             # Send email via Resend
             to_email = recipient or self.settings.EMAIL_RECIPIENT
-            response = self.resend_client.Emails.send({
-                "from": self.settings.EMAIL_FROM,
-                "to": [to_email],
-                "subject": subject,
-                "html": html_content,
-            })
+            response = self.resend_client.Emails.send(
+                {
+                    "from": self.settings.EMAIL_FROM,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_content,
+                }
+            )
 
             logger.info(f"[EMAIL] Sent evaluation email to {to_email}, id={response.get('id')}")
             return {
@@ -107,19 +110,22 @@ class EmailService:
         self,
         db: Session,
         evaluation_run_id: str,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Query database for evaluation data needed for email.
 
         Returns dict with current metrics, deltas, historical data, and prompt changes.
         """
-        from app import models
         import uuid as uuid_module
 
+        from app import models
+
         # Get current evaluation run
-        eval_run = db.query(models.EvaluationRun).filter(
-            models.EvaluationRun.id == uuid_module.UUID(evaluation_run_id)
-        ).first()
+        eval_run = (
+            db.query(models.EvaluationRun)
+            .filter(models.EvaluationRun.id == uuid_module.UUID(evaluation_run_id))
+            .first()
+        )
 
         if not eval_run:
             logger.error(f"[EMAIL] Evaluation run {evaluation_run_id} not found")
@@ -154,21 +160,11 @@ class EmailService:
         quality_delta = None
 
         if prev_run:
-            classification_delta = safe_delta(
-                eval_run.classification_accuracy, prev_run.classification_accuracy
-            )
-            neutralization_delta = safe_delta(
-                eval_run.avg_neutralization_score, prev_run.avg_neutralization_score
-            )
-            precision_delta = safe_delta(
-                eval_run.avg_span_precision, prev_run.avg_span_precision
-            )
-            recall_delta = safe_delta(
-                eval_run.avg_span_recall, prev_run.avg_span_recall
-            )
-            quality_delta = safe_delta(
-                eval_run.overall_quality_score, prev_run.overall_quality_score
-            )
+            classification_delta = safe_delta(eval_run.classification_accuracy, prev_run.classification_accuracy)
+            neutralization_delta = safe_delta(eval_run.avg_neutralization_score, prev_run.avg_neutralization_score)
+            precision_delta = safe_delta(eval_run.avg_span_precision, prev_run.avg_span_precision)
+            recall_delta = safe_delta(eval_run.avg_span_recall, prev_run.avg_span_recall)
+            quality_delta = safe_delta(eval_run.overall_quality_score, prev_run.overall_quality_score)
 
         # Build trend data (reversed to show oldest first)
         trend_data = {
@@ -184,25 +180,23 @@ class EmailService:
             else:
                 trend_data["labels"].append("--")
             trend_data["quality_scores"].append(run.overall_quality_score or 0)
-            trend_data["classification_accuracy"].append(
-                (run.classification_accuracy or 0) * 100
-            )
-            trend_data["neutralization_scores"].append(
-                run.avg_neutralization_score or 0
-            )
+            trend_data["classification_accuracy"].append((run.classification_accuracy or 0) * 100)
+            trend_data["neutralization_scores"].append(run.avg_neutralization_score or 0)
 
         # Get prompt changes from this run
         prompt_changes = []
         if eval_run.prompts_updated:
             for change in eval_run.prompts_updated:
                 if change.get("applied", True):
-                    prompt_changes.append({
-                        "prompt_name": change.get("prompt_name", ""),
-                        "old_version": change.get("old_version", 0),
-                        "new_version": change.get("new_version", 0),
-                        "change_reason": change.get("change_reason", ""),
-                        "changes_made": change.get("changes_made", []),
-                    })
+                    prompt_changes.append(
+                        {
+                            "prompt_name": change.get("prompt_name", ""),
+                            "old_version": change.get("old_version", 0),
+                            "new_version": change.get("new_version", 0),
+                            "change_reason": change.get("change_reason", ""),
+                            "changes_made": change.get("changes_made", []),
+                        }
+                    )
 
         # Aggregate missed items from article evaluations
         action_items = []
@@ -219,17 +213,21 @@ class EmailService:
                         missed_by_category[cat] = missed_by_category.get(cat, 0) + 1
 
             if low_neutralization_count > 0:
-                action_items.append({
-                    "category": "NEUTRALIZATION",
-                    "message": f"{low_neutralization_count} articles scored <7.0",
-                })
+                action_items.append(
+                    {
+                        "category": "NEUTRALIZATION",
+                        "message": f"{low_neutralization_count} articles scored <7.0",
+                    }
+                )
 
             # Check span recall target
             if eval_run.avg_span_recall and eval_run.avg_span_recall < 0.99:
-                action_items.append({
-                    "category": "SPAN_RECALL",
-                    "message": f"Targeting 99%, at {eval_run.avg_span_recall * 100:.0f}%",
-                })
+                action_items.append(
+                    {
+                        "category": "SPAN_RECALL",
+                        "message": f"Targeting 99%, at {eval_run.avg_span_recall * 100:.0f}%",
+                    }
+                )
 
         return {
             "evaluation_run_id": str(eval_run.id),
@@ -251,7 +249,7 @@ class EmailService:
             "missed_by_category": missed_by_category,
         }
 
-    def _generate_trend_chart_url(self, trend_data: Dict) -> str:
+    def _generate_trend_chart_url(self, trend_data: dict) -> str:
         """
         Generate QuickChart.io URL for trend visualization.
 
@@ -303,11 +301,12 @@ class EmailService:
         }
 
         import json
+
         chart_json = json.dumps(chart_config)
         encoded = urllib.parse.quote(chart_json)
         return f"https://quickchart.io/chart?c={encoded}&w=600&h=300&bkg=white"
 
-    def _render_email_html(self, data: Dict[str, Any]) -> str:
+    def _render_email_html(self, data: dict[str, Any]) -> str:
         """
         Render HTML email template with evaluation data.
 

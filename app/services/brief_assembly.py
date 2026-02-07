@@ -16,32 +16,36 @@ No personalization, trending, or popularity signals.
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, NamedTuple
 
 from sqlalchemy.orm import Session
 
 from app import models
 from app.models import (
-    FeedCategory, FEED_CATEGORY_ORDER,
-    PipelineStage, PipelineStatus,
+    FEED_CATEGORY_ORDER,
+    FeedCategory,
+    PipelineStage,
+    PipelineStatus,
 )
 
 
 class StoryRow(NamedTuple):
     """A neutralized story with its raw source data, used throughout brief assembly."""
+
     neutralized: models.StoryNeutralized
     raw: models.StoryRaw
     source: models.Source
+
 
 logger = logging.getLogger(__name__)
 
 # Source priority for tie-breaking (lower = higher priority)
 SOURCE_PRIORITY = {
-    'ap': 1,
-    'ap-news': 1,
-    'reuters': 2,
-    'bbc': 3,
-    'npr': 4,
+    "ap": 1,
+    "ap-news": 1,
+    "reuters": 2,
+    "bbc": 3,
+    "npr": 4,
 }
 
 DEFAULT_PRIORITY = 99
@@ -55,10 +59,10 @@ class BriefAssemblyService:
         db: Session,
         stage: PipelineStage,
         status: PipelineStatus,
-        brief_id: Optional[uuid.UUID] = None,
-        started_at: Optional[datetime] = None,
-        error_message: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        brief_id: uuid.UUID | None = None,
+        started_at: datetime | None = None,
+        error_message: str | None = None,
+        metadata: dict | None = None,
     ) -> models.PipelineLog:
         """Create a pipeline log entry."""
         now = datetime.utcnow()
@@ -86,8 +90,8 @@ class BriefAssemblyService:
 
     def _sort_stories(
         self,
-        stories: List[StoryRow],
-    ) -> List[StoryRow]:
+        stories: list[StoryRow],
+    ) -> list[StoryRow]:
         """
         Sort stories deterministically.
 
@@ -102,14 +106,14 @@ class BriefAssemblyService:
                 -x[1].published_at.timestamp(),  # published_at DESC
                 self._get_source_priority(x[2].slug),  # source priority ASC
                 str(x[1].id),  # story ID ASC (deterministic)
-            )
+            ),
         )
 
     def get_qualifying_stories(
         self,
         db: Session,
         cutoff_time: datetime,
-    ) -> Dict[FeedCategory, List[StoryRow]]:
+    ) -> dict[FeedCategory, list[StoryRow]]:
         """
         Get all qualifying stories grouped by feed category.
 
@@ -136,7 +140,7 @@ class BriefAssemblyService:
         )
 
         # Group by feed_category
-        by_category: Dict[FeedCategory, List[StoryRow]] = {cat: [] for cat in FeedCategory}
+        by_category: dict[FeedCategory, list[StoryRow]] = {cat: [] for cat in FeedCategory}
 
         for neutralized, story_raw, source in results:
             cat_value = story_raw.feed_category
@@ -161,7 +165,7 @@ class BriefAssemblyService:
         db: Session,
         cutoff_hours: int = 24,
         force: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Assemble the daily brief.
 
@@ -177,18 +181,18 @@ class BriefAssemblyService:
         cutoff_time = datetime.utcnow() - timedelta(hours=cutoff_hours)
 
         result = {
-            'status': 'completed',
-            'started_at': started_at,
-            'finished_at': None,
-            'duration_ms': 0,
-            'brief_id': None,
-            'brief_date': brief_date,
-            'cutoff_time': cutoff_time,
-            'total_stories': 0,
-            'is_empty': False,
-            'empty_reason': None,
-            'sections': [],
-            'error': None,
+            "status": "completed",
+            "started_at": started_at,
+            "finished_at": None,
+            "duration_ms": 0,
+            "brief_id": None,
+            "brief_date": brief_date,
+            "cutoff_time": cutoff_time,
+            "total_stories": 0,
+            "is_empty": False,
+            "empty_reason": None,
+            "sections": [],
+            "error": None,
         }
 
         try:
@@ -205,13 +209,13 @@ class BriefAssemblyService:
             if existing and not force:
                 # Check if it's recent enough (within last hour)
                 if (datetime.utcnow() - existing.assembled_at).total_seconds() < 3600:
-                    result['status'] = 'skipped'
-                    result['brief_id'] = str(existing.id)
-                    result['total_stories'] = existing.total_stories
-                    result['is_empty'] = existing.is_empty
-                    result['empty_reason'] = existing.empty_reason
-                    result['finished_at'] = datetime.utcnow()
-                    result['duration_ms'] = int((result['finished_at'] - started_at).total_seconds() * 1000)
+                    result["status"] = "skipped"
+                    result["brief_id"] = str(existing.id)
+                    result["total_stories"] = existing.total_stories
+                    result["is_empty"] = existing.is_empty
+                    result["empty_reason"] = existing.empty_reason
+                    result["finished_at"] = datetime.utcnow()
+                    result["duration_ms"] = int((result["finished_at"] - started_at).total_seconds() * 1000)
                     return result
 
             # Get qualifying stories
@@ -254,10 +258,12 @@ class BriefAssemblyService:
                 cat_stories = stories_by_section.get(category, [])
                 cat_order = FEED_CATEGORY_ORDER[category]
 
-                result['sections'].append({
-                    'section': category.value,
-                    'story_count': len(cat_stories),
-                })
+                result["sections"].append(
+                    {
+                        "section": category.value,
+                        "story_count": len(cat_stories),
+                    }
+                )
 
                 for position, (neutralized, story_raw, source) in enumerate(cat_stories):
                     item = models.DailyBriefItem(
@@ -291,26 +297,26 @@ class BriefAssemblyService:
                 brief_id=brief.id,
                 started_at=started_at,
                 metadata={
-                    'total_stories': total_stories,
-                    'is_empty': is_empty,
-                    'version': version,
+                    "total_stories": total_stories,
+                    "is_empty": is_empty,
+                    "version": version,
                 },
             )
 
-            result['brief_id'] = str(brief.id)
-            result['total_stories'] = total_stories
-            result['is_empty'] = is_empty
-            result['empty_reason'] = empty_reason
-            result['finished_at'] = finished_at
-            result['duration_ms'] = duration_ms
+            result["brief_id"] = str(brief.id)
+            result["total_stories"] = total_stories
+            result["is_empty"] = is_empty
+            result["empty_reason"] = empty_reason
+            result["finished_at"] = finished_at
+            result["duration_ms"] = duration_ms
 
             if is_empty:
-                result['status'] = 'empty'
+                result["status"] = "empty"
 
         except Exception as e:
             logger.error(f"Brief assembly failed: {e}")
-            result['status'] = 'failed'
-            result['error'] = str(e)
+            result["status"] = "failed"
+            result["error"] = str(e)
 
             self._log_pipeline(
                 db,
@@ -325,7 +331,7 @@ class BriefAssemblyService:
     def get_current_brief(
         self,
         db: Session,
-    ) -> Optional[models.DailyBrief]:
+    ) -> models.DailyBrief | None:
         """Get the current daily brief."""
         return (
             db.query(models.DailyBrief)

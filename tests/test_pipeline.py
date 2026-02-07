@@ -4,15 +4,15 @@ Integration tests for the NTRL Pipeline.
 """
 
 import pytest
+
+from app.services.ntrl_fix import FixerConfig, GeneratorConfig
 from app.services.ntrl_pipeline import (
     NTRLPipeline,
     PipelineConfig,
-    PipelineResult,
     ProcessingMode,
     process_article,
 )
 from app.services.ntrl_scan import ScannerConfig
-from app.services.ntrl_fix import FixerConfig, GeneratorConfig
 
 
 @pytest.fixture
@@ -116,15 +116,15 @@ class TestPipelineOutputs:
         result = await mock_pipeline.process(body=text, title="News")
 
         # Check all fields present
-        assert hasattr(result, 'original_body')
-        assert hasattr(result, 'detail_full')
-        assert hasattr(result, 'detail_brief')
-        assert hasattr(result, 'feed_title')
-        assert hasattr(result, 'feed_summary')
-        assert hasattr(result, 'body_scan')
-        assert hasattr(result, 'fix_result')
-        assert hasattr(result, 'transparency')
-        assert hasattr(result, 'total_processing_time_ms')
+        assert hasattr(result, "original_body")
+        assert hasattr(result, "detail_full")
+        assert hasattr(result, "detail_brief")
+        assert hasattr(result, "feed_title")
+        assert hasattr(result, "feed_summary")
+        assert hasattr(result, "body_scan")
+        assert hasattr(result, "fix_result")
+        assert hasattr(result, "transparency")
+        assert hasattr(result, "total_processing_time_ms")
 
         await mock_pipeline.close()
 
@@ -198,10 +198,10 @@ class TestTransparency:
         result = await mock_pipeline.process(body=text, title="Test")
 
         assert result.transparency is not None
-        assert hasattr(result.transparency, 'total_detections')
-        assert hasattr(result.transparency, 'detections_by_category')
-        assert hasattr(result.transparency, 'changes')
-        assert hasattr(result.transparency, 'validation')
+        assert hasattr(result.transparency, "total_detections")
+        assert hasattr(result.transparency, "detections_by_category")
+        assert hasattr(result.transparency, "changes")
+        assert hasattr(result.transparency, "validation")
 
         await mock_pipeline.close()
 

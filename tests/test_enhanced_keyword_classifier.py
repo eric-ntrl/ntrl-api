@@ -8,24 +8,22 @@ Covers:
 - Edge cases: empty text, no matching keywords, None inputs
 """
 
-import pytest
-
+from app.models import Domain
 from app.services.enhanced_keyword_classifier import (
+    DOMAIN_KEYWORDS,
+    INTERNATIONAL_KEYWORDS,
+    LOCAL_KEYWORDS,
+    SOURCE_GEO_HINTS,
+    US_KEYWORDS,
+    _score_text,
     classify_by_keywords,
     detect_geography,
-    _score_text,
-    DOMAIN_KEYWORDS,
-    US_KEYWORDS,
-    LOCAL_KEYWORDS,
-    INTERNATIONAL_KEYWORDS,
-    SOURCE_GEO_HINTS,
 )
-from app.models import Domain
-
 
 # ---------------------------------------------------------------------------
 # Test: Keyword scoring helper
 # ---------------------------------------------------------------------------
+
 
 class TestScoreText:
     """Tests for the _score_text helper."""
@@ -67,6 +65,7 @@ class TestScoreText:
 # ---------------------------------------------------------------------------
 # Test: Domain keyword detection for each of the 20 domains
 # ---------------------------------------------------------------------------
+
 
 class TestDomainClassification:
     """Verify that representative keywords trigger the correct domain."""
@@ -166,14 +165,13 @@ class TestDomainClassification:
     def test_each_domain_has_at_least_30_keywords(self):
         """Each domain should have at least 30 keywords per the module docstring."""
         for domain_val, keywords in DOMAIN_KEYWORDS.items():
-            assert len(keywords) >= 30, (
-                f"Domain {domain_val} has only {len(keywords)} keywords (expected >=30)"
-            )
+            assert len(keywords) >= 30, f"Domain {domain_val} has only {len(keywords)} keywords (expected >=30)"
 
 
 # ---------------------------------------------------------------------------
 # Test: Description and body contribute to classification
 # ---------------------------------------------------------------------------
+
 
 class TestDescriptionAndBody:
     """Verify that description and body_excerpt influence classification."""
@@ -191,7 +189,7 @@ class TestDescriptionAndBody:
         result = classify_by_keywords(
             title="Latest news report",
             body_excerpt="NASA scientists announced a breakthrough discovery using the space telescope. "
-                         "The research team published results in a peer-reviewed science journal.",
+            "The research team published results in a peer-reviewed science journal.",
         )
         assert result["domain"] == Domain.SCIENCE_RESEARCH
 
@@ -220,6 +218,7 @@ class TestDescriptionAndBody:
 # ---------------------------------------------------------------------------
 # Test: Geography detection
 # ---------------------------------------------------------------------------
+
 
 class TestGeographyDetection:
     """Tests for detect_geography."""
@@ -314,6 +313,7 @@ class TestGeographyDetection:
 # Test: classify_by_keywords full output
 # ---------------------------------------------------------------------------
 
+
 class TestClassifyByKeywordsOutput:
     """Tests for the full classify_by_keywords return structure."""
 
@@ -357,6 +357,7 @@ class TestClassifyByKeywordsOutput:
 # ---------------------------------------------------------------------------
 # Test: Edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestEdgeCases:
     """Edge cases: empty text, None inputs, no matching keywords."""
@@ -423,6 +424,7 @@ class TestEdgeCases:
 # Test: Geography detection edge cases
 # ---------------------------------------------------------------------------
 
+
 class TestGeographyEdgeCases:
     """Edge cases for geography detection."""
 
@@ -469,6 +471,7 @@ class TestGeographyEdgeCases:
 # Test: Keyword set integrity
 # ---------------------------------------------------------------------------
 
+
 class TestKeywordSetIntegrity:
     """Verify the keyword data structures are well-formed."""
 
@@ -477,16 +480,14 @@ class TestKeywordSetIntegrity:
         domain_values = {d.value for d in Domain}
         for key in DOMAIN_KEYWORDS:
             # Keys might be Domain enum members or string values
-            key_str = key.value if hasattr(key, 'value') else key
+            key_str = key.value if hasattr(key, "value") else key
             assert key_str in domain_values, f"Unknown domain key: {key}"
 
     def test_all_keywords_are_lowercase(self):
         """All keywords should be lowercase for consistent matching."""
         for domain_val, keywords in DOMAIN_KEYWORDS.items():
             for kw in keywords:
-                assert kw == kw.lower(), (
-                    f"Keyword '{kw}' in domain {domain_val} is not lowercase"
-                )
+                assert kw == kw.lower(), f"Keyword '{kw}' in domain {domain_val} is not lowercase"
 
     def test_us_keywords_are_lowercase(self):
         for kw in US_KEYWORDS:
@@ -505,6 +506,4 @@ class TestKeywordSetIntegrity:
         for domain_val, keywords in DOMAIN_KEYWORDS.items():
             assert isinstance(keywords, set)
             for kw in keywords:
-                assert isinstance(kw, str), (
-                    f"Keyword {kw!r} in domain {domain_val} is not a string"
-                )
+                assert isinstance(kw, str), f"Keyword {kw!r} in domain {domain_val} is not a string"

@@ -11,19 +11,19 @@ Usage:
 """
 
 import argparse
-import json
-import sys
-from datetime import datetime
 
 # Set up database URL before importing models
-import os
+import sys
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
 def get_db_session():
     """Get a database session."""
     from app.database import SessionLocal
+
     return SessionLocal()
 
 
@@ -53,10 +53,10 @@ def cmd_status(args):
 
         print(f"\nTotal Stories: {stats['total']}")
         print("\nBy Retention Tier:")
-        for tier, count in stats['by_tier'].items():
+        for tier, count in stats["by_tier"].items():
             print(f"  {tier}: {count}")
 
-        print(f"\nPending Operations:")
+        print("\nPending Operations:")
         print(f"  Stories to soft delete: {preview['pending_soft_delete']}")
         print(f"  Stories to hard delete: {preview['pending_hard_delete']}")
         print(f"  Protected by brief: {preview['protected_by_brief']}")
@@ -68,7 +68,7 @@ def cmd_status(args):
 
 def cmd_set_policy(args):
     """Switch the active retention policy."""
-    from app.services.retention.policy_service import set_policy, ensure_default_policies, get_policy_by_name
+    from app.services.retention.policy_service import ensure_default_policies, get_policy_by_name, set_policy
 
     db = get_db_session()
     try:
@@ -126,7 +126,7 @@ def cmd_archive(args):
 
 def cmd_purge(args):
     """Purge expired content."""
-    from app.services.retention import purge_expired_content, purge_development_mode, ensure_default_policies
+    from app.services.retention import ensure_default_policies, purge_development_mode, purge_expired_content
 
     db = get_db_session()
     try:
@@ -198,7 +198,7 @@ def cmd_cleanup_orphans(args):
 
 def cmd_list_policies(args):
     """List all retention policies."""
-    from app.services.retention.policy_service import list_policies, ensure_default_policies
+    from app.services.retention.policy_service import ensure_default_policies, list_policies
 
     db = get_db_session()
     try:
@@ -238,7 +238,7 @@ Examples:
 
   # Archive expired content
   python -m app.cli.retention archive --batch-size 50
-        """
+        """,
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -249,8 +249,7 @@ Examples:
 
     # set-policy command
     policy_parser = subparsers.add_parser("set-policy", help="Switch active policy")
-    policy_parser.add_argument("name", choices=["development", "production"],
-                               help="Policy name to activate")
+    policy_parser.add_argument("name", choices=["development", "production"], help="Policy name to activate")
     policy_parser.set_defaults(func=cmd_set_policy)
 
     # list-policies command
@@ -259,38 +258,29 @@ Examples:
 
     # archive command
     archive_parser = subparsers.add_parser("archive", help="Archive expired content")
-    archive_parser.add_argument("--batch-size", type=int, default=100,
-                                help="Max stories to archive (default: 100)")
-    archive_parser.add_argument("--dry-run", action="store_true",
-                                help="Preview only, don't archive")
+    archive_parser.add_argument("--batch-size", type=int, default=100, help="Max stories to archive (default: 100)")
+    archive_parser.add_argument("--dry-run", action="store_true", help="Preview only, don't archive")
     archive_parser.set_defaults(func=cmd_archive)
 
     # purge command
     purge_parser = subparsers.add_parser("purge", help="Purge expired content")
-    purge_parser.add_argument("--days", type=int, default=3,
-                              help="Days threshold for dev mode (default: 3)")
-    purge_parser.add_argument("--batch-size", type=int, default=100,
-                              help="Max stories to purge (default: 100)")
-    purge_parser.add_argument("--dev", action="store_true",
-                              help="Use development mode (hard delete)")
-    purge_parser.add_argument("--dry-run", action="store_true",
-                              help="Preview only, don't purge")
-    purge_parser.add_argument("--confirm", action="store_true",
-                              help="Confirm purge operation")
+    purge_parser.add_argument("--days", type=int, default=3, help="Days threshold for dev mode (default: 3)")
+    purge_parser.add_argument("--batch-size", type=int, default=100, help="Max stories to purge (default: 100)")
+    purge_parser.add_argument("--dev", action="store_true", help="Use development mode (hard delete)")
+    purge_parser.add_argument("--dry-run", action="store_true", help="Preview only, don't purge")
+    purge_parser.add_argument("--confirm", action="store_true", help="Confirm purge operation")
     purge_parser.set_defaults(func=cmd_purge)
 
     # cleanup-orphans command
     orphan_parser = subparsers.add_parser("cleanup-orphans", help="Clean up orphaned records")
-    orphan_parser.add_argument("--dry-run", action="store_true", default=True,
-                               help="Preview only (default: true)")
-    orphan_parser.add_argument("--execute", action="store_true",
-                               help="Actually delete orphaned records")
+    orphan_parser.add_argument("--dry-run", action="store_true", default=True, help="Preview only (default: true)")
+    orphan_parser.add_argument("--execute", action="store_true", help="Actually delete orphaned records")
     orphan_parser.set_defaults(func=cmd_cleanup_orphans)
 
     args = parser.parse_args()
 
     # Handle --execute flag for cleanup-orphans
-    if hasattr(args, 'execute') and args.execute:
+    if hasattr(args, "execute") and args.execute:
         args.dry_run = False
 
     args.func(args)

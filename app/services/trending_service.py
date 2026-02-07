@@ -9,9 +9,7 @@ import logging
 import re
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import List, Optional, Tuple
 
-from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 
 from app import models
@@ -22,30 +20,170 @@ logger = logging.getLogger(__name__)
 # Common stopwords to filter out
 STOPWORDS = {
     # Articles and determiners
-    'a', 'an', 'the', 'this', 'that', 'these', 'those',
+    "a",
+    "an",
+    "the",
+    "this",
+    "that",
+    "these",
+    "those",
     # Pronouns
-    'i', 'you', 'he', 'she', 'it', 'we', 'they', 'who', 'what', 'which',
-    'his', 'her', 'its', 'their', 'our', 'my', 'your',
+    "i",
+    "you",
+    "he",
+    "she",
+    "it",
+    "we",
+    "they",
+    "who",
+    "what",
+    "which",
+    "his",
+    "her",
+    "its",
+    "their",
+    "our",
+    "my",
+    "your",
     # Prepositions and conjunctions
-    'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'about',
-    'into', 'over', 'after', 'and', 'but', 'or', 'nor', 'so', 'yet', 'as',
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "up",
+    "about",
+    "into",
+    "over",
+    "after",
+    "and",
+    "but",
+    "or",
+    "nor",
+    "so",
+    "yet",
+    "as",
     # Verbs (common)
-    'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
-    'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might',
-    'can', 'must', 'shall', 'get', 'gets', 'got', 'make', 'makes', 'made',
-    'says', 'said', 'say', 'set', 'take', 'takes', 'took',
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "can",
+    "must",
+    "shall",
+    "get",
+    "gets",
+    "got",
+    "make",
+    "makes",
+    "made",
+    "says",
+    "said",
+    "say",
+    "set",
+    "take",
+    "takes",
+    "took",
     # Adverbs and adjectives
-    'more', 'most', 'very', 'just', 'also', 'now', 'even', 'still', 'well',
-    'here', 'there', 'when', 'where', 'how', 'why', 'all', 'some', 'any',
-    'each', 'every', 'both', 'few', 'many', 'much', 'other', 'another',
-    'such', 'no', 'not', 'only', 'own', 'same', 'than', 'too', 'out',
+    "more",
+    "most",
+    "very",
+    "just",
+    "also",
+    "now",
+    "even",
+    "still",
+    "well",
+    "here",
+    "there",
+    "when",
+    "where",
+    "how",
+    "why",
+    "all",
+    "some",
+    "any",
+    "each",
+    "every",
+    "both",
+    "few",
+    "many",
+    "much",
+    "other",
+    "another",
+    "such",
+    "no",
+    "not",
+    "only",
+    "own",
+    "same",
+    "than",
+    "too",
+    "out",
     # Common news words (not topical)
-    'new', 'news', 'report', 'reports', 'according', 'officials', 'official',
-    'year', 'years', 'day', 'days', 'week', 'weeks', 'month', 'months',
-    'time', 'times', 'first', 'last', 'people', 'one', 'two', 'three',
-    'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'million',
-    'billion', 'percent', 'part', 'way', 'world', 'country', 'state',
-    'government', 'public', 'case', 'cases', 'group', 'company',
+    "new",
+    "news",
+    "report",
+    "reports",
+    "according",
+    "officials",
+    "official",
+    "year",
+    "years",
+    "day",
+    "days",
+    "week",
+    "weeks",
+    "month",
+    "months",
+    "time",
+    "times",
+    "first",
+    "last",
+    "people",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "million",
+    "billion",
+    "percent",
+    "part",
+    "way",
+    "world",
+    "country",
+    "state",
+    "government",
+    "public",
+    "case",
+    "cases",
+    "group",
+    "company",
 }
 
 # Minimum word length to consider
@@ -55,7 +193,7 @@ MIN_WORD_LENGTH = 3
 MIN_ARTICLE_COUNT = 3
 
 
-def extract_keywords(text: str) -> List[str]:
+def extract_keywords(text: str) -> list[str]:
     """
     Extract meaningful keywords from text.
 
@@ -68,18 +206,15 @@ def extract_keywords(text: str) -> List[str]:
     text = text.lower()
 
     # Extract words (alphanumeric + hyphens)
-    words = re.findall(r'\b[a-z][a-z\-]*[a-z]\b|\b[a-z]{2,}\b', text)
+    words = re.findall(r"\b[a-z][a-z\-]*[a-z]\b|\b[a-z]{2,}\b", text)
 
     # Filter out stopwords and short words
-    keywords = [
-        w for w in words
-        if w not in STOPWORDS and len(w) >= MIN_WORD_LENGTH
-    ]
+    keywords = [w for w in words if w not in STOPWORDS and len(w) >= MIN_WORD_LENGTH]
 
     return keywords
 
 
-def extract_bigrams(text: str) -> List[str]:
+def extract_bigrams(text: str) -> list[str]:
     """
     Extract meaningful bigrams (two-word phrases) from text.
 
@@ -92,15 +227,14 @@ def extract_bigrams(text: str) -> List[str]:
     text = text.lower()
 
     # Extract words
-    words = re.findall(r'\b[a-z][a-z\-]*[a-z]\b|\b[a-z]{2,}\b', text)
+    words = re.findall(r"\b[a-z][a-z\-]*[a-z]\b|\b[a-z]{2,}\b", text)
 
     # Generate bigrams, filtering stopwords
     bigrams = []
     for i in range(len(words) - 1):
         w1, w2 = words[i], words[i + 1]
         # Both words must be meaningful
-        if (w1 not in STOPWORDS and w2 not in STOPWORDS and
-            len(w1) >= MIN_WORD_LENGTH and len(w2) >= MIN_WORD_LENGTH):
+        if w1 not in STOPWORDS and w2 not in STOPWORDS and len(w1) >= MIN_WORD_LENGTH and len(w2) >= MIN_WORD_LENGTH:
             bigrams.append(f"{w1} {w2}")
 
     return bigrams
@@ -137,10 +271,7 @@ class TrendingService:
                 models.StoryNeutralized.feed_title,
                 models.StoryNeutralized.feed_summary,
             )
-            .join(
-                models.StoryRaw,
-                models.StoryNeutralized.story_raw_id == models.StoryRaw.id
-            )
+            .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
             .filter(
                 models.StoryNeutralized.is_current == True,
                 models.StoryNeutralized.neutralization_status == "success",
@@ -193,11 +324,9 @@ class TrendingService:
                     term_sample_headline[term] = title
 
         # Filter by minimum count and get top topics
-        trending = [
-            (term, count)
-            for term, count in term_doc_count.most_common(max_topics * 2)
-            if count >= min_count
-        ][:max_topics]
+        trending = [(term, count) for term, count in term_doc_count.most_common(max_topics * 2) if count >= min_count][
+            :max_topics
+        ]
 
         # Build response
         topics = [

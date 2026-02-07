@@ -9,12 +9,9 @@ Covers:
 - Edge cases: None, empty, multiple markers, mid-body markers
 """
 
-import pytest
-
 from app.utils.content_sanitizer import (
     has_truncation_markers,
     strip_truncation_markers,
-    TRUNCATION_PATTERN,
 )
 
 

@@ -12,9 +12,9 @@ Tables:
 - PipelineLog: Audit trail for pipeline steps
 """
 
+import uuid
 from datetime import datetime
 from enum import Enum
-import uuid
 
 from sqlalchemy import (
     Boolean,
@@ -29,18 +29,19 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
-
 
 # -----------------------------------------------------------------------------
 # Enums
 # -----------------------------------------------------------------------------
 
+
 class Section(str, Enum):
     """Fixed sections for daily brief (deterministic order). Legacy — see FeedCategory."""
+
     WORLD = "world"
     US = "us"
     LOCAL = "local"
@@ -60,6 +61,7 @@ SECTION_ORDER = {
 
 class Domain(str, Enum):
     """20 internal editorial domains (system-only, not user-facing)."""
+
     GLOBAL_AFFAIRS = "global_affairs"
     GOVERNANCE_POLITICS = "governance_politics"
     LAW_JUSTICE = "law_justice"
@@ -84,6 +86,7 @@ class Domain(str, Enum):
 
 class FeedCategory(str, Enum):
     """10 user-facing feed categories."""
+
     WORLD = "world"
     US = "us"
     LOCAL = "local"
@@ -126,6 +129,7 @@ FEED_CATEGORY_DISPLAY = {
 
 class SpanAction(str, Enum):
     """What was done to the manipulative text."""
+
     REMOVED = "removed"
     REPLACED = "replaced"
     SOFTENED = "softened"
@@ -133,6 +137,7 @@ class SpanAction(str, Enum):
 
 class SpanReason(str, Enum):
     """Why the text was flagged as manipulative."""
+
     CLICKBAIT = "clickbait"
     URGENCY_INFLATION = "urgency_inflation"
     EMOTIONAL_TRIGGER = "emotional_trigger"
@@ -144,6 +149,7 @@ class SpanReason(str, Enum):
 
 class PipelineStage(str, Enum):
     """Pipeline stages for logging."""
+
     INGEST = "ingest"
     NORMALIZE = "normalize"
     DEDUPE = "dedupe"
@@ -155,6 +161,7 @@ class PipelineStage(str, Enum):
 
 class PipelineStatus(str, Enum):
     """Pipeline step status."""
+
     STARTED = "started"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -163,6 +170,7 @@ class PipelineStatus(str, Enum):
 
 class PipelineJobStatus(str, Enum):
     """Async pipeline job status."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -173,6 +181,7 @@ class PipelineJobStatus(str, Enum):
 
 class ArchiveStatus(str, Enum):
     """Status of content archival to cold storage."""
+
     PENDING = "pending"
     ARCHIVING = "archiving"
     ARCHIVED = "archived"
@@ -181,6 +190,7 @@ class ArchiveStatus(str, Enum):
 
 class LifecycleEventType(str, Enum):
     """Types of content lifecycle events for audit trail."""
+
     INGESTED = "ingested"
     ARCHIVED = "archived"
     ARCHIVE_FAILED = "archive_failed"
@@ -194,23 +204,26 @@ class LifecycleEventType(str, Enum):
 
 class NeutralizationStatus(str, Enum):
     """Status of neutralization processing."""
+
     SUCCESS = "success"
-    FAILED_LLM = "failed_llm"           # LLM API error
-    FAILED_AUDIT = "failed_audit"       # Audit verdict FAIL
-    FAILED_GARBLED = "failed_garbled"   # Output was garbled
-    SKIPPED = "skipped"                 # Audit verdict SKIP
+    FAILED_LLM = "failed_llm"  # LLM API error
+    FAILED_AUDIT = "failed_audit"  # Audit verdict FAIL
+    FAILED_GARBLED = "failed_garbled"  # Output was garbled
+    SKIPPED = "skipped"  # Audit verdict SKIP
 
 
 class SourceType(str, Enum):
     """Source type for article ingestion."""
-    RSS = "rss"              # Traditional RSS feed
-    PERIGON = "perigon"      # Perigon News API
-    NEWSDATA = "newsdata"    # NewsData.io API
+
+    RSS = "rss"  # Traditional RSS feed
+    PERIGON = "perigon"  # Perigon News API
+    NEWSDATA = "newsdata"  # NewsData.io API
 
 
 # -----------------------------------------------------------------------------
 # Source
 # -----------------------------------------------------------------------------
+
 
 class Source(Base):
     """
@@ -227,6 +240,7 @@ class Source(Base):
         stories -> StoryRaw: One-to-many. Every ingested article references the
             Source it was pulled from.
     """
+
     __tablename__ = "sources"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -245,6 +259,7 @@ class Source(Base):
 # -----------------------------------------------------------------------------
 # StoryRaw
 # -----------------------------------------------------------------------------
+
 
 class StoryRaw(Base):
     """
@@ -271,6 +286,7 @@ class StoryRaw(Base):
         duplicate_of -> StoryRaw: Self-referential. Points to the canonical
             article when this row is flagged as a duplicate during DEDUPE.
     """
+
     __tablename__ = "stories_raw"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -312,12 +328,12 @@ class StoryRaw(Base):
     section = Column(String(32), nullable=True)  # Legacy Section enum value
 
     # Classification results (populated by CLASSIFY pipeline stage)
-    domain = Column(String(40), nullable=True)                  # Internal domain (20 values)
-    feed_category = Column(String(32), nullable=True)           # User-facing category (10 values)
-    classification_tags = Column(JSONB, nullable=True)          # {geography, actors, action_type, ...}
-    classification_confidence = Column(Float, nullable=True)    # 0.0-1.0
-    classification_model = Column(String(64), nullable=True)    # "gpt-4o-mini", "gemini-2.0-flash", etc.
-    classification_method = Column(String(20), nullable=True)   # "llm" or "keyword_fallback"
+    domain = Column(String(40), nullable=True)  # Internal domain (20 values)
+    feed_category = Column(String(32), nullable=True)  # User-facing category (10 values)
+    classification_tags = Column(JSONB, nullable=True)  # {geography, actors, action_type, ...}
+    classification_confidence = Column(Float, nullable=True)  # 0.0-1.0
+    classification_model = Column(String(64), nullable=True)  # "gpt-4o-mini", "gemini-2.0-flash", etc.
+    classification_method = Column(String(20), nullable=True)  # "llm" or "keyword_fallback"
     classified_at = Column(DateTime(timezone=True), nullable=True)
 
     is_duplicate = Column(Boolean, default=False, nullable=False)
@@ -335,8 +351,9 @@ class StoryRaw(Base):
 
     # Relationships
     source = relationship("Source", back_populates="stories")
-    neutralized = relationship("StoryNeutralized", back_populates="story_raw",
-                               order_by="desc(StoryNeutralized.version)")
+    neutralized = relationship(
+        "StoryNeutralized", back_populates="story_raw", order_by="desc(StoryNeutralized.version)"
+    )
     duplicate_of = relationship("StoryRaw", remote_side=[id])
 
     @property
@@ -352,9 +369,9 @@ class StoryRaw(Base):
             'pending_deletion' - Ready for hard delete (>12mo)
         """
         if self.deleted_at:
-            return 'deleted'
+            return "deleted"
         if self.legal_hold or (self.preserve_until and self.preserve_until > datetime.utcnow()):
-            return 'preserved'
+            return "preserved"
 
         age_days = (datetime.utcnow() - self.ingested_at).days
 
@@ -363,10 +380,10 @@ class StoryRaw(Base):
         compliance_days = 365
 
         if age_days <= active_days:
-            return 'active'
+            return "active"
         if age_days <= compliance_days:
-            return 'compliance'
-        return 'pending_deletion'
+            return "compliance"
+        return "pending_deletion"
 
     __table_args__ = (
         Index("ix_stories_raw_url_hash", "url_hash"),
@@ -391,6 +408,7 @@ class StoryRaw(Base):
 # -----------------------------------------------------------------------------
 # StoryNeutralized
 # -----------------------------------------------------------------------------
+
 
 class StoryNeutralized(Base):
     """
@@ -419,6 +437,7 @@ class StoryNeutralized(Base):
         manipulation_spans -> ManipulationSpan: One-to-many. Taxonomy-bound
             spans from the NTRL-SCAN structural/lexical analysis pipeline.
     """
+
     __tablename__ = "stories_neutralized"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -429,13 +448,13 @@ class StoryNeutralized(Base):
     is_current = Column(Boolean, default=True, nullable=False)
 
     # Feed outputs (for list views)
-    feed_title = Column(Text, nullable=False)       # ≤6 words preferred, 12 max
-    feed_summary = Column(Text, nullable=False)     # 1-2 sentences, ≤3 lines
+    feed_title = Column(Text, nullable=False)  # ≤6 words preferred, 12 max
+    feed_summary = Column(Text, nullable=False)  # 1-2 sentences, ≤3 lines
 
     # Detail outputs (for article view)
-    detail_title = Column(Text, nullable=True)      # Precise article headline
-    detail_brief = Column(Text, nullable=True)      # 3-5 paragraphs, prose, no headers
-    detail_full = Column(Text, nullable=True)       # Filtered full article
+    detail_title = Column(Text, nullable=True)  # Precise article headline
+    detail_brief = Column(Text, nullable=True)  # 3-5 paragraphs, prose, no headers
+    detail_full = Column(Text, nullable=True)  # Filtered full article
 
     # Disclosure
     disclosure = Column(String(255), default="Manipulative language removed.", nullable=False)
@@ -457,9 +476,9 @@ class StoryNeutralized(Base):
             "setweight(to_tsvector('english', coalesce(feed_title, '')), 'A') || "
             "setweight(to_tsvector('english', coalesce(feed_summary, '')), 'B') || "
             "setweight(to_tsvector('english', coalesce(detail_brief, '')), 'C')",
-            persisted=True
+            persisted=True,
         ),
-        nullable=True
+        nullable=True,
     )
 
     # Quality control gate
@@ -472,12 +491,9 @@ class StoryNeutralized(Base):
 
     # Relationships
     story_raw = relationship("StoryRaw", back_populates="neutralized")
-    spans = relationship("TransparencySpan", back_populates="story_neutralized",
-                        order_by="TransparencySpan.start_char")
+    spans = relationship("TransparencySpan", back_populates="story_neutralized", order_by="TransparencySpan.start_char")
     manipulation_spans = relationship(
-        "ManipulationSpan",
-        back_populates="story_neutralized",
-        order_by="ManipulationSpan.span_start"
+        "ManipulationSpan", back_populates="story_neutralized", order_by="ManipulationSpan.span_start"
     )
 
     __table_args__ = (
@@ -492,6 +508,7 @@ class StoryNeutralized(Base):
 # -----------------------------------------------------------------------------
 # TransparencySpan
 # -----------------------------------------------------------------------------
+
 
 class TransparencySpan(Base):
     """
@@ -526,11 +543,11 @@ class TransparencySpan(Base):
         story_neutralized -> StoryNeutralized: Many-to-one. The neutralized
             version these spans annotate.
     """
+
     __tablename__ = "transparency_spans"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    story_neutralized_id = Column(UUID(as_uuid=True),
-                                   ForeignKey("stories_neutralized.id"), nullable=False)
+    story_neutralized_id = Column(UUID(as_uuid=True), ForeignKey("stories_neutralized.id"), nullable=False)
 
     # Position in original text
     field = Column(String(32), nullable=False)  # "title", "description", "body"
@@ -546,14 +563,13 @@ class TransparencySpan(Base):
     # Relationships
     story_neutralized = relationship("StoryNeutralized", back_populates="spans")
 
-    __table_args__ = (
-        Index("ix_transparency_spans_story", "story_neutralized_id"),
-    )
+    __table_args__ = (Index("ix_transparency_spans_story", "story_neutralized_id"),)
 
 
 # -----------------------------------------------------------------------------
 # ManipulationSpan (NTRL Filter v2)
 # -----------------------------------------------------------------------------
+
 
 class ManipulationSpan(Base):
     """
@@ -585,34 +601,31 @@ class ManipulationSpan(Base):
         story_neutralized -> StoryNeutralized: Many-to-one. The neutralized
             version this span annotates.
     """
+
     __tablename__ = "manipulation_spans"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    story_neutralized_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("stories_neutralized.id"),
-        nullable=False
-    )
+    story_neutralized_id = Column(UUID(as_uuid=True), ForeignKey("stories_neutralized.id"), nullable=False)
 
     # Taxonomy binding (references app/taxonomy.py)
-    type_id_primary = Column(String(10), nullable=False)    # e.g., "A.1.1"
+    type_id_primary = Column(String(10), nullable=False)  # e.g., "A.1.1"
     type_ids_secondary = Column(ARRAY(String), default=[])  # Additional types
 
     # Location in original text
-    segment = Column(String(20), nullable=False)     # title/deck/lede/body/caption
-    span_start = Column(Integer, nullable=False)     # Character index in segment
-    span_end = Column(Integer, nullable=False)       # Exclusive end index
-    original_text = Column(Text, nullable=False)     # Exact text that was flagged
+    segment = Column(String(20), nullable=False)  # title/deck/lede/body/caption
+    span_start = Column(Integer, nullable=False)  # Character index in segment
+    span_end = Column(Integer, nullable=False)  # Exclusive end index
+    original_text = Column(Text, nullable=False)  # Exact text that was flagged
 
     # Scoring
-    confidence = Column(Float, nullable=False)       # Detection confidence (0-1)
-    severity = Column(Integer, nullable=False)       # Base severity (1-5)
-    severity_weighted = Column(Float, nullable=True) # After segment multiplier
+    confidence = Column(Float, nullable=False)  # Detection confidence (0-1)
+    severity = Column(Integer, nullable=False)  # Base severity (1-5)
+    severity_weighted = Column(Float, nullable=True)  # After segment multiplier
 
     # Decision
-    action = Column(String(20), nullable=False)      # remove/replace/rewrite/annotate/preserve
-    rewritten_text = Column(Text, nullable=True)     # Result after action (if applicable)
-    rationale = Column(Text, nullable=True)          # Brief explanation for transparency
+    action = Column(String(20), nullable=False)  # remove/replace/rewrite/annotate/preserve
+    rewritten_text = Column(Text, nullable=True)  # Result after action (if applicable)
+    rationale = Column(Text, nullable=True)  # Brief explanation for transparency
 
     # Audit / Provenance
     detector_source = Column(String(20), nullable=False)  # lexical/structural/semantic
@@ -623,10 +636,7 @@ class ManipulationSpan(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
-    story_neutralized = relationship(
-        "StoryNeutralized",
-        back_populates="manipulation_spans"
-    )
+    story_neutralized = relationship("StoryNeutralized", back_populates="manipulation_spans")
 
     __table_args__ = (
         Index("ix_manipulation_spans_story", "story_neutralized_id"),
@@ -639,6 +649,7 @@ class ManipulationSpan(Base):
 # -----------------------------------------------------------------------------
 # DailyBrief
 # -----------------------------------------------------------------------------
+
 
 class DailyBrief(Base):
     """
@@ -662,6 +673,7 @@ class DailyBrief(Base):
         items -> DailyBriefItem: One-to-many. The ordered list of stories in
             this brief, each carrying denormalized display fields for fast reads.
     """
+
     __tablename__ = "daily_briefs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -684,8 +696,9 @@ class DailyBrief(Base):
     assembly_duration_ms = Column(Integer, nullable=True)
 
     # Relationships
-    items = relationship("DailyBriefItem", back_populates="brief",
-                        order_by="DailyBriefItem.section_order, DailyBriefItem.position")
+    items = relationship(
+        "DailyBriefItem", back_populates="brief", order_by="DailyBriefItem.section_order, DailyBriefItem.position"
+    )
 
     __table_args__ = (
         Index("ix_daily_briefs_date", "brief_date"),
@@ -697,14 +710,15 @@ class DailyBrief(Base):
 # DailyBriefItem
 # -----------------------------------------------------------------------------
 
+
 class DailyBriefItem(Base):
     """Stories in each brief, with deterministic ordering."""
+
     __tablename__ = "daily_brief_items"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     brief_id = Column(UUID(as_uuid=True), ForeignKey("daily_briefs.id"), nullable=False)
-    story_neutralized_id = Column(UUID(as_uuid=True),
-                                   ForeignKey("stories_neutralized.id"), nullable=False)
+    story_neutralized_id = Column(UUID(as_uuid=True), ForeignKey("stories_neutralized.id"), nullable=False)
 
     # Ordering
     section = Column(String(32), nullable=False)  # Section enum
@@ -723,14 +737,13 @@ class DailyBriefItem(Base):
     brief = relationship("DailyBrief", back_populates="items")
     story_neutralized = relationship("StoryNeutralized")
 
-    __table_args__ = (
-        Index("ix_brief_items_brief_section", "brief_id", "section"),
-    )
+    __table_args__ = (Index("ix_brief_items_brief_section", "brief_id", "section"),)
 
 
 # -----------------------------------------------------------------------------
 # PipelineLog
 # -----------------------------------------------------------------------------
+
 
 class PipelineLog(Base):
     """
@@ -755,6 +768,7 @@ class PipelineLog(Base):
         brief_id -> DailyBrief: Optional FK. Present when the log entry
             pertains to a brief assembly run.
     """
+
     __tablename__ = "pipeline_logs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -799,6 +813,7 @@ class PipelineLog(Base):
 # PipelineRunSummary
 # -----------------------------------------------------------------------------
 
+
 class PipelineRunSummary(Base):
     """
     Summary of a complete pipeline run (ingest -> neutralize -> brief).
@@ -806,6 +821,7 @@ class PipelineRunSummary(Base):
     Created after each full pipeline run to track overall health metrics
     and enable alerting when thresholds are breached.
     """
+
     __tablename__ = "pipeline_run_summaries"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -864,6 +880,7 @@ class PipelineRunSummary(Base):
 # PipelineJob
 # -----------------------------------------------------------------------------
 
+
 class PipelineJob(Base):
     """
     Async pipeline job for background execution.
@@ -881,6 +898,7 @@ class PipelineJob(Base):
         pipeline_run_summary -> PipelineRunSummary: The summary created when
             the job completes successfully.
     """
+
     __tablename__ = "pipeline_jobs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -905,11 +923,7 @@ class PipelineJob(Base):
     errors = Column(JSONB, default=[], nullable=False)
 
     # Link to final summary
-    pipeline_run_summary_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("pipeline_run_summaries.id"),
-        nullable=True
-    )
+    pipeline_run_summary_id = Column(UUID(as_uuid=True), ForeignKey("pipeline_run_summaries.id"), nullable=True)
 
     # Cancellation support
     cancel_requested = Column(Boolean, default=False, nullable=False)
@@ -927,8 +941,10 @@ class PipelineJob(Base):
 # Prompt
 # -----------------------------------------------------------------------------
 
+
 class ChangeSource(str, Enum):
     """How a prompt version was created."""
+
     MANUAL = "manual"
     AUTO_OPTIMIZE = "auto_optimize"
     ROLLBACK = "rollback"
@@ -948,10 +964,9 @@ class Prompt(Base):
         versions -> PromptVersion: One-to-many. All historical versions of this prompt.
         current_version -> PromptVersion: The currently active version.
     """
+
     __tablename__ = "prompts"
-    __table_args__ = (
-        UniqueConstraint('name', 'model', name='prompts_name_model_key'),
-    )
+    __table_args__ = (UniqueConstraint("name", "model", name="prompts_name_model_key"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(64), nullable=False)  # e.g., "system_prompt", "user_prompt"
@@ -966,7 +981,7 @@ class Prompt(Base):
     current_version_id = Column(UUID(as_uuid=True), nullable=True)  # FK added after PromptVersion
     auto_optimize_enabled = Column(Boolean, default=False, nullable=False)
     min_score_threshold = Column(Float, default=7.0, nullable=False)  # Below this triggers optimization
-    rollback_threshold = Column(Float, default=0.5, nullable=False)   # Score drop to trigger rollback
+    rollback_threshold = Column(Float, default=0.5, nullable=False)  # Score drop to trigger rollback
 
     # Relationships (versions defined after PromptVersion class)
 
@@ -974,6 +989,7 @@ class Prompt(Base):
 # -----------------------------------------------------------------------------
 # PromptVersion
 # -----------------------------------------------------------------------------
+
 
 class PromptVersion(Base):
     """
@@ -990,16 +1006,17 @@ class PromptVersion(Base):
         prompt -> Prompt: Many-to-one. The prompt this version belongs to.
         parent_version -> PromptVersion: Self-referential link to previous version.
     """
+
     __tablename__ = "prompt_versions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     prompt_id = Column(UUID(as_uuid=True), ForeignKey("prompts.id"), nullable=False)
     version = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
-    change_reason = Column(Text, nullable=True)            # "Auto-optimize: fixed classification of sports articles"
-    change_source = Column(String(32), nullable=False)     # ChangeSource enum
+    change_reason = Column(Text, nullable=True)  # "Auto-optimize: fixed classification of sports articles"
+    change_source = Column(String(32), nullable=False)  # ChangeSource enum
     parent_version_id = Column(UUID(as_uuid=True), ForeignKey("prompt_versions.id"), nullable=True)
-    avg_score_at_creation = Column(Float, nullable=True)   # Quality score when created
+    avg_score_at_creation = Column(Float, nullable=True)  # Quality score when created
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
@@ -1017,6 +1034,7 @@ class PromptVersion(Base):
 # EvaluationRun
 # -----------------------------------------------------------------------------
 
+
 class EvaluationRun(Base):
     """
     Per-pipeline evaluation run using a teacher LLM.
@@ -1032,19 +1050,20 @@ class EvaluationRun(Base):
         pipeline_run -> PipelineRunSummary: The pipeline run being evaluated.
         article_evaluations -> ArticleEvaluation: Per-article evaluation details.
     """
+
     __tablename__ = "evaluation_runs"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     pipeline_run_id = Column(UUID(as_uuid=True), ForeignKey("pipeline_run_summaries.id"), nullable=False)
-    teacher_model = Column(String(64), nullable=False)     # "gpt-4o"
-    sample_size = Column(Integer, nullable=False)          # 10
+    teacher_model = Column(String(64), nullable=False)  # "gpt-4o"
+    sample_size = Column(Integer, nullable=False)  # 10
 
     # Aggregate results
-    classification_accuracy = Column(Float, nullable=True)       # 0-1
-    avg_neutralization_score = Column(Float, nullable=True)      # 0-10
-    avg_span_precision = Column(Float, nullable=True)            # 0-1
-    avg_span_recall = Column(Float, nullable=True)               # 0-1
-    overall_quality_score = Column(Float, nullable=True)         # Combined metric
+    classification_accuracy = Column(Float, nullable=True)  # 0-1
+    avg_neutralization_score = Column(Float, nullable=True)  # 0-10
+    avg_span_precision = Column(Float, nullable=True)  # 0-1
+    avg_span_recall = Column(Float, nullable=True)  # 0-1
+    overall_quality_score = Column(Float, nullable=True)  # Combined metric
 
     # Teacher recommendations (JSON)
     recommendations = Column(JSONB, nullable=True)
@@ -1069,8 +1088,9 @@ class EvaluationRun(Base):
 
     # Relationships
     pipeline_run = relationship("PipelineRunSummary", backref="evaluations")
-    article_evaluations = relationship("ArticleEvaluation", back_populates="evaluation_run",
-                                       order_by="ArticleEvaluation.created_at")
+    article_evaluations = relationship(
+        "ArticleEvaluation", back_populates="evaluation_run", order_by="ArticleEvaluation.created_at"
+    )
 
     __table_args__ = (
         Index("ix_evaluation_runs_pipeline_run_id", "pipeline_run_id"),
@@ -1082,6 +1102,7 @@ class EvaluationRun(Base):
 # -----------------------------------------------------------------------------
 # ArticleEvaluation
 # -----------------------------------------------------------------------------
+
 
 class ArticleEvaluation(Base):
     """
@@ -1098,6 +1119,7 @@ class ArticleEvaluation(Base):
         evaluation_run -> EvaluationRun: The evaluation run this belongs to.
         story_raw -> StoryRaw: The article being evaluated.
     """
+
     __tablename__ = "article_evaluations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -1111,18 +1133,18 @@ class ArticleEvaluation(Base):
     classification_feedback = Column(Text, nullable=True)
 
     # Neutralization evaluation
-    neutralization_score = Column(Float, nullable=True)         # 0-10
-    meaning_preservation_score = Column(Float, nullable=True)   # 0-10
-    neutrality_score = Column(Float, nullable=True)             # 0-10
-    grammar_score = Column(Float, nullable=True)                # 0-10
-    rule_violations = Column(JSONB, nullable=True)              # [{rule_id, description}]
+    neutralization_score = Column(Float, nullable=True)  # 0-10
+    meaning_preservation_score = Column(Float, nullable=True)  # 0-10
+    neutrality_score = Column(Float, nullable=True)  # 0-10
+    grammar_score = Column(Float, nullable=True)  # 0-10
+    rule_violations = Column(JSONB, nullable=True)  # [{rule_id, description}]
     neutralization_feedback = Column(Text, nullable=True)
 
     # Span evaluation
-    span_precision = Column(Float, nullable=True)               # 0-1
-    span_recall = Column(Float, nullable=True)                  # 0-1
-    missed_manipulations = Column(JSONB, nullable=True)         # [{phrase, reason}]
-    false_positives = Column(JSONB, nullable=True)              # [{phrase, why_incorrect}]
+    span_precision = Column(Float, nullable=True)  # 0-1
+    span_recall = Column(Float, nullable=True)  # 0-1
+    missed_manipulations = Column(JSONB, nullable=True)  # [{phrase, reason}]
+    false_positives = Column(JSONB, nullable=True)  # [{phrase, why_incorrect}]
     span_feedback = Column(Text, nullable=True)
 
     # Prompt improvement suggestions (aggregated from all evaluations)
@@ -1147,6 +1169,7 @@ class ArticleEvaluation(Base):
 # RetentionPolicy
 # -----------------------------------------------------------------------------
 
+
 class RetentionPolicy(Base):
     """
     Configurable retention policy for data lifecycle management.
@@ -1159,13 +1182,14 @@ class RetentionPolicy(Base):
     Only one policy can be active at a time. Switch between 'development'
     (hard delete, no Glacier) and 'production' (archive to Glacier).
     """
+
     __tablename__ = "retention_policies"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(64), unique=True, nullable=False)  # 'development', 'production'
 
     # Tier windows (days)
-    active_days = Column(Integer, default=7, nullable=False)       # Tier 1: full access
+    active_days = Column(Integer, default=7, nullable=False)  # Tier 1: full access
     compliance_days = Column(Integer, default=365, nullable=False)  # Tier 2: compliance archive
 
     # Behavior
@@ -1179,14 +1203,13 @@ class RetentionPolicy(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    __table_args__ = (
-        Index("ix_retention_policies_is_active", "is_active"),
-    )
+    __table_args__ = (Index("ix_retention_policies_is_active", "is_active"),)
 
 
 # -----------------------------------------------------------------------------
 # ContentLifecycleEvent
 # -----------------------------------------------------------------------------
+
 
 class ContentLifecycleEvent(Base):
     """
@@ -1199,6 +1222,7 @@ class ContentLifecycleEvent(Base):
     Note: story_raw_id does NOT have FK constraint to allow events to
     persist after the story is hard-deleted.
     """
+
     __tablename__ = "content_lifecycle_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

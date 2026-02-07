@@ -20,20 +20,20 @@ import os
 import ssl
 import uuid
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 from urllib.request import Request, urlopen
 
 import feedparser
 from sqlalchemy.orm import Session
 
 from app import models
-from app.models import PipelineStage, PipelineStatus, SourceType
-from app.services.deduper import Deduper
-from app.services.classifier import SectionClassifier
-from app.services.body_extractor import BodyExtractor, ExtractionResult
-from app.storage.factory import get_storage_provider
-from app.storage.base import ContentType
 from app.config import get_settings
+from app.models import PipelineStage, PipelineStatus, SourceType
+from app.services.body_extractor import BodyExtractor, ExtractionResult
+from app.services.classifier import SectionClassifier
+from app.services.deduper import Deduper
+from app.storage.base import ContentType
+from app.storage.factory import get_storage_provider
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +68,13 @@ class IngestionService:
         if not body:
             return body
 
-        paragraphs = body.split('\n\n')
+        paragraphs = body.split("\n\n")
         seen: set[str] = set()
         unique: list[str] = []
 
         for para in paragraphs:
             # Normalize for comparison (lowercase, collapse whitespace)
-            normalized = ' '.join(para.lower().split())
+            normalized = " ".join(para.lower().split())
 
             # Skip if too short (likely a caption fragment) - keep as-is
             if len(normalized) < 50:
@@ -86,7 +86,7 @@ class IngestionService:
                 seen.add(normalized)
                 unique.append(para)
 
-        return '\n\n'.join(unique)
+        return "\n\n".join(unique)
 
     @property
     def storage(self):
@@ -100,7 +100,7 @@ class IngestionService:
         story_id: str,
         body: str,
         published_at: datetime,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Upload body content to object storage.
 
@@ -140,13 +140,13 @@ class IngestionService:
         db: Session,
         stage: PipelineStage,
         status: PipelineStatus,
-        story_raw_id: Optional[uuid.UUID] = None,
-        started_at: Optional[datetime] = None,
-        error_message: Optional[str] = None,
-        metadata: Optional[dict] = None,
-        trace_id: Optional[str] = None,
-        entry_url: Optional[str] = None,
-        failure_reason: Optional[str] = None,
+        story_raw_id: uuid.UUID | None = None,
+        started_at: datetime | None = None,
+        error_message: str | None = None,
+        metadata: dict | None = None,
+        trace_id: str | None = None,
+        entry_url: str | None = None,
+        failure_reason: str | None = None,
         retry_count: int = 0,
     ) -> models.PipelineLog:
         """Create a pipeline log entry with enhanced observability."""
@@ -182,8 +182,8 @@ class IngestionService:
     def _fetch_feed(self, rss_url: str, timeout: int = 30) -> feedparser.FeedParserDict:
         """Fetch and parse RSS feed."""
         headers = {
-            'User-Agent': 'NTRL-Bot/1.0 (Neutral News Aggregator)',
-            'Accept': 'application/rss+xml, application/xml, text/xml',
+            "User-Agent": "NTRL-Bot/1.0 (Neutral News Aggregator)",
+            "Accept": "application/rss+xml, application/xml, text/xml",
         }
         request = Request(rss_url, headers=headers)
         with urlopen(request, timeout=timeout, context=SSL_CONTEXT) as response:
@@ -199,6 +199,7 @@ class IngestionService:
         """
         if not url:
             from app.services.body_extractor import ExtractionFailureReason
+
             return ExtractionResult(
                 success=False,
                 failure_reason=ExtractionFailureReason.DOWNLOAD_FAILED,
@@ -210,28 +211,28 @@ class IngestionService:
         self,
         entry: dict,
         source: models.Source,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Normalize a feed entry to standard format with extraction metrics."""
         import re
 
         # Get URL
-        url = entry.get('link') or entry.get('id') or ''
+        url = entry.get("link") or entry.get("id") or ""
 
         # Get title
-        title = entry.get('title', 'Untitled')
+        title = entry.get("title", "Untitled")
 
         # Get description/summary
-        description = entry.get('summary') or entry.get('description') or ''
+        description = entry.get("summary") or entry.get("description") or ""
         # Strip HTML if present
-        if '<' in description:
-            description = re.sub(r'<[^>]+>', '', description)
+        if "<" in description:
+            description = re.sub(r"<[^>]+>", "", description)
 
         # Get body - try RSS content field first
         rss_body = None
-        if 'content' in entry and entry['content']:
-            rss_body = entry['content'][0].get('value', '')
-            if '<' in rss_body:
-                rss_body = re.sub(r'<[^>]+>', '', rss_body)
+        if "content" in entry and entry["content"]:
+            rss_body = entry["content"][0].get("value", "")
+            if "<" in rss_body:
+                rss_body = re.sub(r"<[^>]+>", "", rss_body)
 
         # Extract from article URL (RSS feeds usually only have short excerpts)
         extraction_result = self._extract_article_body(url) if url else None
@@ -246,7 +247,7 @@ class IngestionService:
         if extraction_result:
             extraction_duration_ms = extraction_result.duration_ms
             if extraction_result.success and extraction_result.body:
-                if len(extraction_result.body) > len(rss_body or ''):
+                if len(extraction_result.body) > len(rss_body or ""):
                     body = extraction_result.body
                     body_downloaded = True
                     extractor_used = extraction_result.extractor_used
@@ -255,8 +256,7 @@ class IngestionService:
             else:
                 # Extraction failed - record reason
                 extraction_failure_reason = (
-                    extraction_result.failure_reason.value
-                    if extraction_result.failure_reason else None
+                    extraction_result.failure_reason.value if extraction_result.failure_reason else None
                 )
                 body = rss_body
 
@@ -268,37 +268,37 @@ class IngestionService:
             body = self._deduplicate_paragraphs(body)
 
         # Get author
-        author = entry.get('author') or entry.get('dc_creator')
+        author = entry.get("author") or entry.get("dc_creator")
 
         # Get published date
         published = None
-        if 'published_parsed' in entry and entry['published_parsed']:
+        if "published_parsed" in entry and entry["published_parsed"]:
             try:
-                published = datetime(*entry['published_parsed'][:6])
+                published = datetime(*entry["published_parsed"][:6])
             except (TypeError, ValueError):
                 pass
-        if not published and 'updated_parsed' in entry and entry['updated_parsed']:
+        if not published and "updated_parsed" in entry and entry["updated_parsed"]:
             try:
-                published = datetime(*entry['updated_parsed'][:6])
+                published = datetime(*entry["updated_parsed"][:6])
             except (TypeError, ValueError):
                 pass
         if not published:
             published = datetime.utcnow()
 
         return {
-            'url': url,
-            'title': title,
-            'description': description,
-            'body': body,
-            'author': author,
-            'published_at': published,
-            'source_slug': source.slug,
-            'raw_entry': dict(entry),
+            "url": url,
+            "title": title,
+            "description": description,
+            "body": body,
+            "author": author,
+            "published_at": published,
+            "source_slug": source.slug,
+            "raw_entry": dict(entry),
             # Extraction metrics
-            'body_downloaded': body_downloaded,
-            'extractor_used': extractor_used,
-            'extraction_failure_reason': extraction_failure_reason,
-            'extraction_duration_ms': extraction_duration_ms,
+            "body_downloaded": body_downloaded,
+            "extractor_used": extractor_used,
+            "extraction_failure_reason": extraction_failure_reason,
+            "extraction_duration_ms": extraction_duration_ms,
         }
 
     def ingest_source(
@@ -306,8 +306,8 @@ class IngestionService:
         db: Session,
         source: models.Source,
         max_items: int = 20,
-        trace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Ingest stories from a single source with enhanced observability.
 
@@ -316,13 +316,13 @@ class IngestionService:
         """
         started_at = datetime.utcnow()
         result = {
-            'source_slug': source.slug,
-            'source_name': source.name,
-            'ingested': 0,
-            'skipped_duplicate': 0,
-            'body_downloaded': 0,
-            'body_failed': 0,
-            'errors': [],
+            "source_slug": source.slug,
+            "source_name": source.name,
+            "ingested": 0,
+            "skipped_duplicate": 0,
+            "body_downloaded": 0,
+            "body_failed": 0,
+            "errors": [],
         }
 
         try:
@@ -332,37 +332,37 @@ class IngestionService:
 
             for entry in entries:
                 entry_started_at = datetime.utcnow()
-                entry_url = entry.get('link') or entry.get('id') or ''
+                entry_url = entry.get("link") or entry.get("id") or ""
 
                 try:
                     # Normalize (includes body extraction with retries)
                     normalized = self._normalize_entry(entry, source)
 
-                    if not normalized['url']:
+                    if not normalized["url"]:
                         continue
 
                     # Track body extraction metrics
-                    if normalized.get('body_downloaded'):
-                        result['body_downloaded'] += 1
-                    elif normalized.get('extraction_failure_reason'):
-                        result['body_failed'] += 1
+                    if normalized.get("body_downloaded"):
+                        result["body_downloaded"] += 1
+                    elif normalized.get("extraction_failure_reason"):
+                        result["body_failed"] += 1
 
                     # Check for duplicates
                     is_dup, original = self.deduper.is_duplicate(
                         db,
-                        url=normalized['url'],
-                        title=normalized['title'],
+                        url=normalized["url"],
+                        title=normalized["title"],
                     )
 
                     if is_dup:
-                        result['skipped_duplicate'] += 1
+                        result["skipped_duplicate"] += 1
                         continue
 
                     # Classify section
                     section = self.classifier.classify(
-                        title=normalized['title'],
-                        description=normalized['description'],
-                        body=normalized['body'],
+                        title=normalized["title"],
+                        description=normalized["description"],
+                        body=normalized["body"],
                         source_slug=source.slug,
                     )
 
@@ -372,35 +372,35 @@ class IngestionService:
                     # Upload body to object storage
                     storage_meta = self._upload_body_to_storage(
                         story_id=str(story_id),
-                        body=normalized['body'],
-                        published_at=normalized['published_at'],
+                        body=normalized["body"],
+                        published_at=normalized["published_at"],
                     )
 
                     story = models.StoryRaw(
                         id=story_id,
                         source_id=source.id,
-                        original_url=normalized['url'],
-                        original_title=normalized['title'],
-                        original_description=normalized['description'],
-                        original_author=normalized['author'],
-                        url_hash=self.deduper.hash_url(normalized['url']),
-                        title_hash=self.deduper.hash_title(normalized['title']),
-                        published_at=normalized['published_at'],
+                        original_url=normalized["url"],
+                        original_title=normalized["title"],
+                        original_description=normalized["description"],
+                        original_author=normalized["author"],
+                        url_hash=self.deduper.hash_url(normalized["url"]),
+                        title_hash=self.deduper.hash_title(normalized["title"]),
+                        published_at=normalized["published_at"],
                         ingested_at=datetime.utcnow(),
                         section=section.value,
                         is_duplicate=False,
-                        feed_entry_id=normalized['raw_entry'].get('id'),
+                        feed_entry_id=normalized["raw_entry"].get("id"),
                         # S3 storage references
-                        raw_content_uri=storage_meta['uri'] if storage_meta else None,
-                        raw_content_hash=storage_meta['hash'] if storage_meta else None,
-                        raw_content_type=storage_meta['type'] if storage_meta else None,
-                        raw_content_encoding=storage_meta['encoding'] if storage_meta else None,
-                        raw_content_size=storage_meta['size'] if storage_meta else None,
+                        raw_content_uri=storage_meta["uri"] if storage_meta else None,
+                        raw_content_hash=storage_meta["hash"] if storage_meta else None,
+                        raw_content_type=storage_meta["type"] if storage_meta else None,
+                        raw_content_encoding=storage_meta["encoding"] if storage_meta else None,
+                        raw_content_size=storage_meta["size"] if storage_meta else None,
                         raw_content_available=storage_meta is not None,
                     )
                     db.add(story)
                     db.flush()  # Flush to satisfy FK constraint for pipeline log
-                    result['ingested'] += 1
+                    result["ingested"] += 1
 
                     # Log successful ingest with extraction metrics
                     self._log_pipeline(
@@ -410,18 +410,18 @@ class IngestionService:
                         story_raw_id=story.id,
                         started_at=entry_started_at,
                         trace_id=trace_id,
-                        entry_url=normalized['url'],
+                        entry_url=normalized["url"],
                         metadata={
-                            'source': source.slug,
-                            'body_downloaded': normalized.get('body_downloaded', False),
-                            'extractor_used': normalized.get('extractor_used'),
-                            'extraction_duration_ms': normalized.get('extraction_duration_ms', 0),
+                            "source": source.slug,
+                            "body_downloaded": normalized.get("body_downloaded", False),
+                            "extractor_used": normalized.get("extractor_used"),
+                            "extraction_duration_ms": normalized.get("extraction_duration_ms", 0),
                         },
                     )
 
                 except Exception as e:
                     logger.error(f"Error processing entry from {source.slug}: {e}")
-                    result['errors'].append(str(e))
+                    result["errors"].append(str(e))
                     # Log failed entry with details
                     self._log_pipeline(
                         db,
@@ -431,7 +431,7 @@ class IngestionService:
                         trace_id=trace_id,
                         entry_url=entry_url,
                         error_message=str(e),
-                        metadata={'source': source.slug},
+                        metadata={"source": source.slug},
                     )
 
             db.commit()
@@ -440,7 +440,7 @@ class IngestionService:
             db.rollback()  # Rollback any pending changes before logging
             source_slug = source.slug if source else "unknown"
             logger.error(f"Error fetching feed from {source_slug}: {e}")
-            result['errors'].append(f"Feed fetch failed: {e}")
+            result["errors"].append(f"Feed fetch failed: {e}")
             self._log_pipeline(
                 db,
                 stage=PipelineStage.INGEST,
@@ -448,7 +448,7 @@ class IngestionService:
                 started_at=started_at,
                 trace_id=trace_id,
                 error_message=str(e),
-                metadata={'source': source_slug},
+                metadata={"source": source_slug},
             )
             db.commit()  # Commit the error log
 
@@ -457,10 +457,10 @@ class IngestionService:
     def ingest_all(
         self,
         db: Session,
-        source_slugs: Optional[List[str]] = None,
+        source_slugs: list[str] | None = None,
         max_items_per_source: int = 20,
-        trace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Ingest stories from all active sources (or specified sources).
 
@@ -480,32 +480,30 @@ class IngestionService:
         sources = query.all()
 
         result = {
-            'status': 'completed',
-            'started_at': started_at,
-            'finished_at': None,
-            'duration_ms': 0,
-            'trace_id': trace_id,
-            'sources_processed': 0,
-            'total_ingested': 0,
-            'total_skipped_duplicate': 0,
-            'total_body_downloaded': 0,
-            'total_body_failed': 0,
-            'source_results': [],
-            'errors': [],
+            "status": "completed",
+            "started_at": started_at,
+            "finished_at": None,
+            "duration_ms": 0,
+            "trace_id": trace_id,
+            "sources_processed": 0,
+            "total_ingested": 0,
+            "total_skipped_duplicate": 0,
+            "total_body_downloaded": 0,
+            "total_body_failed": 0,
+            "source_results": [],
+            "errors": [],
         }
 
         for source in sources:
-            source_result = self.ingest_source(
-                db, source, max_items=max_items_per_source, trace_id=trace_id
-            )
-            result['source_results'].append(source_result)
-            result['sources_processed'] += 1
-            result['total_ingested'] += source_result['ingested']
-            result['total_skipped_duplicate'] += source_result['skipped_duplicate']
-            result['total_body_downloaded'] += source_result.get('body_downloaded', 0)
-            result['total_body_failed'] += source_result.get('body_failed', 0)
-            if source_result['errors']:
-                result['errors'].extend(source_result['errors'])
+            source_result = self.ingest_source(db, source, max_items=max_items_per_source, trace_id=trace_id)
+            result["source_results"].append(source_result)
+            result["sources_processed"] += 1
+            result["total_ingested"] += source_result["ingested"]
+            result["total_skipped_duplicate"] += source_result["skipped_duplicate"]
+            result["total_body_downloaded"] += source_result.get("body_downloaded", 0)
+            result["total_body_failed"] += source_result.get("body_failed", 0)
+            if source_result["errors"]:
+                result["errors"].extend(source_result["errors"])
 
         # Ingest from News APIs (additive to RSS)
         settings = get_settings()
@@ -514,6 +512,7 @@ class IngestionService:
         if settings.PERIGON_ENABLED and settings.PERIGON_API_KEY:
             try:
                 import asyncio
+
                 api_result = asyncio.run(
                     self._ingest_from_perigon(
                         db,
@@ -522,22 +521,23 @@ class IngestionService:
                         trace_id=trace_id,
                     )
                 )
-                result['source_results'].append(api_result)
-                result['sources_processed'] += 1
-                result['total_ingested'] += api_result['ingested']
-                result['total_skipped_duplicate'] += api_result['skipped_duplicate']
-                result['total_body_downloaded'] += api_result.get('body_downloaded', 0)
-                result['total_body_failed'] += api_result.get('body_failed', 0)
-                if api_result['errors']:
-                    result['errors'].extend(api_result['errors'])
+                result["source_results"].append(api_result)
+                result["sources_processed"] += 1
+                result["total_ingested"] += api_result["ingested"]
+                result["total_skipped_duplicate"] += api_result["skipped_duplicate"]
+                result["total_body_downloaded"] += api_result.get("body_downloaded", 0)
+                result["total_body_failed"] += api_result.get("body_failed", 0)
+                if api_result["errors"]:
+                    result["errors"].extend(api_result["errors"])
             except Exception as e:
                 logger.error(f"Perigon ingestion failed: {e}")
-                result['errors'].append(f"Perigon: {e}")
+                result["errors"].append(f"Perigon: {e}")
 
         # NewsData.io API (backup)
         if settings.NEWSDATA_ENABLED and settings.NEWSDATA_API_KEY:
             try:
                 import asyncio
+
                 api_result = asyncio.run(
                     self._ingest_from_newsdata(
                         db,
@@ -546,26 +546,26 @@ class IngestionService:
                         trace_id=trace_id,
                     )
                 )
-                result['source_results'].append(api_result)
-                result['sources_processed'] += 1
-                result['total_ingested'] += api_result['ingested']
-                result['total_skipped_duplicate'] += api_result['skipped_duplicate']
-                result['total_body_downloaded'] += api_result.get('body_downloaded', 0)
-                result['total_body_failed'] += api_result.get('body_failed', 0)
-                if api_result['errors']:
-                    result['errors'].extend(api_result['errors'])
+                result["source_results"].append(api_result)
+                result["sources_processed"] += 1
+                result["total_ingested"] += api_result["ingested"]
+                result["total_skipped_duplicate"] += api_result["skipped_duplicate"]
+                result["total_body_downloaded"] += api_result.get("body_downloaded", 0)
+                result["total_body_failed"] += api_result.get("body_failed", 0)
+                if api_result["errors"]:
+                    result["errors"].extend(api_result["errors"])
             except Exception as e:
                 logger.error(f"NewsData.io ingestion failed: {e}")
-                result['errors'].append(f"NewsData.io: {e}")
+                result["errors"].append(f"NewsData.io: {e}")
 
         finished_at = datetime.utcnow()
-        result['finished_at'] = finished_at
-        result['duration_ms'] = int((finished_at - started_at).total_seconds() * 1000)
+        result["finished_at"] = finished_at
+        result["duration_ms"] = int((finished_at - started_at).total_seconds() * 1000)
 
-        if result['errors'] and result['total_ingested'] == 0:
-            result['status'] = 'failed'
-        elif result['errors']:
-            result['status'] = 'partial'
+        if result["errors"] and result["total_ingested"] == 0:
+            result["status"] = "failed"
+        elif result["errors"]:
+            result["status"] = "partial"
 
         return result
 
@@ -598,9 +598,10 @@ class IngestionService:
     def _slugify_publisher(publisher_name: str, source_type: SourceType) -> str:
         """Create a URL-safe slug for a publisher name, prefixed by source type."""
         import re
+
         slug = publisher_name.lower().strip()
-        slug = re.sub(r'[^a-z0-9]+', '-', slug)
-        slug = slug.strip('-')
+        slug = re.sub(r"[^a-z0-9]+", "-", slug)
+        slug = slug.strip("-")
         return f"{source_type.value}-{slug}"
 
     def _get_or_create_publisher_source(
@@ -608,7 +609,7 @@ class IngestionService:
         db: Session,
         source_type: SourceType,
         publisher_name: str,
-        cache: Dict[str, models.Source],
+        cache: dict[str, models.Source],
     ) -> models.Source:
         """Get or create a Source record for a specific publisher.
 
@@ -641,8 +642,8 @@ class IngestionService:
         db: Session,
         api_key: str,
         max_items: int = 100,
-        trace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Ingest articles from Perigon News API.
 
@@ -659,14 +660,14 @@ class IngestionService:
 
         started_at = datetime.utcnow()
         result = {
-            'source_slug': 'perigon',
-            'source_name': 'Perigon News API',
-            'source_type': SourceType.PERIGON.value,
-            'ingested': 0,
-            'skipped_duplicate': 0,
-            'body_downloaded': 0,
-            'body_failed': 0,
-            'errors': [],
+            "source_slug": "perigon",
+            "source_name": "Perigon News API",
+            "source_type": SourceType.PERIGON.value,
+            "ingested": 0,
+            "skipped_duplicate": 0,
+            "body_downloaded": 0,
+            "body_failed": 0,
+            "errors": [],
         }
 
         try:
@@ -683,7 +684,7 @@ class IngestionService:
                     db=db,
                     articles=articles,
                     source_type=SourceType.PERIGON,
-                    source_name='Perigon News API',
+                    source_name="Perigon News API",
                     trace_id=trace_id,
                     started_at=started_at,
                     result=result,
@@ -691,7 +692,7 @@ class IngestionService:
 
         except Exception as e:
             logger.error(f"Perigon fetch failed: {e}")
-            result['errors'].append(str(e))
+            result["errors"].append(str(e))
             self._log_pipeline(
                 db,
                 stage=PipelineStage.INGEST,
@@ -699,7 +700,7 @@ class IngestionService:
                 started_at=started_at,
                 trace_id=trace_id,
                 error_message=str(e),
-                metadata={'source': 'perigon', 'source_type': SourceType.PERIGON.value},
+                metadata={"source": "perigon", "source_type": SourceType.PERIGON.value},
             )
             db.commit()
 
@@ -710,8 +711,8 @@ class IngestionService:
         db: Session,
         api_key: str,
         max_items: int = 50,
-        trace_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        trace_id: str | None = None,
+    ) -> dict[str, Any]:
         """
         Ingest articles from NewsData.io API.
 
@@ -728,14 +729,14 @@ class IngestionService:
 
         started_at = datetime.utcnow()
         result = {
-            'source_slug': 'newsdata',
-            'source_name': 'NewsData.io',
-            'source_type': SourceType.NEWSDATA.value,
-            'ingested': 0,
-            'skipped_duplicate': 0,
-            'body_downloaded': 0,
-            'body_failed': 0,
-            'errors': [],
+            "source_slug": "newsdata",
+            "source_name": "NewsData.io",
+            "source_type": SourceType.NEWSDATA.value,
+            "ingested": 0,
+            "skipped_duplicate": 0,
+            "body_downloaded": 0,
+            "body_failed": 0,
+            "errors": [],
         }
 
         try:
@@ -749,7 +750,7 @@ class IngestionService:
                     db=db,
                     articles=articles,
                     source_type=SourceType.NEWSDATA,
-                    source_name='NewsData.io',
+                    source_name="NewsData.io",
                     trace_id=trace_id,
                     started_at=started_at,
                     result=result,
@@ -757,7 +758,7 @@ class IngestionService:
 
         except Exception as e:
             logger.error(f"NewsData.io fetch failed: {e}")
-            result['errors'].append(str(e))
+            result["errors"].append(str(e))
             self._log_pipeline(
                 db,
                 stage=PipelineStage.INGEST,
@@ -765,7 +766,7 @@ class IngestionService:
                 started_at=started_at,
                 trace_id=trace_id,
                 error_message=str(e),
-                metadata={'source': 'newsdata', 'source_type': SourceType.NEWSDATA.value},
+                metadata={"source": "newsdata", "source_type": SourceType.NEWSDATA.value},
             )
             db.commit()
 
@@ -774,13 +775,13 @@ class IngestionService:
     def _process_api_articles(
         self,
         db: Session,
-        articles: List[Dict[str, Any]],
+        articles: list[dict[str, Any]],
         source_type: SourceType,
         source_name: str,
-        trace_id: Optional[str],
+        trace_id: str | None,
         started_at: datetime,
-        result: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
         """
         Process articles from an API source through the pipeline.
 
@@ -800,41 +801,39 @@ class IngestionService:
             Updated result dict
         """
         # Fallback API source for articles without a publisher name
-        api_source = self._get_or_create_api_source(
-            db, source_type, source_name
-        )
+        api_source = self._get_or_create_api_source(db, source_type, source_name)
         db.commit()
 
         # Cache for per-publisher Source records within this batch
-        publisher_source_cache: Dict[str, models.Source] = {}
+        publisher_source_cache: dict[str, models.Source] = {}
 
         for article in articles:
             entry_started_at = datetime.utcnow()
-            entry_url = article.get('url', '')
+            entry_url = article.get("url", "")
 
             try:
                 # Track body metrics
-                if article.get('body_downloaded'):
-                    result['body_downloaded'] += 1
-                elif article.get('extraction_failure_reason'):
-                    result['body_failed'] += 1
+                if article.get("body_downloaded"):
+                    result["body_downloaded"] += 1
+                elif article.get("extraction_failure_reason"):
+                    result["body_failed"] += 1
 
                 # Check for duplicates
                 is_dup, original = self.deduper.is_duplicate(
                     db,
                     url=entry_url,
-                    title=article.get('title', ''),
+                    title=article.get("title", ""),
                 )
 
                 if is_dup:
-                    result['skipped_duplicate'] += 1
+                    result["skipped_duplicate"] += 1
                     continue
 
                 # Classify section
                 section = self.classifier.classify(
-                    title=article.get('title', ''),
-                    description=article.get('description', ''),
-                    body=article.get('body', ''),
+                    title=article.get("title", ""),
+                    description=article.get("description", ""),
+                    body=article.get("body", ""),
                     source_slug=source_type.value,
                 )
 
@@ -842,17 +841,13 @@ class IngestionService:
                 story_id = uuid.uuid4()
 
                 # Upload body to object storage
-                body = article.get('body', '')
+                body = article.get("body", "")
 
                 # If body is missing or was flagged as truncated, try web scraping
-                needs_scraping = (
-                    not body
-                    or article.get('extraction_failure_reason') == 'truncated_content'
-                )
+                needs_scraping = not body or article.get("extraction_failure_reason") == "truncated_content"
                 if needs_scraping and entry_url:
                     logger.info(
-                        f"API article body {'truncated' if body else 'missing'}, "
-                        f"attempting web scraping: {entry_url}"
+                        f"API article body {'truncated' if body else 'missing'}, attempting web scraping: {entry_url}"
                     )
                     try:
                         extraction_result = self._extract_article_body(entry_url)
@@ -870,21 +865,17 @@ class IngestionService:
                                     f"{entry_url} ({extraction_result.char_count} vs {len(body)} chars)"
                                 )
                         else:
-                            logger.warning(
-                                f"Web scraping failed for {entry_url}: "
-                                f"{extraction_result.failure_reason}"
-                            )
+                            logger.warning(f"Web scraping failed for {entry_url}: {extraction_result.failure_reason}")
                     except Exception as e:
                         logger.warning(f"Web scraping error for {entry_url}: {e}")
 
                 # Check if body still has truncation markers after scraping fallback
                 from app.utils.content_sanitizer import has_truncation_markers, strip_truncation_markers
+
                 body_is_truncated = has_truncation_markers(body)
                 if body_is_truncated:
                     body = strip_truncation_markers(body)
-                    logger.info(
-                        f"Body still truncated after scraping fallback for {entry_url}"
-                    )
+                    logger.info(f"Body still truncated after scraping fallback for {entry_url}")
 
                 if body:
                     body = self._deduplicate_paragraphs(body)
@@ -892,19 +883,21 @@ class IngestionService:
                 storage_meta = self._upload_body_to_storage(
                     story_id=str(story_id),
                     body=body,
-                    published_at=article.get('published_at', datetime.utcnow()),
+                    published_at=article.get("published_at", datetime.utcnow()),
                 )
 
                 # Truncate author to fit varchar(255)
-                author = article.get('author')
+                author = article.get("author")
                 if author and len(author) > 255:
                     author = author[:255]
 
                 # Resolve per-publisher Source (fall back to API source)
-                publisher_name = article.get('source_name')
+                publisher_name = article.get("source_name")
                 if publisher_name and publisher_name.strip():
                     article_source = self._get_or_create_publisher_source(
-                        db, source_type, publisher_name.strip(),
+                        db,
+                        source_type,
+                        publisher_name.strip(),
                         publisher_source_cache,
                     )
                 else:
@@ -915,32 +908,32 @@ class IngestionService:
                     id=story_id,
                     source_id=article_source.id,
                     original_url=entry_url,
-                    original_title=article.get('title', ''),
-                    original_description=article.get('description', ''),
+                    original_title=article.get("title", ""),
+                    original_description=article.get("description", ""),
                     original_author=author,
                     url_hash=self.deduper.hash_url(entry_url),
-                    title_hash=self.deduper.hash_title(article.get('title', '')),
-                    published_at=article.get('published_at', datetime.utcnow()),
+                    title_hash=self.deduper.hash_title(article.get("title", "")),
+                    published_at=article.get("published_at", datetime.utcnow()),
                     ingested_at=datetime.utcnow(),
                     section=section.value,
                     is_duplicate=False,
-                    feed_entry_id=article.get('api_article_id'),
+                    feed_entry_id=article.get("api_article_id"),
                     # Source tracking
                     source_type=source_type.value,
-                    api_source_id=article.get('api_article_id'),
+                    api_source_id=article.get("api_article_id"),
                     # Content completeness
                     body_is_truncated=body_is_truncated,
                     # S3 storage references
-                    raw_content_uri=storage_meta['uri'] if storage_meta else None,
-                    raw_content_hash=storage_meta['hash'] if storage_meta else None,
-                    raw_content_type=storage_meta['type'] if storage_meta else None,
-                    raw_content_encoding=storage_meta['encoding'] if storage_meta else None,
-                    raw_content_size=storage_meta['size'] if storage_meta else None,
+                    raw_content_uri=storage_meta["uri"] if storage_meta else None,
+                    raw_content_hash=storage_meta["hash"] if storage_meta else None,
+                    raw_content_type=storage_meta["type"] if storage_meta else None,
+                    raw_content_encoding=storage_meta["encoding"] if storage_meta else None,
+                    raw_content_size=storage_meta["size"] if storage_meta else None,
                     raw_content_available=storage_meta is not None,
                 )
                 db.add(story)
                 db.flush()
-                result['ingested'] += 1
+                result["ingested"] += 1
 
                 # Log successful ingest
                 self._log_pipeline(
@@ -952,19 +945,19 @@ class IngestionService:
                     trace_id=trace_id,
                     entry_url=entry_url,
                     metadata={
-                        'source': source_type.value,
-                        'source_type': source_type.value,
-                        'source_name': article.get('source_name'),
-                        'body_downloaded': article.get('body_downloaded', False),
-                        'extractor_used': article.get('extractor_used'),
-                        'extraction_duration_ms': article.get('extraction_duration_ms', 0),
+                        "source": source_type.value,
+                        "source_type": source_type.value,
+                        "source_name": article.get("source_name"),
+                        "body_downloaded": article.get("body_downloaded", False),
+                        "extractor_used": article.get("extractor_used"),
+                        "extraction_duration_ms": article.get("extraction_duration_ms", 0),
                     },
                 )
 
             except Exception as e:
                 db.rollback()  # Reset session so next article can proceed
                 logger.error(f"Error processing {source_type.value} article {entry_url}: {e}")
-                result['body_failed'] += 1
+                result["body_failed"] += 1
 
         db.commit()
         return result

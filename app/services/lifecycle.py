@@ -11,10 +11,10 @@ Handles:
 import logging
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Any
 
-from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from sqlalchemy.orm import Session
 
 from app import models
 from app.storage.factory import get_storage_provider
@@ -47,7 +47,7 @@ class LifecycleService:
         db: Session,
         retention_days: int = None,
         limit: int = 1000,
-    ) -> List[models.StoryRaw]:
+    ) -> list[models.StoryRaw]:
         """
         Find stories with raw content older than retention period.
 
@@ -114,7 +114,7 @@ class LifecycleService:
         retention_days: int = None,
         batch_size: int = 100,
         dry_run: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Run cleanup job to expire old raw content.
 

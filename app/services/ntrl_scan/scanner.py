@@ -13,20 +13,18 @@ Target latency: ~400ms total (dominated by semantic detector)
 
 import asyncio
 import time
-from typing import Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from .types import (
-    DetectionInstance,
-    ScanResult,
-    MergedScanResult,
-    ArticleSegment,
-    DetectorSource,
-    SEGMENT_MULTIPLIERS,
-)
 from .lexical_detector import LexicalDetector, get_lexical_detector
-from .structural_detector import StructuralDetector, get_structural_detector
 from .semantic_detector import SemanticDetector, create_semantic_detector
+from .structural_detector import StructuralDetector, get_structural_detector
+from .types import (
+    SEGMENT_MULTIPLIERS,
+    ArticleSegment,
+    DetectionInstance,
+    MergedScanResult,
+    ScanResult,
+)
 
 
 @dataclass
@@ -40,7 +38,7 @@ class ScannerConfig:
 
     # Semantic detector settings
     semantic_provider: str = "auto"  # "anthropic", "openai", "mock", "auto"
-    semantic_model: Optional[str] = None
+    semantic_model: str | None = None
 
     # Performance settings
     timeout_seconds: float = 10.0  # Max time for all detectors
@@ -58,7 +56,7 @@ class NTRLScanner:
         result = await scanner.scan("Article text here", segment=ArticleSegment.BODY)
     """
 
-    def __init__(self, config: Optional[ScannerConfig] = None):
+    def __init__(self, config: ScannerConfig | None = None):
         """
         Initialize scanner with configuration.
 
@@ -68,9 +66,9 @@ class NTRLScanner:
         self.config = config or ScannerConfig()
 
         # Initialize detectors lazily
-        self._lexical: Optional[LexicalDetector] = None
-        self._structural: Optional[StructuralDetector] = None
-        self._semantic: Optional[SemanticDetector] = None
+        self._lexical: LexicalDetector | None = None
+        self._structural: StructuralDetector | None = None
+        self._semantic: SemanticDetector | None = None
 
     @property
     def lexical(self) -> LexicalDetector:
@@ -145,7 +143,7 @@ class NTRLScanner:
                 asyncio.gather(*tasks, return_exceptions=True),
                 timeout=self.config.timeout_seconds,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Return partial results on timeout
             results = []
 
@@ -182,43 +180,22 @@ class NTRLScanner:
             detector_durations=detector_durations,
         )
 
-    async def _run_lexical(
-        self,
-        text: str,
-        segment: ArticleSegment
-    ) -> ScanResult:
+    async def _run_lexical(self, text: str, segment: ArticleSegment) -> ScanResult:
         """Run lexical detector (sync, but wrapped for parallel execution)."""
         # Lexical is sync, run in thread pool to not block
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: self.lexical.detect(text, segment)
-        )
+        return await loop.run_in_executor(None, lambda: self.lexical.detect(text, segment))
 
-    async def _run_structural(
-        self,
-        text: str,
-        segment: ArticleSegment
-    ) -> ScanResult:
+    async def _run_structural(self, text: str, segment: ArticleSegment) -> ScanResult:
         """Run structural detector (sync, but wrapped for parallel execution)."""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: self.structural.detect(text, segment)
-        )
+        return await loop.run_in_executor(None, lambda: self.structural.detect(text, segment))
 
-    async def _run_semantic(
-        self,
-        text: str,
-        segment: ArticleSegment
-    ) -> ScanResult:
+    async def _run_semantic(self, text: str, segment: ArticleSegment) -> ScanResult:
         """Run semantic detector (async)."""
         return await self.semantic.detect(text, segment)
 
-    def _merge_spans(
-        self,
-        spans: list[DetectionInstance]
-    ) -> list[DetectionInstance]:
+    def _merge_spans(self, spans: list[DetectionInstance]) -> list[DetectionInstance]:
         """
         Merge and deduplicate overlapping spans.
 
@@ -274,11 +251,7 @@ class NTRLScanner:
 
         return merged
 
-    def _compute_overlap(
-        self,
-        span1: DetectionInstance,
-        span2: DetectionInstance
-    ) -> float:
+    def _compute_overlap(self, span1: DetectionInstance, span2: DetectionInstance) -> float:
         """
         Compute overlap ratio between two spans.
 
@@ -303,7 +276,7 @@ class NTRLScanner:
         self,
         title: str,
         body: str,
-        deck: Optional[str] = None,
+        deck: str | None = None,
     ) -> dict[ArticleSegment, MergedScanResult]:
         """
         Scan an entire article (title, deck, body) in parallel.
@@ -346,7 +319,7 @@ class NTRLScanner:
 async def scan_text(
     text: str,
     segment: ArticleSegment = ArticleSegment.BODY,
-    config: Optional[ScannerConfig] = None,
+    config: ScannerConfig | None = None,
 ) -> MergedScanResult:
     """
     Quick scan of text using default scanner.

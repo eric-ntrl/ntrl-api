@@ -6,15 +6,15 @@ Tests article normalization, full content handling, error handling,
 and API response processing.
 """
 
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import pytest
 
 from app.services.api_fetchers.newsdata_fetcher import (
-    NewsDataFetcher,
     NEWSDATA_CATEGORY_MAP,
+    NewsDataFetcher,
 )
 
 
@@ -92,10 +92,7 @@ class TestNewsDataFetcher:
 
     def test_normalize_article_fallback_to_content(self, fetcher, sample_article_no_full_content):
         """Test normalization falls back to content when no full_content."""
-        result = fetcher._normalize_article(
-            sample_article_no_full_content,
-            datetime.utcnow().timestamp()
-        )
+        result = fetcher._normalize_article(sample_article_no_full_content, datetime.utcnow().timestamp())
 
         assert result is not None
         assert result["body"] == "Shorter content without full text."
@@ -208,9 +205,7 @@ class TestNewsDataFetcher:
         mock_response.json.return_value = sample_api_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             articles = await fetcher.fetch_articles(max_results=10)
@@ -226,9 +221,7 @@ class TestNewsDataFetcher:
         mock_response.json.return_value = sample_api_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             await fetcher.fetch_articles()
@@ -238,17 +231,13 @@ class TestNewsDataFetcher:
             assert params.get("full_content") == 1
 
     @pytest.mark.asyncio
-    async def test_fetch_articles_without_full_content(
-        self, fetcher_no_full_content, sample_api_response
-    ):
+    async def test_fetch_articles_without_full_content(self, fetcher_no_full_content, sample_api_response):
         """Test fetch without full_content parameter."""
         mock_response = MagicMock()
         mock_response.json.return_value = sample_api_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher_no_full_content.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher_no_full_content.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             await fetcher_no_full_content.fetch_articles()
@@ -264,9 +253,7 @@ class TestNewsDataFetcher:
         mock_response.json.return_value = sample_api_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             await fetcher.fetch_articles(categories=["technology", "science"])
@@ -286,9 +273,7 @@ class TestNewsDataFetcher:
         mock_response.json.return_value = error_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             with pytest.raises(ValueError, match="Invalid API key"):
@@ -306,9 +291,7 @@ class TestNewsDataFetcher:
             response=mock_response,
         )
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
             with pytest.raises(httpx.HTTPStatusError):
@@ -321,14 +304,10 @@ class TestNewsDataFetcher:
         mock_response.json.return_value = sample_api_response
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(
-            fetcher.client, "get", new_callable=AsyncMock
-        ) as mock_get:
+        with patch.object(fetcher.client, "get", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_response
 
-            articles = await fetcher.fetch_by_keywords(
-                keywords=["AI", "machine learning"]
-            )
+            articles = await fetcher.fetch_by_keywords(keywords=["AI", "machine learning"])
 
             assert len(articles) == 1
             call_args = mock_get.call_args

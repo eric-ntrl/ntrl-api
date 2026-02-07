@@ -29,15 +29,15 @@ from sqlalchemy.orm import Session
 from app import models
 from app.config import get_settings
 from app.models import PipelineStage, PipelineStatus, SpanAction, SpanReason
-from app.storage.factory import get_storage_provider
 from app.services.auditor import Auditor, AuditVerdict
+from app.storage.factory import get_storage_provider
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRY_ATTEMPTS = 2  # Max retries for audit failures
 
 
-def _get_body_from_storage(story: models.StoryRaw) -> Optional[str]:
+def _get_body_from_storage(story: models.StoryRaw) -> str | None:
     """Retrieve body content from object storage."""
     if not story.raw_content_available or not story.raw_content_uri:
         return None
@@ -55,42 +55,47 @@ def _get_body_from_storage(story: models.StoryRaw) -> Optional[str]:
 # Data classes
 # -----------------------------------------------------------------------------
 
+
 @dataclass
 class TransparencySpan:
     """A span of manipulative content."""
+
     field: str  # "title", "description", "body"
     start_char: int
     end_char: int
     original_text: str
     action: SpanAction
     reason: SpanReason
-    replacement_text: Optional[str] = None
+    replacement_text: str | None = None
 
 
 @dataclass
 class NeutralizationResult:
     """Result from neutralizing a story."""
+
     feed_title: str
     feed_summary: str
-    detail_title: Optional[str]
-    detail_brief: Optional[str]
-    detail_full: Optional[str]
+    detail_title: str | None
+    detail_brief: str | None
+    detail_full: str | None
     has_manipulative_content: bool
-    spans: List[TransparencySpan]
-    removed_phrases: List[str] = None  # For legacy compatibility with old neutralize() method
+    spans: list[TransparencySpan]
+    removed_phrases: list[str] = None  # For legacy compatibility with old neutralize() method
 
 
 # -----------------------------------------------------------------------------
 # Provider abstraction
 # -----------------------------------------------------------------------------
 
+
 @dataclass
 class DetailFullResult:
     """Result from filtering an article body (Call 1: Filter & Track)."""
+
     detail_full: str
-    spans: List[TransparencySpan]
+    spans: list[TransparencySpan]
     status: str = "success"  # success, failed_llm, failed_garbled, failed_audit
-    failure_reason: Optional[str] = None
+    failure_reason: str | None = None
 
 
 class NeutralizerProvider(ABC):
@@ -112,9 +117,9 @@ class NeutralizerProvider(ABC):
     def neutralize(
         self,
         title: str,
-        description: Optional[str],
-        body: Optional[str],
-        repair_instructions: Optional[str] = None,
+        description: str | None,
+        body: str | None,
+        repair_instructions: str | None = None,
     ) -> NeutralizationResult:
         """
         Neutralize content and return result with spans.
@@ -189,66 +194,66 @@ class NeutralizerProvider(ABC):
 # Manipulative patterns to detect (for mock)
 MANIPULATIVE_PATTERNS = {
     SpanReason.CLICKBAIT: [
-        r'\b(shocking|unbelievable|you won\'t believe|mind-blowing|jaw-dropping)\b',
-        r'\b(must see|must read|can\'t miss|don\'t miss)\b',
-        r'\b(secret|hidden|exposed|revealed)\b',
-        r'\b(stunning|explosive|bombshell)\b',
+        r"\b(shocking|unbelievable|you won\'t believe|mind-blowing|jaw-dropping)\b",
+        r"\b(must see|must read|can\'t miss|don\'t miss)\b",
+        r"\b(secret|hidden|exposed|revealed)\b",
+        r"\b(stunning|explosive|bombshell)\b",
     ],
     SpanReason.URGENCY_INFLATION: [
-        r'\b(breaking|urgent|just in|developing|happening now)\b',
-        r'\b(alert|emergency|crisis|chaos)\b',
-        r'\b(grinds to a halt|comes to a standstill|at a standstill)\b',
-        r'\b(huge delays|massive delays|major delays)\b',
-        r'\bROAD CLOSED\b',  # All-caps urgency
-        r'\b[A-Z]{4,}\s+[A-Z]{4,}\b',  # Consecutive all-caps words (e.g., "ROAD CLOSED")
+        r"\b(breaking|urgent|just in|developing|happening now)\b",
+        r"\b(alert|emergency|crisis|chaos)\b",
+        r"\b(grinds to a halt|comes to a standstill|at a standstill)\b",
+        r"\b(huge delays|massive delays|major delays)\b",
+        r"\bROAD CLOSED\b",  # All-caps urgency
+        r"\b[A-Z]{4,}\s+[A-Z]{4,}\b",  # Consecutive all-caps words (e.g., "ROAD CLOSED")
     ],
     SpanReason.EMOTIONAL_TRIGGER: [
-        r'\b(outrage|fury|furious|enraged|livid)\b',
-        r'\b(slams|blasts|destroys|demolishes|eviscerates)\b',
-        r'\b(heartbreaking|devastating|horrifying|terrifying)\b',
-        r'\b(horror|nightmare|nightmare scenario)\b',
-        r'\bhorror\s+\w+\b',  # "horror smash", "horror crash", etc.
-        r'\b(sparking|sparks|sparked)\s+(huge|massive|widespread|major)\b',
+        r"\b(outrage|fury|furious|enraged|livid)\b",
+        r"\b(slams|blasts|destroys|demolishes|eviscerates)\b",
+        r"\b(heartbreaking|devastating|horrifying|terrifying)\b",
+        r"\b(horror|nightmare|nightmare scenario)\b",
+        r"\bhorror\s+\w+\b",  # "horror smash", "horror crash", etc.
+        r"\b(sparking|sparks|sparked)\s+(huge|massive|widespread|major)\b",
     ],
     SpanReason.SELLING: [
-        r'\b(exclusive|insider|behind the scenes)\b',
-        r'\b(viral|trending|everyone is talking)\b',
+        r"\b(exclusive|insider|behind the scenes)\b",
+        r"\b(viral|trending|everyone is talking)\b",
     ],
     SpanReason.AGENDA_SIGNALING: [
-        r'\b(radical|extremist|dangerous)\b',
-        r'\b(the truth about|what they don\'t want you to know)\b',
+        r"\b(radical|extremist|dangerous)\b",
+        r"\b(the truth about|what they don\'t want you to know)\b",
     ],
     SpanReason.RHETORICAL_FRAMING: [
-        r'\b(some say|critics say|experts warn)\b',
-        r'\b(could|might|may|potentially)\s+(be\s+)?(devastating|catastrophic|huge)\b',
+        r"\b(some say|critics say|experts warn)\b",
+        r"\b(could|might|may|potentially)\s+(be\s+)?(devastating|catastrophic|huge)\b",
     ],
 }
 
 # Replacements for common patterns
 REPLACEMENTS = {
-    'shocking': 'notable',
-    'slams': 'criticizes',
-    'blasts': 'criticizes',
-    'destroys': 'challenges',
-    'demolishes': 'disputes',
-    'furious': 'concerned',
-    'outrage': 'disagreement',
-    'breaking': '',
-    'urgent': '',
-    'just in': '',
-    'must see': '',
-    'must read': '',
-    'horror': '',
-    'nightmare': '',
-    'stunning': 'notable',
-    'explosive': '',
-    'bombshell': '',
-    'grinds to a halt': 'stops',
-    'comes to a standstill': 'stops',
-    'huge delays': 'delays',
-    'massive delays': 'delays',
-    'major delays': 'delays',
-    'road closed': 'road closure',
+    "shocking": "notable",
+    "slams": "criticizes",
+    "blasts": "criticizes",
+    "destroys": "challenges",
+    "demolishes": "disputes",
+    "furious": "concerned",
+    "outrage": "disagreement",
+    "breaking": "",
+    "urgent": "",
+    "just in": "",
+    "must see": "",
+    "must read": "",
+    "horror": "",
+    "nightmare": "",
+    "stunning": "notable",
+    "explosive": "",
+    "bombshell": "",
+    "grinds to a halt": "stops",
+    "comes to a standstill": "stops",
+    "huge delays": "delays",
+    "massive delays": "delays",
+    "major delays": "delays",
+    "road closed": "road closure",
 }
 
 
@@ -266,7 +271,7 @@ class MockNeutralizerProvider(NeutralizerProvider):
     def model_name(self) -> str:
         return "mock-v1"
 
-    def _find_spans(self, text: str, field: str) -> List[TransparencySpan]:
+    def _find_spans(self, text: str, field: str) -> list[TransparencySpan]:
         """Find manipulative spans in text."""
         if not text:
             return []
@@ -277,7 +282,7 @@ class MockNeutralizerProvider(NeutralizerProvider):
         for reason, patterns in MANIPULATIVE_PATTERNS.items():
             for pattern in patterns:
                 for match in re.finditer(pattern, text_lower, re.IGNORECASE):
-                    original = text[match.start():match.end()]
+                    original = text[match.start() : match.end()]
                     replacement = REPLACEMENTS.get(original.lower())
 
                     if replacement is not None:
@@ -286,15 +291,17 @@ class MockNeutralizerProvider(NeutralizerProvider):
                         action = SpanAction.SOFTENED
                         replacement = None
 
-                    spans.append(TransparencySpan(
-                        field=field,
-                        start_char=match.start(),
-                        end_char=match.end(),
-                        original_text=original,
-                        action=action,
-                        reason=reason,
-                        replacement_text=replacement,
-                    ))
+                    spans.append(
+                        TransparencySpan(
+                            field=field,
+                            start_char=match.start(),
+                            end_char=match.end(),
+                            original_text=original,
+                            action=action,
+                            reason=reason,
+                            replacement_text=replacement,
+                        )
+                    )
 
         # Sort by position and remove overlaps
         spans.sort(key=lambda s: s.start_char)
@@ -307,7 +314,7 @@ class MockNeutralizerProvider(NeutralizerProvider):
 
         return non_overlapping
 
-    def _neutralize_text(self, text: str, spans: List[TransparencySpan]) -> str:
+    def _neutralize_text(self, text: str, spans: list[TransparencySpan]) -> str:
         """Apply span replacements to text."""
         if not spans:
             return text
@@ -317,7 +324,7 @@ class MockNeutralizerProvider(NeutralizerProvider):
 
         for span in sorted(spans, key=lambda s: s.start_char):
             # Add text before this span
-            result.append(text[last_end:span.start_char])
+            result.append(text[last_end : span.start_char])
 
             # Add replacement (or nothing if removed)
             if span.replacement_text:
@@ -329,15 +336,15 @@ class MockNeutralizerProvider(NeutralizerProvider):
         result.append(text[last_end:])
 
         # Clean up extra spaces
-        neutralized = ' '.join(''.join(result).split())
+        neutralized = " ".join("".join(result).split())
         return neutralized
 
     def neutralize(
         self,
         title: str,
-        description: Optional[str],
-        body: Optional[str],
-        repair_instructions: Optional[str] = None,
+        description: str | None,
+        body: str | None,
+        repair_instructions: str | None = None,
     ) -> NeutralizationResult:
         """Neutralize content using pattern matching."""
         # Note: repair_instructions ignored in mock provider
@@ -352,7 +359,7 @@ class MockNeutralizerProvider(NeutralizerProvider):
         # Neutralize title
         neutral_headline = self._neutralize_text(title, title_spans)
         # Ensure no trailing punctuation issues
-        neutral_headline = neutral_headline.strip().rstrip(':').strip()
+        neutral_headline = neutral_headline.strip().rstrip(":").strip()
 
         # Neutralize description for summary
         neutral_desc = self._neutralize_text(description or "", desc_spans) if description else ""
@@ -367,15 +374,15 @@ class MockNeutralizerProvider(NeutralizerProvider):
             neutral_summary = neutral_headline
 
         # Truncate to 2-3 sentences
-        sentences = re.split(r'(?<=[.!?])\s+', neutral_summary)
-        neutral_summary = ' '.join(sentences[:3])
+        sentences = re.split(r"(?<=[.!?])\s+", neutral_summary)
+        neutral_summary = " ".join(sentences[:3])
 
         return NeutralizationResult(
             feed_title=neutral_headline,
             feed_summary=neutral_summary,
             detail_title=None,  # Not generated by mock provider
             detail_brief=None,  # Not generated by mock provider
-            detail_full=None,   # Not generated by mock provider
+            detail_full=None,  # Not generated by mock provider
             has_manipulative_content=has_manipulative,
             spans=all_spans,
             removed_phrases=[s.original_text for s in all_spans],  # Extract from spans
@@ -423,14 +430,14 @@ class MockNeutralizerProvider(NeutralizerProvider):
             return ""
 
         # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', body.strip())
+        sentences = re.split(r"(?<=[.!?])\s+", body.strip())
         if not sentences:
             return ""
 
         # Filter out very short sentences and apply neutralization
         body_spans = self._find_spans(body, "body")
         filtered_body = self._neutralize_text(body, body_spans)
-        filtered_sentences = re.split(r'(?<=[.!?])\s+', filtered_body.strip())
+        filtered_sentences = re.split(r"(?<=[.!?])\s+", filtered_body.strip())
         filtered_sentences = [s for s in filtered_sentences if len(s) > 20]
 
         if not filtered_sentences:
@@ -440,20 +447,20 @@ class MockNeutralizerProvider(NeutralizerProvider):
         paragraphs = []
 
         # Paragraph 1: Grounding (first 2-3 sentences)
-        grounding = ' '.join(filtered_sentences[:min(3, len(filtered_sentences))])
+        grounding = " ".join(filtered_sentences[: min(3, len(filtered_sentences))])
         paragraphs.append(grounding)
 
         # Paragraph 2: Context (next 2-3 sentences if available)
         if len(filtered_sentences) > 3:
-            context = ' '.join(filtered_sentences[3:min(6, len(filtered_sentences))])
+            context = " ".join(filtered_sentences[3 : min(6, len(filtered_sentences))])
             paragraphs.append(context)
 
         # Paragraph 3: Remaining (if available)
         if len(filtered_sentences) > 6:
-            remaining = ' '.join(filtered_sentences[6:min(9, len(filtered_sentences))])
+            remaining = " ".join(filtered_sentences[6 : min(9, len(filtered_sentences))])
             paragraphs.append(remaining)
 
-        return '\n\n'.join(paragraphs)
+        return "\n\n".join(paragraphs)
 
     def _neutralize_feed_outputs(self, body: str, detail_brief: str) -> dict:
         """
@@ -474,13 +481,13 @@ class MockNeutralizerProvider(NeutralizerProvider):
         source = detail_brief or body or ""
 
         # Split into sentences for processing
-        sentences = re.split(r'(?<=[.!?])\s+', source.strip())
+        sentences = re.split(r"(?<=[.!?])\s+", source.strip())
         sentences = [s.strip() for s in sentences if s.strip()]
 
         # Apply neutralization to the source
         body_spans = self._find_spans(source, "body")
         filtered_source = self._neutralize_text(source, body_spans)
-        filtered_sentences = re.split(r'(?<=[.!?])\s+', filtered_source.strip())
+        filtered_sentences = re.split(r"(?<=[.!?])\s+", filtered_source.strip())
         filtered_sentences = [s.strip() for s in filtered_sentences if s.strip()]
 
         # Generate feed_title: Extract key phrase from first sentence, max 12 words
@@ -489,12 +496,12 @@ class MockNeutralizerProvider(NeutralizerProvider):
             first_sentence = filtered_sentences[0]
             words = first_sentence.split()
             # Take first 6-12 words, stopping at natural break
-            feed_title_words = words[:min(6, len(words))]
-            feed_title = ' '.join(feed_title_words)
+            feed_title_words = words[: min(6, len(words))]
+            feed_title = " ".join(feed_title_words)
             # Remove trailing punctuation except periods
-            feed_title = feed_title.rstrip(',:;')
-            if not feed_title.endswith('.'):
-                feed_title = feed_title.rstrip('.')
+            feed_title = feed_title.rstrip(",:;")
+            if not feed_title.endswith("."):
+                feed_title = feed_title.rstrip(".")
 
         # Generate feed_summary: First 1-2 sentences, max ~120 chars
         feed_summary = ""
@@ -511,10 +518,10 @@ class MockNeutralizerProvider(NeutralizerProvider):
             first_sentence = filtered_sentences[0]
             words = first_sentence.split()
             # Take up to 15 words for detail_title
-            detail_title_words = words[:min(15, len(words))]
-            detail_title = ' '.join(detail_title_words)
+            detail_title_words = words[: min(15, len(words))]
+            detail_title = " ".join(detail_title_words)
             # Clean up punctuation
-            detail_title = detail_title.rstrip(',:;')
+            detail_title = detail_title.rstrip(",:;")
 
         return {
             "feed_title": feed_title,
@@ -1534,16 +1541,20 @@ def get_model_agnostic_prompt(name: str, default: str) -> str:
 
     # Load from DB
     try:
-        from app.database import SessionLocal
         from app import models
+        from app.database import SessionLocal
 
         db = SessionLocal()
         try:
-            prompt = db.query(models.Prompt).filter(
-                models.Prompt.name == name,
-                models.Prompt.model.is_(None),  # model=NULL (agnostic)
-                models.Prompt.is_active == True
-            ).first()
+            prompt = (
+                db.query(models.Prompt)
+                .filter(
+                    models.Prompt.name == name,
+                    models.Prompt.model.is_(None),  # model=NULL (agnostic)
+                    models.Prompt.is_active == True,
+                )
+                .first()
+            )
 
             if prompt:
                 _prompt_cache[cache_key] = prompt.content
@@ -1574,7 +1585,7 @@ def build_span_detection_prompt(body: str) -> str:
     return template.format(body=body or "")
 
 
-def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan]:
+def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan]:
     """
     Find character positions for LLM-identified manipulative phrases.
 
@@ -1619,7 +1630,9 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
         # Parse reason to enum
         reason = _parse_span_reason(reason_str)
         # DEBUG: Log reason mapping at INFO level to trace span diversity issue
-        logger.info(f"[SPAN_REASON_TRACE] Phrase: '{phrase[:30]}...' | Input reason: '{reason_str}' → Output: '{reason.value}'")
+        logger.info(
+            f"[SPAN_REASON_TRACE] Phrase: '{phrase[:30]}...' | Input reason: '{reason_str}' → Output: '{reason.value}'"
+        )
 
         # Parse action to enum
         action = _parse_span_action(action_str)
@@ -1637,20 +1650,22 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
                 pos = body_lower.find(phrase_lower, start)
                 if pos != -1:
                     # Use the actual text at this position
-                    phrase = body[pos:pos + len(phrase)]
+                    phrase = body[pos : pos + len(phrase)]
 
             if pos == -1:
                 break
 
-            spans.append(TransparencySpan(
-                field="body",
-                start_char=pos,
-                end_char=pos + len(phrase),
-                original_text=body[pos:pos + len(phrase)],
-                action=action,
-                reason=reason,
-                replacement_text=replacement if action == SpanAction.REPLACED else None,
-            ))
+            spans.append(
+                TransparencySpan(
+                    field="body",
+                    start_char=pos,
+                    end_char=pos + len(phrase),
+                    original_text=body[pos : pos + len(phrase)],
+                    action=action,
+                    reason=reason,
+                    replacement_text=replacement if action == SpanAction.REPLACED else None,
+                )
+            )
 
             start = pos + 1
 
@@ -1669,10 +1684,10 @@ def find_phrase_positions(body: str, llm_phrases: list) -> List[TransparencySpan
 # Quote character pairs for matching (opening -> closing)
 # Using Unicode escapes to ensure curly quotes are correctly defined
 QUOTE_PAIRS = {
-    '"': '"',           # Straight double quote (U+0022)
-    '\u201c': '\u201d', # Curly double quotes: " -> " (U+201C -> U+201D)
-    "'": "'",           # Straight single quote (U+0027)
-    '\u2018': '\u2019', # Curly single quotes: ' -> ' (U+2018 -> U+2019)
+    '"': '"',  # Straight double quote (U+0022)
+    "\u201c": "\u201d",  # Curly double quotes: " -> " (U+201C -> U+201D)
+    "'": "'",  # Straight single quote (U+0027)
+    "\u2018": "\u2019",  # Curly single quotes: ' -> ' (U+2018 -> U+2019)
 }
 
 # All characters that can open a quote
@@ -1714,7 +1729,7 @@ def is_contraction_apostrophe(body: str, pos: int) -> bool:
     return False
 
 
-def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[TransparencySpan]:
+def filter_spans_in_quotes(body: str, spans: list[TransparencySpan]) -> list[TransparencySpan]:
     """
     Remove spans that fall inside quotation marks.
 
@@ -1774,10 +1789,7 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
     # Filter out spans inside quotes
     filtered = []
     for span in spans:
-        inside_quote = any(
-            start <= span.start_char and span.end_char <= end
-            for start, end in quote_ranges
-        )
+        inside_quote = any(start <= span.start_char and span.end_char <= end for start, end in quote_ranges)
         if not inside_quote:
             filtered.append(span)
 
@@ -1792,31 +1804,59 @@ def filter_spans_in_quotes(body: str, spans: List[TransparencySpan]) -> List[Tra
 # Only include multi-word phrases - single words are too likely to have legitimate uses
 FALSE_POSITIVE_PHRASES = {
     # Medical terms (multi-word)
-    "bowel cancer", "breast cancer", "lung cancer", "skin cancer",
-    "prostate cancer", "colon cancer", "cancer treatment", "cancer diagnosis",
-    "cancer research", "cancer patient", "cancer patients", "cancer tests",
-
+    "bowel cancer",
+    "breast cancer",
+    "lung cancer",
+    "skin cancer",
+    "prostate cancer",
+    "colon cancer",
+    "cancer treatment",
+    "cancer diagnosis",
+    "cancer research",
+    "cancer patient",
+    "cancer patients",
+    "cancer tests",
     # Neutral news verb phrases
-    "tests will", "will be", "according to", "reported that",
-
+    "tests will",
+    "will be",
+    "according to",
+    "reported that",
     # Factual descriptors (multi-word)
-    "spot more", "getting worse", "getting better",
-
+    "spot more",
+    "getting worse",
+    "getting better",
     # Temporal phrases
-    "every year", "each year", "this week", "last week", "this year", "last year",
-
+    "every year",
+    "each year",
+    "this week",
+    "last week",
+    "this year",
+    "last year",
     # Data/statistics (multi-word)
-    "highest cost", "lowest cost", "most affected", "least affected",
-
+    "highest cost",
+    "lowest cost",
+    "most affected",
+    "least affected",
     # UI/metadata (multi-word)
-    "minutes ago", "hours ago", "sign up", "read more", "continue reading",
-    "health newsletter", "email address",
-
+    "minutes ago",
+    "hours ago",
+    "sign up",
+    "read more",
+    "continue reading",
+    "health newsletter",
+    "email address",
     # Professional service terms (legitimate professions)
-    "crisis management", "reputation management", "crisis manager",
-    "public relations", "media relations", "investor relations",
-    "communications director", "crisis communications",
-    "pr firm", "pr agency", "publicist",
+    "crisis management",
+    "reputation management",
+    "crisis manager",
+    "public relations",
+    "media relations",
+    "investor relations",
+    "communications director",
+    "crisis communications",
+    "pr firm",
+    "pr agency",
+    "publicist",
 }
 
 # Patterns that match false positives (case-insensitive partial matches)
@@ -1827,7 +1867,7 @@ FALSE_POSITIVE_PATTERNS = [
 ]
 
 
-def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySpan]:
+def filter_false_positives(spans: list[TransparencySpan]) -> list[TransparencySpan]:
     """
     Remove known false positive spans that LLMs commonly flag incorrectly.
 
@@ -1874,25 +1914,50 @@ def filter_false_positives(spans: List[TransparencySpan]) -> List[TransparencySp
 # Phrases that should be neutralized in detail_brief (entertainment/hype focus)
 BRIEF_BANNED_PHRASES = {
     # Romance/celebrity hype (phrases)
-    "romantic escape", "romantic getaway", "sun-drenched",
-    "tender moment", "intimate conversation", "intimate getaway",
-    "cozied up", "looked more in love", "visibly smitten",
-    "totally into each other", "obsessed with",
+    "romantic escape",
+    "romantic getaway",
+    "sun-drenched",
+    "tender moment",
+    "intimate conversation",
+    "intimate getaway",
+    "cozied up",
+    "looked more in love",
+    "visibly smitten",
+    "totally into each other",
+    "obsessed with",
     # Romance/celebrity hype (standalone words)
-    "romantic", "intimate", "tender", "beloved", "smitten",
-    "luxurious", "secluded", "affectionate",
+    "romantic",
+    "intimate",
+    "tender",
+    "beloved",
+    "smitten",
+    "luxurious",
+    "secluded",
+    "affectionate",
     # Personal descriptors
-    "showed off", "toned figure", "toned physique", "flaunted",
-    "relaxed and affectionate", "appeared relaxed",
+    "showed off",
+    "toned figure",
+    "toned physique",
+    "flaunted",
+    "relaxed and affectionate",
+    "appeared relaxed",
     # Loaded modifiers
-    "celebrity hotspot", "beloved restaurant", "beloved cabo",
-    "a-list", "power couple", "luxury yacht", "luxurious boat",
-    "exclusive resort", "secluded getaway", "secluded waterfront",
-    "exclusively revealed", "exclusively reported",
+    "celebrity hotspot",
+    "beloved restaurant",
+    "beloved cabo",
+    "a-list",
+    "power couple",
+    "luxury yacht",
+    "luxurious boat",
+    "exclusive resort",
+    "secluded getaway",
+    "secluded waterfront",
+    "exclusively revealed",
+    "exclusively reported",
 }
 
 
-def validate_brief_neutralization(brief: str) -> List[str]:
+def validate_brief_neutralization(brief: str) -> list[str]:
     """
     Check if brief contains phrases that should have been neutralized.
 
@@ -1943,7 +2008,7 @@ Rewrite this brief removing ALL the violations listed above. Replace:
 Return ONLY the rewritten brief, no explanation or commentary."""
 
 
-def build_brief_repair_prompt(brief: str, violations: List[str]) -> str:
+def build_brief_repair_prompt(brief: str, violations: list[str]) -> str:
     """
     Build a prompt to repair a brief that contains banned phrases.
 
@@ -1960,7 +2025,7 @@ def build_brief_repair_prompt(brief: str, violations: List[str]) -> str:
     )
 
 
-def validate_feed_summary(summary: str) -> List[str]:
+def validate_feed_summary(summary: str) -> list[str]:
     """
     Check if feed_summary contains phrases that should have been neutralized.
 
@@ -1999,7 +2064,7 @@ Replace "romantic getaway" with "trip", "luxury" with neutral terms, etc.
 Return ONLY the rewritten summary, no explanation."""
 
 
-def build_feed_summary_repair_prompt(summary: str, violations: List[str]) -> str:
+def build_feed_summary_repair_prompt(summary: str, violations: list[str]) -> str:
     """Build a prompt to repair a feed_summary with banned phrases."""
     return FEED_SUMMARY_REPAIR_PROMPT.format(
         violations=", ".join(f'"{v}"' for v in violations),
@@ -2024,17 +2089,17 @@ def truncate_at_sentence(text: str, max_chars: int = 130) -> str:
     truncated = text[:max_chars]
 
     # Find last sentence boundary
-    for end_char in ['. ', '! ', '? ']:
+    for end_char in [". ", "! ", "? "]:
         last_pos = truncated.rfind(end_char)
         if last_pos > 0:
-            return truncated[:last_pos + 1].strip()
+            return truncated[: last_pos + 1].strip()
 
     # Check for sentence ending at very end (no space after)
-    if truncated.endswith('.') or truncated.endswith('!') or truncated.endswith('?'):
+    if truncated.endswith(".") or truncated.endswith("!") or truncated.endswith("?"):
         return truncated.strip()
 
     # Fallback: truncate at word boundary
-    last_space = truncated.rfind(' ')
+    last_space = truncated.rfind(" ")
     if last_space > 0:
         return truncated[:last_space].strip()
 
@@ -2538,14 +2603,15 @@ If feed_summary repeats the title, REWRITE to add new information instead."""
 # Prompt loading from DB - DB is source of truth for model selection
 # -----------------------------------------------------------------------------
 
-_prompt_cache: Dict[str, str] = {}
-_prompt_cache_time: Optional[datetime] = None
-_active_model_cache: Optional[str] = None
+_prompt_cache: dict[str, str] = {}
+_prompt_cache_time: datetime | None = None
+_active_model_cache: str | None = None
 PROMPT_CACHE_TTL_SECONDS = 60  # Refresh from DB every 60 seconds
 
 
 class NeutralizerConfigError(Exception):
     """Raised when neutralizer is misconfigured (no prompts, no API key, etc.)."""
+
     pass
 
 
@@ -2568,16 +2634,17 @@ def get_active_model() -> str:
         return _active_model_cache
 
     try:
-        from app.database import SessionLocal
         from app import models
+        from app.database import SessionLocal
 
         db = SessionLocal()
         try:
             # Find the active system_prompt - its model field determines which model to use
-            prompt = db.query(models.Prompt).filter(
-                models.Prompt.name == "system_prompt",
-                models.Prompt.is_active == True
-            ).first()
+            prompt = (
+                db.query(models.Prompt)
+                .filter(models.Prompt.name == "system_prompt", models.Prompt.is_active == True)
+                .first()
+            )
 
             if not prompt:
                 raise NeutralizerConfigError(
@@ -2587,8 +2654,7 @@ def get_active_model() -> str:
 
             if not prompt.model:
                 raise NeutralizerConfigError(
-                    "Active system_prompt has no model specified. "
-                    "Please update the prompt with a valid model."
+                    "Active system_prompt has no model specified. Please update the prompt with a valid model."
                 )
 
             _active_model_cache = prompt.model
@@ -2622,16 +2688,16 @@ def get_prompt(name: str, default: str) -> str:
 
     # Load from DB
     try:
-        from app.database import SessionLocal
         from app import models
+        from app.database import SessionLocal
 
         db = SessionLocal()
         try:
-            prompt = db.query(models.Prompt).filter(
-                models.Prompt.name == name,
-                models.Prompt.model == model,
-                models.Prompt.is_active == True
-            ).first()
+            prompt = (
+                db.query(models.Prompt)
+                .filter(models.Prompt.name == name, models.Prompt.model == model, models.Prompt.is_active == True)
+                .first()
+            )
 
             if prompt:
                 _prompt_cache[cache_key] = prompt.content
@@ -2809,7 +2875,11 @@ def _validate_feed_outputs(result: dict) -> None:
     # Check for dangling prepositions/articles (ends with incomplete phrase)
     dangling_endings = ["a", "an", "the", "to", "of", "in", "on", "at", "for", "with", "and", "or"]
 
-    for field_name, text in [("feed_title", feed_title), ("feed_summary", feed_summary), ("detail_title", detail_title)]:
+    for field_name, text in [
+        ("feed_title", feed_title),
+        ("feed_summary", feed_summary),
+        ("detail_title", detail_title),
+    ]:
         if not text:
             continue
 
@@ -2828,12 +2898,16 @@ def _validate_feed_outputs(result: dict) -> None:
                 issues.append(f"{field_name} has only {word_count} word(s): '{text}'")
 
     # Check for repeated word patterns (e.g., "of a of a")
-    for field_name, text in [("feed_title", feed_title), ("feed_summary", feed_summary), ("detail_title", detail_title)]:
+    for field_name, text in [
+        ("feed_title", feed_title),
+        ("feed_summary", feed_summary),
+        ("detail_title", detail_title),
+    ]:
         if text:
             words = text.lower().split()
             for i in range(len(words) - 3):
                 # Look for patterns like "X Y X Y"
-                if words[i] == words[i+2] and words[i+1] == words[i+3]:
+                if words[i] == words[i + 2] and words[i + 1] == words[i + 3]:
                     issues.append(f"{field_name} has repeated pattern: '{text[:50]}...'")
                     break
 
@@ -2846,20 +2920,16 @@ def _validate_feed_outputs(result: dict) -> None:
         logger.warning(f"Garbled feed output detected: {'; '.join(issues)}")
 
 
-def build_user_prompt(title: str, description: Optional[str], body: Optional[str]) -> str:
+def build_user_prompt(title: str, description: str | None, body: str | None) -> str:
     """Build the user prompt for neutralization using template from DB."""
     template = get_user_prompt_template()
-    return template.format(
-        title=title,
-        description=description or 'N/A',
-        body=(body or '')[:3000]
-    )
+    return template.format(title=title, description=description or "N/A", body=(body or "")[:3000])
 
 
 def build_repair_prompt(
     title: str,
-    description: Optional[str],
-    body: Optional[str],
+    description: str | None,
+    body: str | None,
     repair_instructions: str,
 ) -> str:
     """Build the repair prompt for failed neutralization attempts."""
@@ -2870,9 +2940,9 @@ Fix these issues in your response.
 
 ORIGINAL TITLE: {title}
 
-ORIGINAL DESCRIPTION: {description or 'N/A'}
+ORIGINAL DESCRIPTION: {description or "N/A"}
 
-ORIGINAL BODY: {(body or '')[:3000]}
+ORIGINAL BODY: {(body or "")[:3000]}
 
 Respond with JSON:
 {{
@@ -2890,7 +2960,7 @@ Respond with JSON:
 def parse_llm_response(
     data: dict,
     title: str,
-    description: Optional[str],
+    description: str | None,
 ) -> NeutralizationResult:
     """Parse LLM JSON response into NeutralizationResult."""
     removed_phrases = data.get("removed_phrases", [])
@@ -2941,7 +3011,6 @@ def _parse_span_reason(reason: str) -> SpanReason:
         "agenda_signaling": SpanReason.AGENDA_SIGNALING,
         "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
         "editorial_voice": SpanReason.EDITORIAL_VOICE,
-
         # Defensive aliases (prompt categories that might appear)
         "loaded_verbs": SpanReason.RHETORICAL_FRAMING,
         "loaded_idioms": SpanReason.RHETORICAL_FRAMING,
@@ -2951,7 +3020,6 @@ def _parse_span_reason(reason: str) -> SpanReason:
         "entertainment_celebrity_hype": SpanReason.SELLING,
         "agenda_framing": SpanReason.AGENDA_SIGNALING,
         "publisher_cruft": SpanReason.SELLING,
-
         # Old/alternative names
         "emotional_manipulation": SpanReason.EMOTIONAL_TRIGGER,
         "emotional": SpanReason.EMOTIONAL_TRIGGER,
@@ -2962,15 +3030,12 @@ def _parse_span_reason(reason: str) -> SpanReason:
     }
     result = mapping.get(reason_lower)
     if result is None:
-        logger.warning(
-            f"[SPAN_DETECTION] Unknown reason '{reason}', "
-            "defaulting to RHETORICAL_FRAMING"
-        )
+        logger.warning(f"[SPAN_DETECTION] Unknown reason '{reason}', defaulting to RHETORICAL_FRAMING")
         return SpanReason.RHETORICAL_FRAMING
     return result
 
 
-def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[TransparencySpan]:
+def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> list[TransparencySpan]:
     """
     Detect manipulative spans using OpenAI LLM with context awareness.
 
@@ -2996,7 +3061,9 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
 
     try:
         import json
+
         from openai import OpenAI
+
         client = OpenAI(api_key=api_key)
 
         # Use minimal system prompt to let the detailed user prompt control detection
@@ -3056,7 +3123,9 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
         after_quotes = len(spans)
         spans = filter_false_positives(spans)
         after_fp = len(spans)
-        logger.info(f"[SPAN_DETECTION] Pipeline: position_match={after_position} → quote_filter={after_quotes} → fp_filter={after_fp}")
+        logger.info(
+            f"[SPAN_DETECTION] Pipeline: position_match={after_position} → quote_filter={after_quotes} → fp_filter={after_fp}"
+        )
         return spans
 
     except Exception as e:
@@ -3067,15 +3136,16 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> List[Tra
 @dataclass
 class SpanDetectionDebugResult:
     """Debug result from span detection showing intermediate pipeline stages."""
-    llm_raw_response: Optional[str]
-    llm_phrases: List[Dict[str, Any]]
-    spans_after_position: List[TransparencySpan]
-    spans_after_quotes: List[TransparencySpan]
-    spans_final: List[TransparencySpan]
-    filtered_by_quotes: List[str]
-    filtered_as_false_positives: List[str]
-    not_found_in_text: List[str]
-    error: Optional[str] = None
+
+    llm_raw_response: str | None
+    llm_phrases: list[dict[str, Any]]
+    spans_after_position: list[TransparencySpan]
+    spans_after_quotes: list[TransparencySpan]
+    spans_final: list[TransparencySpan]
+    filtered_by_quotes: list[str]
+    filtered_as_false_positives: list[str]
+    not_found_in_text: list[str]
+    error: str | None = None
 
 
 def detect_spans_debug_openai(body: str, api_key: str, model: str) -> SpanDetectionDebugResult:
@@ -3094,12 +3164,14 @@ def detect_spans_debug_openai(body: str, api_key: str, model: str) -> SpanDetect
             filtered_by_quotes=[],
             filtered_as_false_positives=[],
             not_found_in_text=[],
-            error="Missing body or API key"
+            error="Missing body or API key",
         )
 
     try:
         import json
+
         from openai import OpenAI
+
         client = OpenAI(api_key=api_key)
 
         user_prompt = build_span_detection_prompt(body)
@@ -3148,7 +3220,7 @@ def detect_spans_debug_openai(body: str, api_key: str, model: str) -> SpanDetect
                 filtered_by_quotes=[],
                 filtered_as_false_positives=[],
                 not_found_in_text=[],
-                error=f"JSON parse error: {e}"
+                error=f"JSON parse error: {e}",
             )
 
         # Track phrases not found in text
@@ -3164,17 +3236,11 @@ def detect_spans_debug_openai(body: str, api_key: str, model: str) -> SpanDetect
 
         # Quote filtering - track what's filtered
         spans_after_quotes = filter_spans_in_quotes(body, spans_after_position)
-        filtered_by_quotes = [
-            s.original_text for s in spans_after_position
-            if s not in spans_after_quotes
-        ]
+        filtered_by_quotes = [s.original_text for s in spans_after_position if s not in spans_after_quotes]
 
         # False positive filtering - track what's filtered
         spans_final = filter_false_positives(spans_after_quotes)
-        filtered_as_false_positives = [
-            s.original_text for s in spans_after_quotes
-            if s not in spans_final
-        ]
+        filtered_as_false_positives = [s.original_text for s in spans_after_quotes if s not in spans_final]
 
         return SpanDetectionDebugResult(
             llm_raw_response=llm_raw_response,
@@ -3197,11 +3263,11 @@ def detect_spans_debug_openai(body: str, api_key: str, model: str) -> SpanDetect
             filtered_by_quotes=[],
             filtered_as_false_positives=[],
             not_found_in_text=[],
-            error=f"{type(e).__name__}: {e}"
+            error=f"{type(e).__name__}: {e}",
         )
 
 
-def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[TransparencySpan]:
+def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> list[TransparencySpan]:
     """
     Detect manipulative spans using Gemini LLM with context awareness.
 
@@ -3212,7 +3278,9 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
 
     try:
         import json
+
         import google.generativeai as genai
+
         genai.configure(api_key=api_key)
 
         # Use minimal system prompt to let the detailed user prompt control detection
@@ -3268,7 +3336,7 @@ def detect_spans_via_llm_gemini(body: str, api_key: str, model: str) -> List[Tra
         return None  # Return None on failure so caller knows to use fallback
 
 
-def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[TransparencySpan]:
+def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> list[TransparencySpan]:
     """
     Detect manipulative spans using Anthropic Claude with context awareness.
 
@@ -3279,7 +3347,9 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> List[
 
     try:
         import json
+
         import anthropic
+
         client = anthropic.Anthropic(api_key=api_key)
 
         # Use minimal system prompt to let the detailed user prompt control detection
@@ -3388,10 +3458,8 @@ IMPORTANT - Use ONLY these 7 reason values:
 
 
 def detect_spans_high_recall_anthropic(
-    body: str,
-    api_key: str,
-    model: str = "claude-haiku-4-5"
-) -> List[TransparencySpan]:
+    body: str, api_key: str, model: str = "claude-haiku-4-5"
+) -> list[TransparencySpan]:
     """
     High-recall span detection using Claude Haiku with aggressive prompting.
 
@@ -3411,7 +3479,9 @@ def detect_spans_high_recall_anthropic(
 
     try:
         import json
+
         import anthropic
+
         client = anthropic.Anthropic(api_key=api_key)
 
         # Get prompt from DB (falls back to hardcoded default)
@@ -3477,6 +3547,7 @@ def detect_spans_high_recall_anthropic(
 
     except Exception as e:
         import traceback
+
         logger.warning(f"High-recall span detection failed: {type(e).__name__}: {e}")
         logger.debug(f"High-recall span detection traceback: {traceback.format_exc()}")
         return []
@@ -3524,11 +3595,8 @@ If no additional phrases found, return: {{"phrases": []}}"""
 
 
 def detect_spans_adversarial_pass(
-    body: str,
-    detected_phrases: List[str],
-    api_key: str,
-    model: str = "gpt-4o-mini"
-) -> List[TransparencySpan]:
+    body: str, detected_phrases: list[str], api_key: str, model: str = "gpt-4o-mini"
+) -> list[TransparencySpan]:
     """
     Adversarial second pass that looks for phrases missed by the first pass.
 
@@ -3549,19 +3617,20 @@ def detect_spans_adversarial_pass(
 
     try:
         import json
+
         from openai import OpenAI
+
         client = OpenAI(api_key=api_key)
 
         # Format detected phrases for the prompt
-        detected_list = "\n".join(f"- \"{p}\"" for p in detected_phrases) if detected_phrases else "(none detected yet)"
+        detected_list = "\n".join(f'- "{p}"' for p in detected_phrases) if detected_phrases else "(none detected yet)"
 
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_adversarial_prompt()
-        user_prompt = prompt_template.format(
-            detected_phrases=detected_list,
-            body=body
+        user_prompt = prompt_template.format(detected_phrases=detected_list, body=body)
+        logger.info(
+            f"[SPAN_DETECTION] Adversarial pass starting, model={model}, already_detected={len(detected_phrases)}"
         )
-        logger.info(f"[SPAN_DETECTION] Adversarial pass starting, model={model}, already_detected={len(detected_phrases)}")
 
         response = client.chat.completions.create(
             model=model,
@@ -3616,6 +3685,7 @@ def detect_spans_adversarial_pass(
 
     except Exception as e:
         import traceback
+
         logger.warning(f"Adversarial span detection failed: {type(e).__name__}: {e}")
         logger.debug(f"Adversarial span detection traceback: {traceback.format_exc()}")
         return []
@@ -3625,6 +3695,7 @@ def detect_spans_adversarial_pass(
 # Multi-Pass Span Detection Orchestration
 # -----------------------------------------------------------------------------
 
+
 async def detect_spans_multi_pass_async(
     body: str,
     openai_api_key: str,
@@ -3633,7 +3704,7 @@ async def detect_spans_multi_pass_async(
     anthropic_model: str = "claude-haiku-4-5",
     chunk_size: int = 3000,
     overlap_size: int = 500,
-) -> List[TransparencySpan]:
+) -> list[TransparencySpan]:
     """
     Multi-pass span detection with chunking for high recall.
 
@@ -3658,13 +3729,13 @@ async def detect_spans_multi_pass_async(
     import asyncio
     from concurrent.futures import ThreadPoolExecutor
 
-    from app.services.neutralizer.chunking import ArticleChunker, ArticleChunk
+    from app.services.neutralizer.chunking import ArticleChunk, ArticleChunker
     from app.services.neutralizer.spans import (
-        merge_multi_pass_spans,
         adjust_chunk_positions,
         deduplicate_overlap_spans,
-        filter_spans_in_quotes,
         filter_false_positives,
+        filter_spans_in_quotes,
+        merge_multi_pass_spans,
     )
 
     if not body:
@@ -3680,34 +3751,20 @@ async def detect_spans_multi_pass_async(
     # Helper to run blocking LLM calls
     executor = ThreadPoolExecutor(max_workers=4)
 
-    async def run_high_recall_on_chunk(chunk: ArticleChunk) -> List[TransparencySpan]:
+    async def run_high_recall_on_chunk(chunk: ArticleChunk) -> list[TransparencySpan]:
         """Run high-recall pass on a single chunk."""
         loop = asyncio.get_event_loop()
         spans = await loop.run_in_executor(
-            executor,
-            lambda: detect_spans_high_recall_anthropic(
-                chunk.text,
-                anthropic_api_key,
-                anthropic_model
-            )
+            executor, lambda: detect_spans_high_recall_anthropic(chunk.text, anthropic_api_key, anthropic_model)
         )
         # Adjust positions from chunk-relative to body-relative
         return adjust_chunk_positions(spans or [], chunk.start_offset)
 
-    async def run_adversarial_on_chunk(
-        chunk: ArticleChunk,
-        detected_phrases: List[str]
-    ) -> List[TransparencySpan]:
+    async def run_adversarial_on_chunk(chunk: ArticleChunk, detected_phrases: list[str]) -> list[TransparencySpan]:
         """Run adversarial pass on a single chunk."""
         loop = asyncio.get_event_loop()
         spans = await loop.run_in_executor(
-            executor,
-            lambda: detect_spans_adversarial_pass(
-                chunk.text,
-                detected_phrases,
-                openai_api_key,
-                openai_model
-            )
+            executor, lambda: detect_spans_adversarial_pass(chunk.text, detected_phrases, openai_api_key, openai_model)
         )
         # Adjust positions from chunk-relative to body-relative
         return adjust_chunk_positions(spans or [], chunk.start_offset)
@@ -3729,10 +3786,7 @@ async def detect_spans_multi_pass_async(
 
     # Phase 3: Adversarial pass on all chunks
     logger.info("[MULTI_PASS] Pass 2: Adversarial detection (GPT-4o-mini)")
-    adversarial_tasks = [
-        run_adversarial_on_chunk(chunk, detected_phrases)
-        for chunk in chunks
-    ]
+    adversarial_tasks = [run_adversarial_on_chunk(chunk, detected_phrases) for chunk in chunks]
     adversarial_results = await asyncio.gather(*adversarial_tasks)
 
     # Flatten Pass 2 results
@@ -3771,7 +3825,7 @@ def detect_spans_multi_pass(
     anthropic_model: str = "claude-haiku-4-5",
     chunk_size: int = 3000,
     overlap_size: int = 500,
-) -> List[TransparencySpan]:
+) -> list[TransparencySpan]:
     """
     Synchronous wrapper for multi-pass span detection.
 
@@ -3784,12 +3838,11 @@ def detect_spans_multi_pass(
         if loop.is_running():
             # Already in async context - create new loop
             import nest_asyncio
+
             nest_asyncio.apply()
             return loop.run_until_complete(
                 detect_spans_multi_pass_async(
-                    body, openai_api_key, anthropic_api_key,
-                    openai_model, anthropic_model,
-                    chunk_size, overlap_size
+                    body, openai_api_key, anthropic_api_key, openai_model, anthropic_model, chunk_size, overlap_size
                 )
             )
     except RuntimeError:
@@ -3798,9 +3851,7 @@ def detect_spans_multi_pass(
     # No running loop - create one
     return asyncio.run(
         detect_spans_multi_pass_async(
-            body, openai_api_key, anthropic_api_key,
-            openai_model, anthropic_model,
-            chunk_size, overlap_size
+            body, openai_api_key, anthropic_api_key, openai_model, anthropic_model, chunk_size, overlap_size
         )
     )
 
@@ -3814,7 +3865,7 @@ def detect_spans_with_mode(
     openai_model: str = "gpt-4o-mini",
     anthropic_model: str = "claude-haiku-4-5",
     title: str = None,
-) -> List[TransparencySpan]:
+) -> list[TransparencySpan]:
     """
     Detect spans using the specified detection mode.
 
@@ -3882,7 +3933,9 @@ def detect_spans_with_mode(
     # Adjust positions and set field based on whether span is in title or body
     if title and title_offset > 0:
         # DEBUG: Log reasons BEFORE adjustment
-        pre_adjust_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in spans] if spans else []
+        pre_adjust_reasons = (
+            [s.reason.value if hasattr(s.reason, "value") else str(s.reason) for s in spans] if spans else []
+        )
         logger.info(f"[SPAN_DETECTION] Pre-adjustment reasons: {pre_adjust_reasons}")
 
         adjusted_spans = []
@@ -3895,50 +3948,58 @@ def detect_spans_with_mode(
                 adjusted_end = span.end_char - headline_prefix_len
                 # Ensure positions are within title bounds
                 if adjusted_start >= 0 and adjusted_end <= len(title):
-                    adjusted_spans.append(TransparencySpan(
-                        field="title",
-                        start_char=adjusted_start,
-                        end_char=adjusted_end,
-                        original_text=span.original_text,
-                        action=span.action,
-                        reason=span.reason,
-                        replacement_text=span.replacement_text,
-                    ))
+                    adjusted_spans.append(
+                        TransparencySpan(
+                            field="title",
+                            start_char=adjusted_start,
+                            end_char=adjusted_end,
+                            original_text=span.original_text,
+                            action=span.action,
+                            reason=span.reason,
+                            replacement_text=span.replacement_text,
+                        )
+                    )
                 else:
                     # Title span dropped due to bounds check failure
-                    dropped_title_spans.append({
-                        "phrase": span.original_text,
-                        "adjusted_start": adjusted_start,
-                        "adjusted_end": adjusted_end,
-                        "title_len": len(title),
-                        "original_start": span.start_char,
-                        "original_end": span.end_char,
-                    })
+                    dropped_title_spans.append(
+                        {
+                            "phrase": span.original_text,
+                            "adjusted_start": adjusted_start,
+                            "adjusted_end": adjusted_end,
+                            "title_len": len(title),
+                            "original_start": span.start_char,
+                            "original_end": span.end_char,
+                        }
+                    )
             else:
                 # Span is in body section
                 adjusted_start = span.start_char - title_offset
                 adjusted_end = span.end_char - title_offset
                 # Ensure positions are within body bounds
                 if adjusted_start >= 0 and adjusted_end <= len(body):
-                    adjusted_spans.append(TransparencySpan(
-                        field="body",
-                        start_char=adjusted_start,
-                        end_char=adjusted_end,
-                        original_text=span.original_text,
-                        action=span.action,
-                        reason=span.reason,
-                        replacement_text=span.replacement_text,
-                    ))
+                    adjusted_spans.append(
+                        TransparencySpan(
+                            field="body",
+                            start_char=adjusted_start,
+                            end_char=adjusted_end,
+                            original_text=span.original_text,
+                            action=span.action,
+                            reason=span.reason,
+                            replacement_text=span.replacement_text,
+                        )
+                    )
                 else:
                     # Body span dropped due to bounds check failure
-                    dropped_body_spans.append({
-                        "phrase": span.original_text,
-                        "adjusted_start": adjusted_start,
-                        "adjusted_end": adjusted_end,
-                        "body_len": len(body),
-                        "original_start": span.start_char,
-                        "original_end": span.end_char,
-                    })
+                    dropped_body_spans.append(
+                        {
+                            "phrase": span.original_text,
+                            "adjusted_start": adjusted_start,
+                            "adjusted_end": adjusted_end,
+                            "body_len": len(body),
+                            "original_start": span.start_char,
+                            "original_end": span.end_char,
+                        }
+                    )
 
         # Log any dropped spans for debugging
         if dropped_title_spans:
@@ -3953,7 +4014,11 @@ def detect_spans_with_mode(
             )
 
         # DEBUG: Log reasons AFTER adjustment
-        post_adjust_reasons = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in adjusted_spans] if adjusted_spans else []
+        post_adjust_reasons = (
+            [s.reason.value if hasattr(s.reason, "value") else str(s.reason) for s in adjusted_spans]
+            if adjusted_spans
+            else []
+        )
         logger.info(f"[SPAN_DETECTION] Post-adjustment reasons: {post_adjust_reasons}")
 
         return adjusted_spans
@@ -3967,7 +4032,7 @@ def _detect_spans_with_config(
     provider_type: str = "openai",
     provider_model: str = "gpt-4o-mini",
     title: str = None,
-) -> List[TransparencySpan]:
+) -> list[TransparencySpan]:
     """
     Detect spans using the mode configured in settings.SPAN_DETECTION_MODE.
 
@@ -3989,7 +4054,9 @@ def _detect_spans_with_config(
     settings = get_settings()
     mode = settings.SPAN_DETECTION_MODE
     # DEBUG: Log the config values being used
-    logger.info(f"[SPAN_DETECTION_CONFIG] mode={mode}, SPAN_DETECTION_MODEL={settings.SPAN_DETECTION_MODEL}, provider_type={provider_type}")
+    logger.info(
+        f"[SPAN_DETECTION_CONFIG] mode={mode}, SPAN_DETECTION_MODEL={settings.SPAN_DETECTION_MODEL}, provider_type={provider_type}"
+    )
 
     if mode == "multi_pass":
         # Multi-pass requires both OpenAI and Anthropic keys
@@ -4004,7 +4071,9 @@ def _detect_spans_with_config(
             logger.warning("[SPAN_DETECTION] multi_pass mode requires ANTHROPIC_API_KEY, using single mode")
             mode = "single"
         else:
-            logger.info(f"[SPAN_DETECTION] Using multi_pass mode (config: SPAN_DETECTION_MODE={settings.SPAN_DETECTION_MODE})")
+            logger.info(
+                f"[SPAN_DETECTION] Using multi_pass mode (config: SPAN_DETECTION_MODE={settings.SPAN_DETECTION_MODE})"
+            )
             spans = detect_spans_with_mode(
                 body=body,
                 mode="multi_pass",
@@ -4040,7 +4109,7 @@ def _detect_spans_with_config(
     return spans if spans is not None else []
 
 
-def _correct_span_positions(spans: List[TransparencySpan], original_body: str) -> List[TransparencySpan]:
+def _correct_span_positions(spans: list[TransparencySpan], original_body: str) -> list[TransparencySpan]:
     """
     Correct span positions by searching for original_text in the body.
 
@@ -4079,15 +4148,17 @@ def _correct_span_positions(spans: List[TransparencySpan], original_body: str) -
 
         if pos != -1 and pos not in used_positions:
             # Found the text - update positions
-            corrected.append(TransparencySpan(
-                field=span.field,
-                start_char=pos,
-                end_char=pos + len(original_text),
-                original_text=original_text,
-                action=span.action,
-                reason=span.reason,
-                replacement_text=span.replacement_text,
-            ))
+            corrected.append(
+                TransparencySpan(
+                    field=span.field,
+                    start_char=pos,
+                    end_char=pos + len(original_text),
+                    original_text=original_text,
+                    action=span.action,
+                    reason=span.reason,
+                    replacement_text=span.replacement_text,
+                )
+            )
             used_positions.add(pos)
         else:
             # Could not find text - log and skip
@@ -4098,11 +4169,7 @@ def _correct_span_positions(spans: List[TransparencySpan], original_body: str) -
     return corrected
 
 
-def _extract_spans_from_diff(
-    original: str,
-    filtered: str,
-    field: str = "body"
-) -> List[TransparencySpan]:
+def _extract_spans_from_diff(original: str, filtered: str, field: str = "body") -> list[TransparencySpan]:
     """
     Compare original and filtered text to find changes the LLM made
     but didn't report in spans array.
@@ -4127,45 +4194,46 @@ def _extract_spans_from_diff(
     matcher = difflib.SequenceMatcher(None, original, filtered, autojunk=False)
 
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
-        if tag == 'replace':
+        if tag == "replace":
             # Text was changed - this is the most common manipulation fix
             original_text = original[i1:i2]
             replacement_text = filtered[j1:j2]
 
             # Only track if it's a meaningful change (not just whitespace)
             if original_text.strip() and replacement_text.strip():
-                spans.append(TransparencySpan(
-                    field=field,
-                    start_char=i1,
-                    end_char=i2,
-                    original_text=original_text,
-                    action=SpanAction.REPLACED,
-                    reason=SpanReason.EMOTIONAL_TRIGGER,  # Default for replacements
-                    replacement_text=replacement_text,
-                ))
-        elif tag == 'delete':
+                spans.append(
+                    TransparencySpan(
+                        field=field,
+                        start_char=i1,
+                        end_char=i2,
+                        original_text=original_text,
+                        action=SpanAction.REPLACED,
+                        reason=SpanReason.EMOTIONAL_TRIGGER,  # Default for replacements
+                        replacement_text=replacement_text,
+                    )
+                )
+        elif tag == "delete":
             # Text was removed entirely
             original_text = original[i1:i2]
 
             # Only track if it's meaningful content
             if original_text.strip():
-                spans.append(TransparencySpan(
-                    field=field,
-                    start_char=i1,
-                    end_char=i2,
-                    original_text=original_text,
-                    action=SpanAction.REMOVED,
-                    reason=SpanReason.URGENCY_INFLATION,  # Default for removals
-                    replacement_text=None,
-                ))
+                spans.append(
+                    TransparencySpan(
+                        field=field,
+                        start_char=i1,
+                        end_char=i2,
+                        original_text=original_text,
+                        action=SpanAction.REMOVED,
+                        reason=SpanReason.URGENCY_INFLATION,  # Default for removals
+                        replacement_text=None,
+                    )
+                )
 
     return spans
 
 
-def _merge_spans(
-    llm_spans: List[TransparencySpan],
-    diff_spans: List[TransparencySpan]
-) -> List[TransparencySpan]:
+def _merge_spans(llm_spans: list[TransparencySpan], diff_spans: list[TransparencySpan]) -> list[TransparencySpan]:
     """
     Merge LLM-reported spans with diff-detected spans.
 
@@ -4240,13 +4308,14 @@ def _detect_garbled_output(original: str, filtered: str) -> bool:
     # Check 2: Look for broken grammar patterns
     # Pattern: ". The " followed by punctuation or article (e.g., ". The , " or ". The a ")
     broken_patterns = [
-        r'\. [A-Z][a-z]* [,\.\!\?]',  # "The ," or "She ."
-        r'\. [A-Z][a-z]* (a|an|the) [,\.\!\?]',  # "The a ," broken article
+        r"\. [A-Z][a-z]* [,\.\!\?]",  # "The ," or "She ."
+        r"\. [A-Z][a-z]* (a|an|the) [,\.\!\?]",  # "The a ," broken article
         r"'s [,\.\!\?]",  # "'s ," missing word after possessive
-        r'\. [,\.\!\?]',  # Direct ". ," or ". ."
+        r"\. [,\.\!\?]",  # Direct ". ," or ". ."
     ]
 
     import re
+
     broken_count = 0
     for pattern in broken_patterns:
         matches = re.findall(pattern, filtered)
@@ -4323,14 +4392,14 @@ def _convert_v2_detection_to_transparency_span(detection) -> TransparencySpan:
     def map_type_to_reason(type_id: str) -> SpanReason:
         if not type_id:
             return SpanReason.RHETORICAL_FRAMING
-        category = type_id.split('.')[0] if '.' in type_id else type_id[0]
+        category = type_id.split(".")[0] if "." in type_id else type_id[0]
         category_mapping = {
-            'A': SpanReason.URGENCY_INFLATION,  # Attention/clickbait
-            'B': SpanReason.EMOTIONAL_TRIGGER,  # Emotional
-            'C': SpanReason.RHETORICAL_FRAMING,  # Cognitive
-            'D': SpanReason.RHETORICAL_FRAMING,  # Linguistic
-            'E': SpanReason.RHETORICAL_FRAMING,  # Structural
-            'F': SpanReason.AGENDA_SIGNALING,  # Incentive/meta
+            "A": SpanReason.URGENCY_INFLATION,  # Attention/clickbait
+            "B": SpanReason.EMOTIONAL_TRIGGER,  # Emotional
+            "C": SpanReason.RHETORICAL_FRAMING,  # Cognitive
+            "D": SpanReason.RHETORICAL_FRAMING,  # Linguistic
+            "E": SpanReason.RHETORICAL_FRAMING,  # Structural
+            "F": SpanReason.AGENDA_SIGNALING,  # Incentive/meta
         }
         return category_mapping.get(category.upper(), SpanReason.RHETORICAL_FRAMING)
 
@@ -4349,9 +4418,8 @@ def _convert_v2_detection_to_transparency_span(detection) -> TransparencySpan:
 
 
 async def _enhance_spans_with_v2_scan_async(
-    original_body: str,
-    llm_spans: List[TransparencySpan]
-) -> List[TransparencySpan]:
+    original_body: str, llm_spans: list[TransparencySpan]
+) -> list[TransparencySpan]:
     """
     Async implementation of V2 ntrl-scan span enhancement.
 
@@ -4385,20 +4453,13 @@ async def _enhance_spans_with_v2_scan_async(
             return llm_spans
 
         # Convert V2 detections to V1 spans
-        v2_spans = [
-            _convert_v2_detection_to_transparency_span(detection)
-            for detection in scan_result.spans
-        ]
+        v2_spans = [_convert_v2_detection_to_transparency_span(detection) for detection in scan_result.spans]
 
         # Log enhancement
         if v2_spans and not llm_spans:
-            logger.info(
-                f"V2 ntrl-scan detected {len(v2_spans)} spans, LLM reported 0 - using V2 spans"
-            )
+            logger.info(f"V2 ntrl-scan detected {len(v2_spans)} spans, LLM reported 0 - using V2 spans")
         elif v2_spans and len(v2_spans) > len(llm_spans):
-            logger.info(
-                f"V2 ntrl-scan detected {len(v2_spans)} spans, LLM reported {len(llm_spans)} - merging"
-            )
+            logger.info(f"V2 ntrl-scan detected {len(v2_spans)} spans, LLM reported {len(llm_spans)} - merging")
 
         # Merge LLM and V2 spans (V2 has accurate positions, LLM may have better reasons)
         return _merge_spans(llm_spans, v2_spans)
@@ -4408,10 +4469,7 @@ async def _enhance_spans_with_v2_scan_async(
         return llm_spans
 
 
-def _enhance_spans_with_v2_scan(
-    original_body: str,
-    llm_spans: List[TransparencySpan]
-) -> List[TransparencySpan]:
+def _enhance_spans_with_v2_scan(original_body: str, llm_spans: list[TransparencySpan]) -> list[TransparencySpan]:
     """
     Enhance LLM-reported spans with V2 ntrl-scan detection.
 
@@ -4433,11 +4491,9 @@ def _enhance_spans_with_v2_scan(
         if loop.is_running():
             # We're in an async context (e.g., FastAPI) - create a new loop in thread
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(
-                    asyncio.run,
-                    _enhance_spans_with_v2_scan_async(original_body, llm_spans)
-                )
+                future = executor.submit(asyncio.run, _enhance_spans_with_v2_scan_async(original_body, llm_spans))
                 return future.result(timeout=10)
         else:
             # No running loop - use asyncio.run
@@ -4452,10 +4508,13 @@ def _enhance_spans_with_v2_scan(
 
 class NeutralizationResponseError(Exception):
     """Raised when LLM response is missing required fields."""
+
     pass
 
 
-def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str = None, model: str = None) -> DetailFullResult:
+def _synthesize_detail_full_fallback(
+    body: str, provider_name: str, api_key: str = None, model: str = None
+) -> DetailFullResult:
     """
     Fallback synthesis approach for detail_full when in-place filtering fails.
 
@@ -4479,10 +4538,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
     if not api_key:
         logger.error(f"No API key for {provider_name} - cannot synthesize detail_full")
         return DetailFullResult(
-            detail_full="",
-            spans=[],
-            status="failed_llm",
-            failure_reason=f"No API key configured for {provider_name}"
+            detail_full="", spans=[], status="failed_llm", failure_reason=f"No API key configured for {provider_name}"
         )
 
     # Generate detail_full using synthesis prompt (plain text, not JSON)
@@ -4492,6 +4548,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
 
         if provider_name == "openai":
             from openai import OpenAI
+
             client = OpenAI(api_key=api_key)
             response = client.chat.completions.create(
                 model=model or "gpt-4o-mini",
@@ -4505,6 +4562,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
 
         elif provider_name == "anthropic":
             import anthropic
+
             client = anthropic.Anthropic(api_key=api_key)
             response = client.messages.create(
                 model=model or "claude-sonnet-4-20250514",
@@ -4516,6 +4574,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
 
         elif provider_name == "gemini":
             import google.generativeai as genai
+
             genai.configure(api_key=api_key)
             model_obj = genai.GenerativeModel(model or "gemini-2.0-flash")
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
@@ -4525,10 +4584,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
         else:
             logger.error(f"Unknown provider {provider_name} - cannot synthesize detail_full")
             return DetailFullResult(
-                detail_full="",
-                spans=[],
-                status="failed_llm",
-                failure_reason=f"Unknown provider: {provider_name}"
+                detail_full="", spans=[], status="failed_llm", failure_reason=f"Unknown provider: {provider_name}"
             )
 
         # Validate output isn't garbled
@@ -4538,7 +4594,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
                 detail_full="",
                 spans=[],
                 status="failed_garbled",
-                failure_reason="LLM synthesis produced garbled output"
+                failure_reason="LLM synthesis produced garbled output",
             )
 
         # Success - return with empty spans (spans detected separately)
@@ -4547,10 +4603,7 @@ def _synthesize_detail_full_fallback(body: str, provider_name: str, api_key: str
     except Exception as e:
         logger.error(f"Synthesis fallback failed for {provider_name}: {e}")
         return DetailFullResult(
-            detail_full="",
-            spans=[],
-            status="failed_llm",
-            failure_reason=f"LLM synthesis exception: {str(e)}"
+            detail_full="", spans=[], status="failed_llm", failure_reason=f"LLM synthesis exception: {str(e)}"
         )
 
 
@@ -4581,9 +4634,7 @@ def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResu
             "LLM response missing 'filtered_article' key - this is a critical error. "
             f"Available keys: {list(data.keys())}"
         )
-        raise NeutralizationResponseError(
-            "LLM response missing 'filtered_article' - cannot silently return original"
-        )
+        raise NeutralizationResponseError("LLM response missing 'filtered_article' - cannot silently return original")
 
     # Parse LLM-reported spans
     spans_data = data.get("spans", [])
@@ -4612,15 +4663,9 @@ def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResu
     diff_spans = _extract_spans_from_diff(original_body, filtered_article)
 
     if diff_spans and not corrected_llm_spans:
-        logger.info(
-            f"LLM reported 0 spans but diff detected {len(diff_spans)} changes - "
-            "using diff-extracted spans"
-        )
+        logger.info(f"LLM reported 0 spans but diff detected {len(diff_spans)} changes - using diff-extracted spans")
     elif diff_spans and len(diff_spans) > len(corrected_llm_spans):
-        logger.info(
-            f"LLM reported {len(corrected_llm_spans)} spans, "
-            f"diff detected {len(diff_spans)} - merging"
-        )
+        logger.info(f"LLM reported {len(corrected_llm_spans)} spans, diff detected {len(diff_spans)} - merging")
 
     # Merge LLM spans with diff-detected spans (catches what LLM missed)
     merged_spans = _merge_spans(corrected_llm_spans, diff_spans)
@@ -4652,6 +4697,7 @@ def parse_detail_full_response(data: dict, original_body: str) -> DetailFullResu
 # OpenAI provider
 # -----------------------------------------------------------------------------
 
+
 class OpenAINeutralizerProvider(NeutralizerProvider):
     """OpenAI-based neutralizer (GPT-4o-mini, GPT-4o, etc.)."""
 
@@ -4670,9 +4716,9 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
     def neutralize(
         self,
         title: str,
-        description: Optional[str],
-        body: Optional[str],
-        repair_instructions: Optional[str] = None,
+        description: str | None,
+        body: str | None,
+        repair_instructions: str | None = None,
     ) -> NeutralizationResult:
         """Neutralize using OpenAI API.
 
@@ -4684,6 +4730,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         try:
             from openai import OpenAI
+
             client = OpenAI(api_key=self._api_key)
 
             if repair_instructions:
@@ -4704,6 +4751,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             )
 
             import json
+
             data = json.loads(response.choices[0].message.content)
             return parse_llm_response(data, title, description)
 
@@ -4740,10 +4788,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
         if not self._api_key:
             logger.error("No OPENAI_API_KEY set - cannot neutralize")
             return DetailFullResult(
-                detail_full="",
-                spans=[],
-                status="failed_llm",
-                failure_reason="No OPENAI_API_KEY configured"
+                detail_full="", spans=[], status="failed_llm", failure_reason="No OPENAI_API_KEY configured"
             )
 
         # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
@@ -4756,10 +4801,13 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             provider_model=self._model,
             title=title,
         )
-        logger.info(f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})")
+        logger.info(
+            f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})"
+        )
 
         try:
             from openai import OpenAI
+
             client = OpenAI(api_key=self._api_key)
 
             # Use SYNTHESIS prompt (plain text output, not JSON)
@@ -4768,6 +4816,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
             # Allow model override for detail_full (e.g., gpt-4o for better quality)
             from app.config import get_settings
+
             detail_full_model = get_settings().DETAIL_FULL_MODEL or self._model
 
             response = client.chat.completions.create(
@@ -4789,7 +4838,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                     detail_full="",
                     spans=spans,
                     status="failed_garbled",
-                    failure_reason="OpenAI synthesis produced garbled output"
+                    failure_reason="OpenAI synthesis produced garbled output",
                 )
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
@@ -4801,6 +4850,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                     f"OpenAI synthesis error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 import time
+
                 time.sleep(1)
                 return self._neutralize_detail_full(body, title, retry_count + 1)
             else:
@@ -4809,7 +4859,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                     detail_full="",
                     spans=spans,
                     status="failed_llm",
-                    failure_reason=f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}"
+                    failure_reason=f"OpenAI synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}",
                 )
 
     def _neutralize_detail_brief(self, body: str) -> str:
@@ -4835,6 +4885,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         try:
             from openai import OpenAI
+
             client = OpenAI(api_key=self._api_key)
 
             system_prompt = get_article_system_prompt()
@@ -4858,9 +4909,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 if not violations:
                     return brief
 
-                logger.warning(
-                    f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}"
-                )
+                logger.warning(f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}")
 
                 # Generate repair prompt and retry
                 repair_prompt = build_brief_repair_prompt(brief, violations)
@@ -4877,9 +4926,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             # Final validation after all retries
             violations = validate_brief_neutralization(brief)
             if violations:
-                logger.error(
-                    f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}"
-                )
+                logger.error(f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}")
             return brief
 
         except Exception as e:
@@ -4911,7 +4958,9 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
         try:
             import json
+
             from openai import OpenAI
+
             client = OpenAI(api_key=self._api_key)
 
             # Use lighter headline prompt for feed outputs (not aggressive article prompt)
@@ -4938,7 +4987,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
             # Validate and retry feed_summary if it contains banned phrases
             for attempt in range(MAX_FEED_SUMMARY_RETRIES):
-                violations = validate_feed_summary(result['feed_summary'])
+                violations = validate_feed_summary(result["feed_summary"])
                 if not violations:
                     break
 
@@ -4947,7 +4996,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                 )
 
                 # Generate repair prompt and retry
-                repair_prompt = build_feed_summary_repair_prompt(result['feed_summary'], violations)
+                repair_prompt = build_feed_summary_repair_prompt(result["feed_summary"], violations)
                 repair_response = client.chat.completions.create(
                     model=self._model,
                     messages=[
@@ -4956,17 +5005,17 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
                     ],
                     temperature=0.3,
                 )
-                result['feed_summary'] = repair_response.choices[0].message.content.strip()
+                result["feed_summary"] = repair_response.choices[0].message.content.strip()
 
             # Final validation
-            violations = validate_feed_summary(result['feed_summary'])
+            violations = validate_feed_summary(result["feed_summary"])
             if violations:
                 logger.error(
                     f"Feed summary validation failed after {MAX_FEED_SUMMARY_RETRIES + 1} attempts: {violations}"
                 )
 
             # Apply sentence-boundary truncation as safety net
-            result['feed_summary'] = truncate_at_sentence(result['feed_summary'], 130)
+            result["feed_summary"] = truncate_at_sentence(result["feed_summary"], 130)
 
             # Validate feed outputs for garbled content
             _validate_feed_outputs(result)
@@ -4980,6 +5029,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 # -----------------------------------------------------------------------------
 # Gemini provider
 # -----------------------------------------------------------------------------
+
 
 class GeminiNeutralizerProvider(NeutralizerProvider):
     """Google Gemini-based neutralizer (Gemini 1.5 Flash, Gemini 2.0 Flash, etc.)."""
@@ -5008,9 +5058,9 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
     def neutralize(
         self,
         title: str,
-        description: Optional[str],
-        body: Optional[str],
-        repair_instructions: Optional[str] = None,
+        description: str | None,
+        body: str | None,
+        repair_instructions: str | None = None,
     ) -> NeutralizationResult:
         """Neutralize using Google Gemini API.
 
@@ -5022,6 +5072,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         try:
             import google.generativeai as genai
+
             genai.configure(api_key=self._api_key)
 
             # Use proper system instruction (not concatenated prompt)
@@ -5044,6 +5095,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             response = model.generate_content(user_prompt)
 
             import json
+
             data = json.loads(response.text)
             return parse_llm_response(data, title, description)
 
@@ -5077,7 +5129,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 detail_full="",
                 spans=[],
                 status="failed_llm",
-                failure_reason="No GOOGLE_API_KEY or GEMINI_API_KEY configured"
+                failure_reason="No GOOGLE_API_KEY or GEMINI_API_KEY configured",
             )
 
         # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
@@ -5090,10 +5142,13 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             provider_model=self._model,
             title=title,
         )
-        logger.info(f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})")
+        logger.info(
+            f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})"
+        )
 
         try:
             import google.generativeai as genai
+
             genai.configure(api_key=self._api_key)
 
             # Use SYNTHESIS prompt (plain text output, not JSON)
@@ -5119,7 +5174,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                     detail_full="",
                     spans=spans,
                     status="failed_garbled",
-                    failure_reason="Gemini synthesis produced garbled output"
+                    failure_reason="Gemini synthesis produced garbled output",
                 )
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
@@ -5131,6 +5186,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                     f"Gemini synthesis error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 import time
+
                 time.sleep(1)
                 return self._neutralize_detail_full(body, title, retry_count + 1)
             else:
@@ -5139,7 +5195,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                     detail_full="",
                     spans=spans,
                     status="failed_llm",
-                    failure_reason=f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}"
+                    failure_reason=f"Gemini synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}",
                 )
 
     def _neutralize_detail_brief(self, body: str) -> str:
@@ -5165,6 +5221,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         try:
             import google.generativeai as genai
+
             genai.configure(api_key=self._api_key)
 
             system_prompt = get_article_system_prompt()
@@ -5188,9 +5245,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 if not violations:
                     return brief
 
-                logger.warning(
-                    f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}"
-                )
+                logger.warning(f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}")
 
                 # Generate repair prompt and retry
                 repair_prompt = build_brief_repair_prompt(brief, violations)
@@ -5200,9 +5255,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             # Final validation after all retries
             violations = validate_brief_neutralization(brief)
             if violations:
-                logger.error(
-                    f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}"
-                )
+                logger.error(f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}")
             return brief
 
         except Exception as e:
@@ -5236,7 +5289,9 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 
         try:
             import json
+
             import google.generativeai as genai
+
             genai.configure(api_key=self._api_key)
 
             # Use lighter headline prompt for feed outputs (not aggressive article prompt)
@@ -5269,7 +5324,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             )
 
             for attempt in range(MAX_FEED_SUMMARY_RETRIES):
-                violations = validate_feed_summary(result['feed_summary'])
+                violations = validate_feed_summary(result["feed_summary"])
                 if not violations:
                     break
 
@@ -5278,19 +5333,19 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
                 )
 
                 # Generate repair prompt and retry
-                repair_prompt = build_feed_summary_repair_prompt(result['feed_summary'], violations)
+                repair_prompt = build_feed_summary_repair_prompt(result["feed_summary"], violations)
                 repair_response = repair_model.generate_content(repair_prompt)
-                result['feed_summary'] = repair_response.text.strip()
+                result["feed_summary"] = repair_response.text.strip()
 
             # Final validation
-            violations = validate_feed_summary(result['feed_summary'])
+            violations = validate_feed_summary(result["feed_summary"])
             if violations:
                 logger.error(
                     f"Feed summary validation failed after {MAX_FEED_SUMMARY_RETRIES + 1} attempts: {violations}"
                 )
 
             # Apply sentence-boundary truncation as safety net
-            result['feed_summary'] = truncate_at_sentence(result['feed_summary'], 130)
+            result["feed_summary"] = truncate_at_sentence(result["feed_summary"], 130)
 
             # Validate feed outputs for garbled content
             _validate_feed_outputs(result)
@@ -5304,6 +5359,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
 # -----------------------------------------------------------------------------
 # Anthropic provider
 # -----------------------------------------------------------------------------
+
 
 class AnthropicNeutralizerProvider(NeutralizerProvider):
     """Anthropic Claude-based neutralizer (Claude 3.5 Haiku, Sonnet, etc.)."""
@@ -5329,9 +5385,9 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
     def neutralize(
         self,
         title: str,
-        description: Optional[str],
-        body: Optional[str],
-        repair_instructions: Optional[str] = None,
+        description: str | None,
+        body: str | None,
+        repair_instructions: str | None = None,
     ) -> NeutralizationResult:
         """Neutralize using Anthropic Claude API.
 
@@ -5343,6 +5399,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         try:
             import anthropic
+
             client = anthropic.Anthropic(api_key=self._api_key)
 
             if repair_instructions:
@@ -5362,6 +5419,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             )
 
             import json
+
             # Claude returns text, need to extract JSON
             text = response.content[0].text
             # Handle potential markdown code blocks
@@ -5400,10 +5458,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
         if not self._api_key:
             logger.error("No ANTHROPIC_API_KEY set - cannot neutralize")
             return DetailFullResult(
-                detail_full="",
-                spans=[],
-                status="failed_llm",
-                failure_reason="No ANTHROPIC_API_KEY configured"
+                detail_full="", spans=[], status="failed_llm", failure_reason="No ANTHROPIC_API_KEY configured"
             )
 
         # Get spans via config-aware detection (respects SPAN_DETECTION_MODE)
@@ -5416,10 +5471,13 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             provider_model=self._model,
             title=title,
         )
-        logger.info(f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})")
+        logger.info(
+            f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})"
+        )
 
         try:
             import anthropic
+
             client = anthropic.Anthropic(api_key=self._api_key)
 
             # Use SYNTHESIS prompt (plain text output, not JSON)
@@ -5444,7 +5502,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                     detail_full="",
                     spans=spans,
                     status="failed_garbled",
-                    failure_reason="Anthropic synthesis produced garbled output"
+                    failure_reason="Anthropic synthesis produced garbled output",
                 )
 
             return DetailFullResult(detail_full=detail_full, spans=spans)
@@ -5456,6 +5514,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                     f"Anthropic synthesis error (attempt {retry_count + 1}/{MAX_RETRIES + 1}): {e}, retrying..."
                 )
                 import time
+
                 time.sleep(1)
                 return self._neutralize_detail_full(body, title, retry_count + 1)
             else:
@@ -5464,7 +5523,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                     detail_full="",
                     spans=spans,
                     status="failed_llm",
-                    failure_reason=f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}"
+                    failure_reason=f"Anthropic synthesis failed after {MAX_RETRIES + 1} attempts: {str(e)}",
                 )
 
     def _neutralize_detail_brief(self, body: str) -> str:
@@ -5490,6 +5549,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         try:
             import anthropic
+
             client = anthropic.Anthropic(api_key=self._api_key)
 
             system_prompt = get_article_system_prompt()
@@ -5512,9 +5572,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 if not violations:
                     return brief
 
-                logger.warning(
-                    f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}"
-                )
+                logger.warning(f"Brief validation failed (attempt {attempt + 1}/{MAX_BRIEF_RETRIES + 1}): {violations}")
 
                 # Generate repair prompt and retry
                 repair_prompt = build_brief_repair_prompt(brief, violations)
@@ -5531,9 +5589,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             # Final validation after all retries
             violations = validate_brief_neutralization(brief)
             if violations:
-                logger.error(
-                    f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}"
-                )
+                logger.error(f"Brief validation failed after {MAX_BRIEF_RETRIES + 1} attempts: {violations}")
             return brief
 
         except Exception as e:
@@ -5567,7 +5623,9 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
         try:
             import json
+
             import anthropic
+
             client = anthropic.Anthropic(api_key=self._api_key)
 
             # Use lighter headline prompt for feed outputs (not aggressive article prompt)
@@ -5601,7 +5659,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 
             # Validate and retry feed_summary if it contains banned phrases
             for attempt in range(MAX_FEED_SUMMARY_RETRIES):
-                violations = validate_feed_summary(result['feed_summary'])
+                violations = validate_feed_summary(result["feed_summary"])
                 if not violations:
                     break
 
@@ -5610,7 +5668,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                 )
 
                 # Generate repair prompt and retry
-                repair_prompt = build_feed_summary_repair_prompt(result['feed_summary'], violations)
+                repair_prompt = build_feed_summary_repair_prompt(result["feed_summary"], violations)
                 repair_response = client.messages.create(
                     model=self._model,
                     max_tokens=256,
@@ -5619,17 +5677,17 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
                         {"role": "user", "content": repair_prompt},
                     ],
                 )
-                result['feed_summary'] = repair_response.content[0].text.strip()
+                result["feed_summary"] = repair_response.content[0].text.strip()
 
             # Final validation
-            violations = validate_feed_summary(result['feed_summary'])
+            violations = validate_feed_summary(result["feed_summary"])
             if violations:
                 logger.error(
                     f"Feed summary validation failed after {MAX_FEED_SUMMARY_RETRIES + 1} attempts: {violations}"
                 )
 
             # Apply sentence-boundary truncation as safety net
-            result['feed_summary'] = truncate_at_sentence(result['feed_summary'], 130)
+            result["feed_summary"] = truncate_at_sentence(result["feed_summary"], 130)
 
             # Validate feed outputs for garbled content
             _validate_feed_outputs(result)
@@ -5643,6 +5701,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
 # -----------------------------------------------------------------------------
 # Provider factory - model determined by active system_prompt in DB
 # -----------------------------------------------------------------------------
+
 
 def _infer_provider_from_model(model: str) -> str:
     """Infer provider name from model string."""
@@ -5694,10 +5753,7 @@ def _check_api_key(provider_name: str) -> None:
         if os.getenv(key_name):
             return
 
-    raise NeutralizerConfigError(
-        f"No API key found for {provider_name}. "
-        f"Please set one of: {', '.join(key_names)}"
-    )
+    raise NeutralizerConfigError(f"No API key found for {provider_name}. Please set one of: {', '.join(key_names)}")
 
 
 def get_neutralizer_provider() -> NeutralizerProvider:
@@ -5740,7 +5796,7 @@ def get_neutralizer_provider() -> NeutralizerProvider:
 class NeutralizerService:
     """Service for neutralizing stories."""
 
-    def __init__(self, provider: Optional[NeutralizerProvider] = None):
+    def __init__(self, provider: NeutralizerProvider | None = None):
         self.provider = provider or get_neutralizer_provider()
 
     def _log_pipeline(
@@ -5748,10 +5804,10 @@ class NeutralizerService:
         db: Session,
         stage: PipelineStage,
         status: PipelineStatus,
-        story_raw_id: Optional[uuid.UUID] = None,
-        started_at: Optional[datetime] = None,
-        error_message: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        story_raw_id: uuid.UUID | None = None,
+        started_at: datetime | None = None,
+        error_message: str | None = None,
+        metadata: dict | None = None,
     ) -> models.PipelineLog:
         """Create a pipeline log entry."""
         now = datetime.utcnow()
@@ -5778,7 +5834,7 @@ class NeutralizerService:
         db: Session,
         story: models.StoryRaw,
         force: bool = False,
-    ) -> Optional[models.StoryNeutralized]:
+    ) -> models.StoryNeutralized | None:
         """
         Neutralize a single story using the 3-call pipeline with audit validation.
 
@@ -5815,7 +5871,7 @@ class NeutralizerService:
                 status=PipelineStatus.SKIPPED,
                 story_raw_id=story.id,
                 started_at=started_at,
-                metadata={'reason': 'already_neutralized'},
+                metadata={"reason": "already_neutralized"},
             )
             return None
 
@@ -5829,7 +5885,7 @@ class NeutralizerService:
             detail_full_result = None
             detail_brief = None
             feed_outputs = None
-            transparency_spans: List[TransparencySpan] = []
+            transparency_spans: list[TransparencySpan] = []
 
             # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
@@ -5880,7 +5936,7 @@ class NeutralizerService:
                             started_at=started_at,
                             error_message=detail_full_result.failure_reason,
                             metadata={
-                                'failure_status': detail_full_result.status,
+                                "failure_status": detail_full_result.status,
                             },
                         )
                         return None
@@ -5915,10 +5971,7 @@ class NeutralizerService:
                     detail_brief = ""
 
                 # Call 3: Compress - produces feed_title, feed_summary, detail_title, section
-                feed_outputs = self.provider._neutralize_feed_outputs(
-                    body or "",
-                    detail_brief
-                )
+                feed_outputs = self.provider._neutralize_feed_outputs(body or "", detail_brief)
 
                 # Apply LLM section classification if valid and different from keyword classifier
                 llm_section = feed_outputs.get("section", "").lower()
@@ -5961,8 +6014,8 @@ class NeutralizerService:
                         story_raw_id=story.id,
                         started_at=started_at,
                         metadata={
-                            'reason': 'audit_skip',
-                            'audit_reasons': [r.code for r in audit_result.reasons],
+                            "reason": "audit_skip",
+                            "audit_reasons": [r.code for r in audit_result.reasons],
                         },
                     )
                     return None
@@ -5976,7 +6029,7 @@ class NeutralizerService:
                         started_at=started_at,
                         error_message="Audit failed permanently",
                         metadata={
-                            'audit_reasons': [r.code for r in audit_result.reasons],
+                            "audit_reasons": [r.code for r in audit_result.reasons],
                         },
                     )
                     return None
@@ -6022,10 +6075,15 @@ class NeutralizerService:
             # Save transparency spans for detail_full
             # DEBUG: Log span reasons being stored
             if transparency_spans:
-                reasons_summary = [s.reason.value if hasattr(s.reason, 'value') else str(s.reason) for s in transparency_spans]
+                reasons_summary = [
+                    s.reason.value if hasattr(s.reason, "value") else str(s.reason) for s in transparency_spans
+                ]
                 from collections import Counter
+
                 reason_counts = Counter(reasons_summary)
-                logger.info(f"[SPAN_STORAGE_DEBUG] Storing {len(transparency_spans)} spans with reasons: {dict(reason_counts)}")
+                logger.info(
+                    f"[SPAN_STORAGE_DEBUG] Storing {len(transparency_spans)} spans with reasons: {dict(reason_counts)}"
+                )
 
             for span in transparency_spans:
                 span_record = models.TransparencySpan(
@@ -6046,6 +6104,7 @@ class NeutralizerService:
             # Clear both raw_id and neutralized_id since endpoint can be accessed via either
             try:
                 from app.routers.stories import invalidate_transparency_cache
+
                 invalidate_transparency_cache(str(story.id), str(neutralized.id))
                 logger.debug(f"[NEUTRALIZE] Invalidated transparency cache for story {story.id} / {neutralized.id}")
             except Exception as cache_error:
@@ -6059,12 +6118,12 @@ class NeutralizerService:
                 story_raw_id=story.id,
                 started_at=started_at,
                 metadata={
-                    'provider': self.provider.name,
-                    'model': self.provider.model_name,
-                    'has_manipulative': has_manipulative_content,
-                    'audit_verdict': audit_result.verdict.value if audit_result else 'none',
-                    'retry_count': attempt if 'attempt' in dir() else 0,
-                    'span_count': len(transparency_spans),
+                    "provider": self.provider.name,
+                    "model": self.provider.model_name,
+                    "has_manipulative": has_manipulative_content,
+                    "audit_verdict": audit_result.verdict.value if audit_result else "none",
+                    "retry_count": attempt if "attempt" in dir() else 0,
+                    "span_count": len(transparency_spans),
                 },
             )
 
@@ -6086,9 +6145,9 @@ class NeutralizerService:
         self,
         story_id: uuid.UUID,
         title: str,
-        description: Optional[str],
-        body: Optional[str],
-    ) -> Dict[str, Any]:
+        description: str | None,
+        body: str | None,
+    ) -> dict[str, Any]:
         """
         Neutralize content using 3-call LLM pipeline (thread-safe, no db operations).
 
@@ -6106,7 +6165,7 @@ class NeutralizerService:
         try:
             auditor = Auditor()
             audit_result = None
-            transparency_spans: List[TransparencySpan] = []
+            transparency_spans: list[TransparencySpan] = []
 
             # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
@@ -6143,10 +6202,7 @@ class NeutralizerService:
                     detail_brief = ""
 
                 # Call 3: Compress - produces feed_title, feed_summary, detail_title
-                feed_outputs = self.provider._neutralize_feed_outputs(
-                    body or "",
-                    detail_brief
-                )
+                feed_outputs = self.provider._neutralize_feed_outputs(body or "", detail_brief)
 
                 # Determine if content was manipulative (has transparency spans)
                 has_manipulative_content = len(transparency_spans) > 0
@@ -6173,17 +6229,17 @@ class NeutralizerService:
                     break
                 elif audit_result.verdict == AuditVerdict.SKIP:
                     return {
-                        'story_id': story_id,
-                        'status': 'skipped',
-                        'reason': 'audit_skip',
-                        'audit_reasons': [r.code for r in audit_result.reasons],
+                        "story_id": story_id,
+                        "status": "skipped",
+                        "reason": "audit_skip",
+                        "audit_reasons": [r.code for r in audit_result.reasons],
                     }
                 elif audit_result.verdict == AuditVerdict.FAIL:
                     return {
-                        'story_id': story_id,
-                        'status': 'failed',
-                        'error': 'Audit failed permanently',
-                        'audit_reasons': [r.code for r in audit_result.reasons],
+                        "story_id": story_id,
+                        "status": "failed",
+                        "error": "Audit failed permanently",
+                        "audit_reasons": [r.code for r in audit_result.reasons],
                     }
                 elif audit_result.verdict == AuditVerdict.RETRY:
                     if attempt < MAX_RETRY_ATTEMPTS:
@@ -6204,30 +6260,30 @@ class NeutralizerService:
             )
 
             return {
-                'story_id': story_id,
-                'status': 'completed',
-                'result': result,
-                'transparency_spans': transparency_spans,  # Include spans for storage
-                'audit_verdict': audit_result.verdict.value if audit_result else 'none',
-                'retry_count': attempt,
+                "story_id": story_id,
+                "status": "completed",
+                "result": result,
+                "transparency_spans": transparency_spans,  # Include spans for storage
+                "audit_verdict": audit_result.verdict.value if audit_result else "none",
+                "retry_count": attempt,
             }
 
         except Exception as e:
             logger.error(f"Neutralization failed for story {story_id}: {e}")
             return {
-                'story_id': story_id,
-                'status': 'failed',
-                'error': str(e),
+                "story_id": story_id,
+                "status": "failed",
+                "error": str(e),
             }
 
     def neutralize_pending(
         self,
         db: Session,
-        story_ids: Optional[List[str]] = None,
+        story_ids: list[str] | None = None,
         force: bool = False,
         limit: int = 50,
         max_workers: int = 5,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Neutralize pending stories with parallel processing.
 
@@ -6260,9 +6316,7 @@ class NeutralizerService:
 
             # Check which IDs are StoryRaw IDs
             existing_raw_ids = set(
-                row[0] for row in db.query(models.StoryRaw.id)
-                .filter(models.StoryRaw.id.in_(requested_uuids))
-                .all()
+                row[0] for row in db.query(models.StoryRaw.id).filter(models.StoryRaw.id.in_(requested_uuids)).all()
             )
 
             # For IDs not found in StoryRaw, check if they're StoryNeutralized IDs
@@ -6289,31 +6343,28 @@ class NeutralizerService:
             )
             if not force:
                 # Only get stories without current neutralization
-                subq = (
-                    db.query(models.StoryNeutralized.story_raw_id)
-                    .filter(models.StoryNeutralized.is_current == True)
-                )
+                subq = db.query(models.StoryNeutralized.story_raw_id).filter(models.StoryNeutralized.is_current == True)
                 query = query.filter(~models.StoryRaw.id.in_(subq))
 
         # Prioritize fresh articles - most recent first
         stories = query.order_by(models.StoryRaw.published_at.desc()).limit(limit).all()
 
         result = {
-            'status': 'completed',
-            'started_at': started_at,
-            'finished_at': None,
-            'duration_ms': 0,
-            'total_processed': 0,
-            'total_skipped': 0,
-            'total_failed': 0,
-            'skipped_no_body': 0,  # Stories skipped due to missing body content
-            'story_results': [],
-            'max_workers': max_workers,
+            "status": "completed",
+            "started_at": started_at,
+            "finished_at": None,
+            "duration_ms": 0,
+            "total_processed": 0,
+            "total_skipped": 0,
+            "total_failed": 0,
+            "skipped_no_body": 0,  # Stories skipped due to missing body content
+            "story_results": [],
+            "max_workers": max_workers,
         }
 
         if not stories:
-            result['finished_at'] = datetime.utcnow()
-            result['duration_ms'] = int((result['finished_at'] - started_at).total_seconds() * 1000)
+            result["finished_at"] = datetime.utcnow()
+            result["duration_ms"] = int((result["finished_at"] - started_at).total_seconds() * 1000)
             return result
 
         # Prepare data for parallel processing (extract from ORM objects)
@@ -6327,15 +6378,17 @@ class NeutralizerService:
                 logger.warning(f"Skipping story {story.id} - no body content available")
                 skipped_no_body += 1
                 continue
-            story_data.append({
-                'story_id': story.id,
-                'title': story.original_title,
-                'description': story.original_description,
-                'body': body,
-                'story_obj': story,  # Keep reference for db operations
-            })
+            story_data.append(
+                {
+                    "story_id": story.id,
+                    "title": story.original_title,
+                    "description": story.original_description,
+                    "body": body,
+                    "story_obj": story,  # Keep reference for db operations
+                }
+            )
 
-        result['skipped_no_body'] = skipped_no_body
+        result["skipped_no_body"] = skipped_no_body
 
         # Check for existing neutralizations
         existing_map = {}
@@ -6343,7 +6396,7 @@ class NeutralizerService:
             existing_neutralized = (
                 db.query(models.StoryNeutralized)
                 .filter(
-                    models.StoryNeutralized.story_raw_id.in_([s['story_id'] for s in story_data]),
+                    models.StoryNeutralized.story_raw_id.in_([s["story_id"] for s in story_data]),
                     models.StoryNeutralized.is_current == True,
                 )
                 .all()
@@ -6356,11 +6409,11 @@ class NeutralizerService:
             futures = {
                 executor.submit(
                     self._neutralize_content,
-                    sd['story_id'],
-                    sd['title'],
-                    sd['description'],
-                    sd['body'],
-                ): sd['story_id']
+                    sd["story_id"],
+                    sd["title"],
+                    sd["description"],
+                    sd["body"],
+                ): sd["story_id"]
                 for sd in story_data
             }
 
@@ -6372,28 +6425,28 @@ class NeutralizerService:
                 except Exception as e:
                     logger.error(f"Future failed for story {story_id}: {e}")
                     llm_results[story_id] = {
-                        'story_id': story_id,
-                        'status': 'failed',
-                        'error': str(e),
+                        "story_id": story_id,
+                        "status": "failed",
+                        "error": str(e),
                     }
 
         # Save results to database (sequential)
         for sd in story_data:
-            story_id = sd['story_id']
-            story = sd['story_obj']
-            llm_result = llm_results.get(story_id, {'status': 'failed', 'error': 'No result'})
+            story_id = sd["story_id"]
+            story = sd["story_obj"]
+            llm_result = llm_results.get(story_id, {"status": "failed", "error": "No result"})
 
             story_result = {
-                'story_id': str(story_id),
-                'status': llm_result['status'],
-                'feed_title': None,
-                'has_manipulative_content': False,
-                'span_count': 0,
-                'error': llm_result.get('error'),
+                "story_id": str(story_id),
+                "status": llm_result["status"],
+                "feed_title": None,
+                "has_manipulative_content": False,
+                "span_count": 0,
+                "error": llm_result.get("error"),
             }
 
-            if llm_result['status'] == 'completed':
-                neutralization = llm_result['result']
+            if llm_result["status"] == "completed":
+                neutralization = llm_result["result"]
 
                 # Determine version
                 version = 1
@@ -6423,7 +6476,7 @@ class NeutralizerService:
                 db.flush()  # Flush to get neutralized.id for span FK
 
                 # Save transparency spans
-                transparency_spans = llm_result.get('transparency_spans', [])
+                transparency_spans = llm_result.get("transparency_spans", [])
                 for span in transparency_spans:
                     span_record = models.TransparencySpan(
                         id=uuid.uuid4(),
@@ -6446,21 +6499,21 @@ class NeutralizerService:
                     story_raw_id=story_id,
                     started_at=started_at,
                     metadata={
-                        'provider': self.provider.name,
-                        'model': self.provider.model_name,
-                        'has_manipulative': neutralization.has_manipulative_content,
-                        'span_count': len(transparency_spans),
-                        'audit_verdict': llm_result.get('audit_verdict', 'none'),
-                        'retry_count': llm_result.get('retry_count', 0),
+                        "provider": self.provider.name,
+                        "model": self.provider.model_name,
+                        "has_manipulative": neutralization.has_manipulative_content,
+                        "span_count": len(transparency_spans),
+                        "audit_verdict": llm_result.get("audit_verdict", "none"),
+                        "retry_count": llm_result.get("retry_count", 0),
                     },
                 )
 
-                story_result['feed_title'] = neutralization.feed_title
-                story_result['has_manipulative_content'] = neutralization.has_manipulative_content
-                story_result['span_count'] = len(transparency_spans)
-                result['total_processed'] += 1
+                story_result["feed_title"] = neutralization.feed_title
+                story_result["has_manipulative_content"] = neutralization.has_manipulative_content
+                story_result["span_count"] = len(transparency_spans)
+                result["total_processed"] += 1
 
-            elif llm_result['status'] == 'skipped':
+            elif llm_result["status"] == "skipped":
                 self._log_pipeline(
                     db,
                     stage=PipelineStage.NEUTRALIZE,
@@ -6468,11 +6521,11 @@ class NeutralizerService:
                     story_raw_id=story_id,
                     started_at=started_at,
                     metadata={
-                        'reason': llm_result.get('reason', 'unknown'),
-                        'audit_reasons': llm_result.get('audit_reasons', []),
+                        "reason": llm_result.get("reason", "unknown"),
+                        "audit_reasons": llm_result.get("audit_reasons", []),
                     },
                 )
-                result['total_skipped'] += 1
+                result["total_skipped"] += 1
 
             else:  # failed
                 self._log_pipeline(
@@ -6481,22 +6534,24 @@ class NeutralizerService:
                     status=PipelineStatus.FAILED,
                     story_raw_id=story_id,
                     started_at=started_at,
-                    error_message=llm_result.get('error', 'Unknown error'),
+                    error_message=llm_result.get("error", "Unknown error"),
                 )
-                result['total_failed'] += 1
+                result["total_failed"] += 1
 
-            result['story_results'].append(story_result)
+            result["story_results"].append(story_result)
 
         db.commit()
 
         finished_at = datetime.utcnow()
-        result['finished_at'] = finished_at
-        result['duration_ms'] = int((finished_at - started_at).total_seconds() * 1000)
+        result["finished_at"] = finished_at
+        result["duration_ms"] = int((finished_at - started_at).total_seconds() * 1000)
 
-        if result['total_failed'] > 0 and result['total_processed'] == 0:
-            result['status'] = 'failed'
-        elif result['total_failed'] > 0:
-            result['status'] = 'partial'
+        if result["total_failed"] > 0 and result["total_processed"] == 0:
+            result["status"] = "failed"
+        elif result["total_failed"] > 0:
+            result["status"] = "partial"
 
         return result
+
+
 # Force rebuild Sat Jan 31 09:39:18 EST 2026

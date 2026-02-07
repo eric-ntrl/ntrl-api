@@ -14,16 +14,17 @@ Uses spaCy's en_core_web_sm model for fast, accurate parsing.
 
 import time
 from functools import lru_cache
-from typing import Optional
+
 import spacy
 from spacy.tokens import Doc, Span, Token
 
-from app.taxonomy import get_type, MANIPULATION_TAXONOMY
+from app.taxonomy import get_type
+
 from .types import (
-    DetectionInstance,
-    ScanResult,
     ArticleSegment,
+    DetectionInstance,
     DetectorSource,
+    ScanResult,
     SpanAction,
 )
 
@@ -39,6 +40,7 @@ def _get_spacy_model(model_name: str = "en_core_web_sm"):
         nlp = spacy.load(model_name)
     except OSError:
         import subprocess
+
         subprocess.run(["python", "-m", "spacy", "download", model_name])
         nlp = spacy.load(model_name)
     # Disable NER for speed — we only need parser and tagger
@@ -59,22 +61,49 @@ class StructuralDetector:
 
     # Vague quantifier words (D.5.1)
     VAGUE_QUANTIFIERS = {
-        "some", "many", "several", "few", "numerous", "various",
-        "a number of", "a lot of", "plenty of", "most", "countless"
+        "some",
+        "many",
+        "several",
+        "few",
+        "numerous",
+        "various",
+        "a number of",
+        "a lot of",
+        "plenty of",
+        "most",
+        "countless",
     }
 
     # Temporal vagueness markers (D.5.2)
     TEMPORAL_VAGUE = {
-        "recently", "lately", "soon", "eventually", "shortly",
-        "in recent years", "in recent months", "over the past",
-        "in the coming", "before long"
+        "recently",
+        "lately",
+        "soon",
+        "eventually",
+        "shortly",
+        "in recent years",
+        "in recent months",
+        "over the past",
+        "in the coming",
+        "before long",
     }
 
     # Absolutist words (D.5.4) - single tokens
     ABSOLUTES = {
-        "everyone", "everybody", "nobody", "always", "never",
-        "all", "none", "every", "any", "entirely", "completely",
-        "absolutely", "totally", "utterly"
+        "everyone",
+        "everybody",
+        "nobody",
+        "always",
+        "never",
+        "all",
+        "none",
+        "every",
+        "any",
+        "entirely",
+        "completely",
+        "absolutely",
+        "totally",
+        "utterly",
     }
 
     # Multi-word absolute phrases (D.5.4)
@@ -135,11 +164,7 @@ class StructuralDetector:
             detector_source=DetectorSource.STRUCTURAL,
         )
 
-    def _detect_passive_voice(
-        self,
-        doc: Doc,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    def _detect_passive_voice(self, doc: Doc, segment: ArticleSegment) -> list[DetectionInstance]:
         """
         Detect passive voice constructions that hide agency.
 
@@ -194,17 +219,19 @@ class StructuralDetector:
             # Look for past participle with passive auxiliary
             if token.dep_ == "nsubjpass" or token.tag_ == "VBN":
                 # Check if this is a passive construction
-                has_aux = any(
-                    child.dep_ == "auxpass" or
-                    (child.dep_ == "aux" and child.text.lower() in self.PASSIVE_AUX)
-                    for child in token.head.children
-                ) if token.head else False
+                has_aux = (
+                    any(
+                        child.dep_ == "auxpass" or (child.dep_ == "aux" and child.text.lower() in self.PASSIVE_AUX)
+                        for child in token.head.children
+                    )
+                    if token.head
+                    else False
+                )
 
                 # Also check the token itself if it's the head
                 if token.tag_ == "VBN":
                     has_aux = has_aux or any(
-                        child.dep_ == "auxpass" or
-                        (child.dep_ == "aux" and child.text.lower() in self.PASSIVE_AUX)
+                        child.dep_ == "auxpass" or (child.dep_ == "aux" and child.text.lower() in self.PASSIVE_AUX)
                         for child in token.children
                     )
 
@@ -230,11 +257,7 @@ class StructuralDetector:
 
         return False
 
-    def _detect_rhetorical_questions(
-        self,
-        doc: Doc,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    def _detect_rhetorical_questions(self, doc: Doc, segment: ArticleSegment) -> list[DetectionInstance]:
         """
         Detect rhetorical questions used as manipulation hooks.
 
@@ -282,10 +305,18 @@ class StructuralDetector:
 
         # Common rhetorical question patterns
         rhetorical_starts = [
-            "is your", "are you", "could this", "what if",
-            "how can anyone", "how could anyone", "who would",
-            "why would anyone", "isn't it", "don't you",
-            "can you believe", "would you believe"
+            "is your",
+            "are you",
+            "could this",
+            "what if",
+            "how can anyone",
+            "how could anyone",
+            "who would",
+            "why would anyone",
+            "isn't it",
+            "don't you",
+            "can you believe",
+            "would you believe",
         ]
 
         for pattern in rhetorical_starts:
@@ -293,23 +324,15 @@ class StructuralDetector:
                 return True
 
         # Check for second person + speculation
-        has_second_person = any(
-            token.text.lower() in {"you", "your", "yourself"}
-            for token in sent
-        )
+        has_second_person = any(token.text.lower() in {"you", "your", "yourself"} for token in sent)
 
         has_modal = any(
-            token.tag_ == "MD" and token.text.lower() in {"could", "might", "would", "should"}
-            for token in sent
+            token.tag_ == "MD" and token.text.lower() in {"could", "might", "would", "should"} for token in sent
         )
 
         return has_second_person and has_modal
 
-    def _detect_vague_quantifiers(
-        self,
-        doc: Doc,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    def _detect_vague_quantifiers(self, doc: Doc, segment: ArticleSegment) -> list[DetectionInstance]:
         """
         Detect vague quantifiers that lack specificity.
 
@@ -354,11 +377,7 @@ class StructuralDetector:
 
         return False
 
-    def _detect_temporal_vagueness(
-        self,
-        doc: Doc,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    def _detect_temporal_vagueness(self, doc: Doc, segment: ArticleSegment) -> list[DetectionInstance]:
         """
         Detect vague temporal references.
 
@@ -381,7 +400,7 @@ class StructuralDetector:
                         segment=segment,
                         span_start=idx,
                         span_end=idx + len(phrase),
-                        text=doc.text[idx:idx + len(phrase)],
+                        text=doc.text[idx : idx + len(phrase)],
                         confidence=0.65,
                         severity=2,
                         detector_source=DetectorSource.STRUCTURAL,
@@ -394,11 +413,7 @@ class StructuralDetector:
 
         return detections
 
-    def _detect_absolutes(
-        self,
-        doc: Doc,
-        segment: ArticleSegment
-    ) -> list[DetectionInstance]:
+    def _detect_absolutes(self, doc: Doc, segment: ArticleSegment) -> list[DetectionInstance]:
         """
         Detect absolute statements that are rarely accurate.
 
@@ -443,7 +458,7 @@ class StructuralDetector:
                         segment=segment,
                         span_start=idx,
                         span_end=idx + len(phrase),
-                        text=doc.text[idx:idx + len(phrase)],
+                        text=doc.text[idx : idx + len(phrase)],
                         confidence=0.70,
                         severity=3,
                         detector_source=DetectorSource.STRUCTURAL,

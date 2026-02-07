@@ -15,14 +15,12 @@ Target throughput: 10-20 articles per second in batch mode
 
 import asyncio
 import time
-from typing import Optional
 from dataclasses import dataclass, field
 
 from .ntrl_pipeline import (
     NTRLPipeline,
     PipelineConfig,
     PipelineResult,
-    ProcessingMode,
 )
 
 
@@ -31,16 +29,16 @@ class BatchConfig:
     """Configuration for batch processing."""
 
     # Batch sizing
-    max_concurrent: int = 5          # Max parallel articles
-    chunk_size: int = 4              # Articles per chunk in large batches
+    max_concurrent: int = 5  # Max parallel articles
+    chunk_size: int = 4  # Articles per chunk in large batches
 
     # Rate limiting
     rate_limit_per_second: float = 20.0  # Max articles per second
-    rate_limit_burst: int = 10           # Burst allowance
+    rate_limit_burst: int = 10  # Burst allowance
 
     # Timeouts
-    per_article_timeout: float = 30.0    # Timeout per article
-    batch_timeout: float = 300.0         # Total batch timeout (5 min)
+    per_article_timeout: float = 30.0  # Timeout per article
+    batch_timeout: float = 300.0  # Total batch timeout (5 min)
 
     # Retry settings
     max_retries: int = 2
@@ -50,18 +48,20 @@ class BatchConfig:
 @dataclass
 class ArticleInput:
     """Input for batch processing."""
+
     article_id: str
     body: str
     title: str = ""
-    deck: Optional[str] = None
+    deck: str | None = None
     metadata: dict = field(default_factory=dict)
 
 
 @dataclass
 class BatchResult:
     """Result from batch processing."""
+
     results: dict[str, PipelineResult]  # article_id -> result
-    failures: dict[str, str]            # article_id -> error message
+    failures: dict[str, str]  # article_id -> error message
     total_articles: int
     successful: int
     failed: int
@@ -87,15 +87,15 @@ class NTRLBatcher:
 
     def __init__(
         self,
-        pipeline_config: Optional[PipelineConfig] = None,
-        batch_config: Optional[BatchConfig] = None,
+        pipeline_config: PipelineConfig | None = None,
+        batch_config: BatchConfig | None = None,
     ):
         """Initialize batcher with configurations."""
         self.pipeline_config = pipeline_config or PipelineConfig()
         self.batch_config = batch_config or BatchConfig()
 
         # Create pipeline instance
-        self._pipeline: Optional[NTRLPipeline] = None
+        self._pipeline: NTRLPipeline | None = None
 
         # Rate limiting state
         self._last_request_time: float = 0
@@ -186,9 +186,7 @@ class NTRLBatcher:
         )
 
     async def _process_single(
-        self,
-        article: ArticleInput,
-        force: bool
+        self, article: ArticleInput, force: bool
     ) -> tuple[dict[str, PipelineResult], dict[str, str]]:
         """Process a single article."""
         results = {}
@@ -203,9 +201,7 @@ class NTRLBatcher:
         return results, failures
 
     async def _process_parallel(
-        self,
-        articles: list[ArticleInput],
-        force: bool
+        self, articles: list[ArticleInput], force: bool
     ) -> tuple[dict[str, PipelineResult], dict[str, str]]:
         """Process articles in parallel (small batch)."""
         results = {}
@@ -214,17 +210,12 @@ class NTRLBatcher:
         # Create tasks for all articles
         tasks = []
         for article in articles:
-            task = asyncio.create_task(
-                self._process_with_retry(article, force)
-            )
+            task = asyncio.create_task(self._process_with_retry(article, force))
             tasks.append((article.article_id, task))
 
         # Wait for all with timeout
         try:
-            done, pending = await asyncio.wait(
-                [t for _, t in tasks],
-                timeout=self.batch_config.batch_timeout
-            )
+            done, pending = await asyncio.wait([t for _, t in tasks], timeout=self.batch_config.batch_timeout)
 
             # Cancel pending
             for task in pending:
@@ -253,9 +244,7 @@ class NTRLBatcher:
         return results, failures
 
     async def _process_chunked(
-        self,
-        articles: list[ArticleInput],
-        force: bool
+        self, articles: list[ArticleInput], force: bool
     ) -> tuple[dict[str, PipelineResult], dict[str, str]]:
         """Process articles in chunks (large batch)."""
         all_results = {}
@@ -263,7 +252,7 @@ class NTRLBatcher:
 
         # Split into chunks
         chunks = [
-            articles[i:i + self.batch_config.chunk_size]
+            articles[i : i + self.batch_config.chunk_size]
             for i in range(0, len(articles), self.batch_config.chunk_size)
         ]
 
@@ -278,11 +267,7 @@ class NTRLBatcher:
 
         return all_results, all_failures
 
-    async def _process_with_retry(
-        self,
-        article: ArticleInput,
-        force: bool
-    ) -> PipelineResult:
+    async def _process_with_retry(self, article: ArticleInput, force: bool) -> PipelineResult:
         """Process article with retry logic."""
         last_error = None
 
@@ -293,12 +278,11 @@ class NTRLBatcher:
 
                 # Process with timeout
                 result = await asyncio.wait_for(
-                    self.process_one(article, force),
-                    timeout=self.batch_config.per_article_timeout
+                    self.process_one(article, force), timeout=self.batch_config.per_article_timeout
                 )
                 return result
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = "Timeout"
             except Exception as e:
                 last_error = str(e)
@@ -338,7 +322,7 @@ class NTRLBatcher:
 # Convenience functions
 async def process_articles(
     articles: list[ArticleInput],
-    config: Optional[PipelineConfig] = None,
+    config: PipelineConfig | None = None,
 ) -> BatchResult:
     """
     Convenience function to process a batch of articles.

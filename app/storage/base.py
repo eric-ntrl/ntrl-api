@@ -16,11 +16,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any
 
 
 class ContentType(str, Enum):
     """Supported content types for raw storage."""
+
     TEXT_PLAIN = "text/plain"
     TEXT_HTML = "text/html"
     APPLICATION_JSON = "application/json"
@@ -28,6 +28,7 @@ class ContentType(str, Enum):
 
 class ContentEncoding(str, Enum):
     """Supported content encodings."""
+
     GZIP = "gzip"
     IDENTITY = "identity"  # No compression
 
@@ -35,6 +36,7 @@ class ContentEncoding(str, Enum):
 @dataclass
 class StorageMetadata:
     """Metadata about stored content."""
+
     uri: str  # S3 object key/path
     content_hash: str  # SHA256 of original (uncompressed) content
     content_type: ContentType
@@ -42,13 +44,14 @@ class StorageMetadata:
     size_bytes: int  # Compressed size
     original_size_bytes: int  # Uncompressed size
     uploaded_at: datetime
-    expires_at: Optional[datetime] = None  # For lifecycle management
-    custom_metadata: Dict[str, str] = field(default_factory=dict)
+    expires_at: datetime | None = None  # For lifecycle management
+    custom_metadata: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class StorageObject:
     """A stored object with content and metadata."""
+
     content: bytes  # Decompressed content
     metadata: StorageMetadata
     exists: bool = True
@@ -92,8 +95,8 @@ class StorageProvider(ABC):
         key: str,
         content: bytes,
         content_type: ContentType = ContentType.TEXT_PLAIN,
-        expires_days: Optional[int] = None,
-        metadata: Optional[Dict[str, str]] = None,
+        expires_days: int | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> StorageMetadata:
         """
         Upload content to storage.
@@ -111,7 +114,7 @@ class StorageProvider(ABC):
         pass
 
     @abstractmethod
-    def download(self, key: str) -> Optional[StorageObject]:
+    def download(self, key: str) -> StorageObject | None:
         """
         Download content from storage.
 
@@ -139,7 +142,7 @@ class StorageProvider(ABC):
         pass
 
     @abstractmethod
-    def get_metadata(self, key: str) -> Optional[StorageMetadata]:
+    def get_metadata(self, key: str) -> StorageMetadata | None:
         """
         Get metadata without downloading content.
 
@@ -172,7 +175,7 @@ class StorageProvider(ABC):
         self,
         story_id: str,
         field: str = "body",
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
     ) -> str:
         """
         Generate a storage key for a story's raw content.

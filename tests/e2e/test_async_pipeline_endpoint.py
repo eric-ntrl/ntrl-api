@@ -7,7 +7,7 @@ Tests the full async pipeline flow from API request to job completion.
 import os
 import uuid
 from datetime import datetime
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +25,7 @@ class TestAsyncPipelineEndpoints:
     def client(self):
         """Create a test client."""
         from app.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -62,6 +63,7 @@ class TestAsyncPipelineEndpoints:
             # Make start_job return a coroutine
             async def async_start(*args, **kwargs):
                 return mock_job
+
             mock_start.side_effect = async_start
 
             response = client.post(
@@ -119,8 +121,10 @@ class TestAsyncPipelineEndpoints:
     def test_cancel_job_success(self, client, auth_headers, mock_job):
         """Test cancelling a running job."""
         with patch("app.services.pipeline_job_manager.PipelineJobManager.cancel_job") as mock_cancel:
+
             async def async_cancel(*args, **kwargs):
                 return True
+
             mock_cancel.side_effect = async_cancel
 
             response = client.post(
@@ -135,8 +139,10 @@ class TestAsyncPipelineEndpoints:
     def test_cancel_job_already_completed(self, client, auth_headers, mock_job):
         """Test cancelling an already completed job."""
         with patch("app.services.pipeline_job_manager.PipelineJobManager.cancel_job") as mock_cancel:
+
             async def async_cancel(*args, **kwargs):
                 return False
+
             mock_cancel.side_effect = async_cancel
 
             with patch("app.services.pipeline_job_manager.PipelineJobManager.get_job_status") as mock_get:
@@ -198,6 +204,7 @@ class TestAsyncPipelineResponse:
     def client(self):
         """Create a test client."""
         from app.main import app
+
         return TestClient(app)
 
     @pytest.fixture
@@ -214,6 +221,7 @@ class TestAsyncPipelineResponse:
 
             async def async_start(*args, **kwargs):
                 return mock_job
+
             mock_start.side_effect = async_start
 
             response = client.post(
@@ -234,6 +242,7 @@ class TestAsyncPipelineResponse:
 
             async def async_start(*args, **kwargs):
                 return mock_job
+
             mock_start.side_effect = async_start
 
             response = client.post(
@@ -253,6 +262,7 @@ class TestJobStatusResponse:
     def client(self):
         """Create a test client."""
         from app.main import app
+
         return TestClient(app)
 
     @pytest.fixture

@@ -68,7 +68,7 @@ def check_alerts(summary: "PipelineRunSummary") -> list[str]:
         alerts.append(AlertCode.BRIEF_STORY_COUNT_LOW.value)
 
     # Check classification keyword fallback rate
-    if hasattr(summary, 'classify_total') and summary.classify_total > 0:
+    if hasattr(summary, "classify_total") and summary.classify_total > 0:
         fallback_rate = summary.classify_keyword_fallback / summary.classify_total
         if fallback_rate > 0.01:  # >1% keyword fallback
             alerts.append(AlertCode.CLASSIFY_FALLBACK_RATE_HIGH.value)

@@ -4,12 +4,12 @@ Data types for NTRL-FIX rewriting module.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 from enum import Enum
 
 
 class FixAction(str, Enum):
     """Action taken on a detected span."""
+
     REMOVED = "removed"
     REPLACED = "replaced"
     REWRITTEN = "rewritten"
@@ -19,6 +19,7 @@ class FixAction(str, Enum):
 
 class ValidationStatus(str, Enum):
     """Status of a validation check."""
+
     PASSED = "passed"
     FAILED = "failed"
     WARNING = "warning"
@@ -27,6 +28,7 @@ class ValidationStatus(str, Enum):
 
 class RiskLevel(str, Enum):
     """Risk level from validation."""
+
     NONE = "none"
     LOW = "low"
     MEDIUM = "medium"
@@ -54,6 +56,7 @@ class ChangeRecord:
         confidence: Detection confidence
         rationale: Explanation of change
     """
+
     detection_id: str
     type_id: str
     category_label: str
@@ -62,7 +65,7 @@ class ChangeRecord:
     span_start: int
     span_end: int
     before: str
-    after: Optional[str]
+    after: str | None
     action: FixAction
     severity: int
     confidence: float
@@ -72,6 +75,7 @@ class ChangeRecord:
 @dataclass
 class CheckResult:
     """Result of a single validation check."""
+
     check_name: str
     status: ValidationStatus
     message: str = ""
@@ -95,6 +99,7 @@ class ValidationResult:
         risk_level: Overall risk assessment
         summary: Human-readable summary
     """
+
     passed: bool
     checks: dict[str, CheckResult]
     failures: list[str] = field(default_factory=list)
@@ -105,15 +110,9 @@ class ValidationResult:
     def __post_init__(self):
         """Calculate failures, warnings, and risk level."""
         if not self.failures:
-            self.failures = [
-                name for name, check in self.checks.items()
-                if check.status == ValidationStatus.FAILED
-            ]
+            self.failures = [name for name, check in self.checks.items() if check.status == ValidationStatus.FAILED]
         if not self.warnings:
-            self.warnings = [
-                name for name, check in self.checks.items()
-                if check.status == ValidationStatus.WARNING
-            ]
+            self.warnings = [name for name, check in self.checks.items() if check.status == ValidationStatus.WARNING]
         if self.risk_level == RiskLevel.NONE:
             self.risk_level = self._compute_risk()
         if not self.summary:
@@ -158,6 +157,7 @@ class FixResult:
         fixed_length: Length of fixed text
         processing_time_ms: Time to process
     """
+
     detail_full: str
     detail_brief: str
     feed_title: str
@@ -196,7 +196,7 @@ class GeneratorConfig:
 
     # LLM settings
     provider: str = "auto"  # "anthropic", "openai", "mock", "auto"
-    model: Optional[str] = None
+    model: str | None = None
     temperature: float = 0.3  # Lower for more deterministic output
     max_tokens: int = 4096
     timeout: float = 60.0
@@ -227,6 +227,7 @@ class SpanContext:
         severity: Severity level
         rationale: Why this was flagged
     """
+
     detection_id: str
     type_id: str
     type_label: str
@@ -240,7 +241,7 @@ class SpanContext:
     def to_prompt_line(self) -> str:
         """Format for inclusion in LLM prompt."""
         return (
-            f"- [{self.span_start}:{self.span_end}] \"{self.text}\" "
+            f'- [{self.span_start}:{self.span_end}] "{self.text}" '
             f"| Type: {self.type_id} ({self.type_label}) "
             f"| Action: {self.action} | Severity: {self.severity}/5"
         )

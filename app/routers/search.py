@@ -7,15 +7,14 @@ GET /v1/search - Full-text search with facets and suggestions
 
 import logging
 from datetime import datetime
-from typing import Optional, List
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.search_service import SearchService
 from app.schemas.search import SearchResponse
+from app.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +25,20 @@ router = APIRouter(prefix="/v1/search", tags=["search"])
 _search_cache: TTLCache = TTLCache(maxsize=500, ttl=300)
 
 
-def _parse_comma_list(value: Optional[str]) -> Optional[List[str]]:
+def _parse_comma_list(value: str | None) -> list[str] | None:
     """Parse a comma-separated string into a list of trimmed values."""
     if not value:
         return None
-    items = [v.strip() for v in value.split(',') if v.strip()]
+    items = [v.strip() for v in value.split(",") if v.strip()]
     return items if items else None
 
 
 def _get_cache_key(
     query: str,
-    categories: Optional[List[str]],
-    sources: Optional[List[str]],
-    published_after: Optional[datetime],
-    published_before: Optional[datetime],
+    categories: list[str] | None,
+    sources: list[str] | None,
+    published_after: datetime | None,
+    published_before: datetime | None,
     sort: str,
     limit: int,
     offset: int,
@@ -55,52 +54,24 @@ def _get_cache_key(
 
 @router.get("", response_model=SearchResponse)
 def search(
-    q: str = Query(
-        ...,
-        min_length=2,
-        description="Search query (min 2 characters)"
-    ),
+    q: str = Query(..., min_length=2, description="Search query (min 2 characters)"),
     # New multi-value parameters (comma-separated)
-    categories: Optional[str] = Query(
-        None,
-        description="Filter by feed_category, comma-separated (e.g., 'world,us,technology')"
+    categories: str | None = Query(
+        None, description="Filter by feed_category, comma-separated (e.g., 'world,us,technology')"
     ),
-    sources: Optional[str] = Query(
-        None,
-        description="Filter by publisher slug, comma-separated (e.g., 'ap,reuters')"
-    ),
+    sources: str | None = Query(None, description="Filter by publisher slug, comma-separated (e.g., 'ap,reuters')"),
     # Backward-compatible single-value aliases (deprecated)
-    category: Optional[str] = Query(
-        None,
-        description="[Deprecated: use 'categories'] Filter by single feed_category"
+    category: str | None = Query(None, description="[Deprecated: use 'categories'] Filter by single feed_category"),
+    source: str | None = Query(None, description="[Deprecated: use 'sources'] Filter by single publisher slug"),
+    published_after: datetime | None = Query(
+        None, description="Filter to articles published after this timestamp (ISO format)"
     ),
-    source: Optional[str] = Query(
-        None,
-        description="[Deprecated: use 'sources'] Filter by single publisher slug"
+    published_before: datetime | None = Query(
+        None, description="Filter to articles published before this timestamp (ISO format)"
     ),
-    published_after: Optional[datetime] = Query(
-        None,
-        description="Filter to articles published after this timestamp (ISO format)"
-    ),
-    published_before: Optional[datetime] = Query(
-        None,
-        description="Filter to articles published before this timestamp (ISO format)"
-    ),
-    sort: str = Query(
-        "relevance",
-        description="Sort order: 'relevance' (default) or 'recency'"
-    ),
-    limit: int = Query(
-        20,
-        ge=1,
-        le=50,
-        description="Results per page (1-50)"
-    ),
-    offset: int = Query(
-        0,
-        ge=0,
-        description="Pagination offset"
-    ),
+    sort: str = Query("relevance", description="Sort order: 'relevance' (default) or 'recency'"),
+    limit: int = Query(20, ge=1, le=50, description="Results per page (1-50)"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
     db: Session = Depends(get_db),
 ) -> SearchResponse:
     """
@@ -118,10 +89,7 @@ def search(
     """
     # Validate sort parameter
     if sort not in ("relevance", "recency"):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid sort parameter. Must be 'relevance' or 'recency'."
-        )
+        raise HTTPException(status_code=400, detail="Invalid sort parameter. Must be 'relevance' or 'recency'.")
 
     # Parse multi-value parameters
     category_list = _parse_comma_list(categories)
@@ -134,9 +102,7 @@ def search(
         source_list = [source]
 
     # Check cache
-    cache_key = _get_cache_key(
-        q, category_list, source_list, published_after, published_before, sort, limit, offset
-    )
+    cache_key = _get_cache_key(q, category_list, source_list, published_after, published_before, sort, limit, offset)
     if cache_key in _search_cache:
         logger.debug(f"Search cache hit for query: {q}")
         return _search_cache[cache_key]
@@ -156,10 +122,7 @@ def search(
         )
     except Exception as e:
         logger.error(f"Search failed for query '{q}': {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Search failed. Please try again."
-        )
+        raise HTTPException(status_code=500, detail="Search failed. Please try again.")
 
     # Cache result
     _search_cache[cache_key] = result

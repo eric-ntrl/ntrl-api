@@ -12,20 +12,14 @@ and test_feed_outputs_grammar.py (which tests grammar integrity).
 """
 
 import json
-import os
 from pathlib import Path
-from typing import List
-
-import pytest
 
 from app.services.neutralizer import (
+    BRIEF_BANNED_PHRASES,
     MockNeutralizerProvider,
-    TransparencySpan,
     find_phrase_positions,
     validate_brief_neutralization,
-    BRIEF_BANNED_PHRASES,
 )
-
 
 # Test fixtures
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -134,8 +128,7 @@ class TestBriefNeutralization:
         ]
 
         for phrase in required_phrases:
-            assert phrase.lower() in {p.lower() for p in BRIEF_BANNED_PHRASES}, \
-                f"Missing required phrase: {phrase}"
+            assert phrase.lower() in {p.lower() for p in BRIEF_BANNED_PHRASES}, f"Missing required phrase: {phrase}"
 
     def test_entertainment_banned_phrases_detected(self):
         """Entertainment-specific phrases from fixture should trigger validation."""
@@ -150,18 +143,15 @@ class TestBriefNeutralization:
 
             # Check if any violation matches (case-insensitive partial match)
             term_lower = term.lower()
-            found = any(term_lower in v.lower() or v.lower() in term_lower
-                       for v in violations)
+            found = any(term_lower in v.lower() or v.lower() in term_lower for v in violations)
 
             # Some terms may be part of larger phrases in BRIEF_BANNED_PHRASES
             # so we check if the term appears in the brief AND triggers a violation
             if term_lower in test_brief.lower():
                 # The term is in the brief, check if it's in our banned phrases
-                in_banned = any(term_lower in phrase.lower()
-                              for phrase in BRIEF_BANNED_PHRASES)
+                in_banned = any(term_lower in phrase.lower() for phrase in BRIEF_BANNED_PHRASES)
                 if in_banned:
-                    assert found or len(violations) > 0, \
-                        f"Term '{term}' should trigger validation"
+                    assert found or len(violations) > 0, f"Term '{term}' should trigger validation"
 
 
 class TestEntertainmentNeutralizationExamples:
@@ -184,9 +174,9 @@ class TestEntertainmentNeutralizationExamples:
         brief = "The couple was spotted on a luxury yacht."
         violations = validate_brief_neutralization(brief)
         # Check for any luxury-related violation
-        assert any("luxury" in v.lower() for v in violations) or \
-               any("luxurious" in v.lower() for v in violations), \
-               f"'luxury' should be detected, got: {violations}"
+        assert any("luxury" in v.lower() for v in violations) or any("luxurious" in v.lower() for v in violations), (
+            f"'luxury' should be detected, got: {violations}"
+        )
 
     def test_celebrity_hotspot_neutralization(self):
         """'celebrity hotspot' should trigger validation (should be 'restaurant')."""
@@ -198,9 +188,9 @@ class TestEntertainmentNeutralizationExamples:
         """'appeared relaxed and affectionate' should trigger validation."""
         brief = "Sources say they appeared relaxed and affectionate during dinner."
         violations = validate_brief_neutralization(brief)
-        assert any("relaxed and affectionate" in v.lower() for v in violations) or \
-               any("affectionate" in v.lower() for v in violations), \
-               f"Should detect 'relaxed and affectionate', got: {violations}"
+        assert any("relaxed and affectionate" in v.lower() for v in violations) or any(
+            "affectionate" in v.lower() for v in violations
+        ), f"Should detect 'relaxed and affectionate', got: {violations}"
 
     def test_clean_celebrity_reporting_passes(self):
         """Neutral celebrity reporting should not trigger validation."""
@@ -488,8 +478,7 @@ class TestGarbledOutputDetection:
         # Create text with proper broken patterns that match the regex
         # Pattern r'\. [A-Z][a-z]* [,\.\!\?]' matches ". The ," or ". She ."
         broken = (
-            "Start here. The , end here. She . more text. He . "
-            "another line. They . still more. It , at the end. We . "
+            "Start here. The , end here. She . more text. He . another line. They . still more. It , at the end. We . "
         )
         # Pad to make it long enough to not trigger length check
         broken = broken + ("Normal text. " * 50)
@@ -514,12 +503,7 @@ class TestDetailFullResultStatus:
         """Failure status should be properly set."""
         from app.services.neutralizer import DetailFullResult
 
-        result = DetailFullResult(
-            detail_full="",
-            spans=[],
-            status="failed_llm",
-            failure_reason="API error"
-        )
+        result = DetailFullResult(detail_full="", spans=[], status="failed_llm", failure_reason="API error")
         assert result.status == "failed_llm"
         assert result.failure_reason == "API error"
 
@@ -528,10 +512,7 @@ class TestDetailFullResultStatus:
         from app.services.neutralizer import DetailFullResult
 
         result = DetailFullResult(
-            detail_full="",
-            spans=[],
-            status="failed_garbled",
-            failure_reason="Output was garbled"
+            detail_full="", spans=[], status="failed_garbled", failure_reason="Output was garbled"
         )
         assert result.status == "failed_garbled"
         assert result.failure_reason == "Output was garbled"

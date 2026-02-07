@@ -15,25 +15,21 @@ import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List, Optional, Set
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.models import (
-    StoryRaw,
-    StoryNeutralized,
-    TransparencySpan,
-    ManipulationSpan,
-    DailyBrief,
-    DailyBriefItem,
-    PipelineLog,
-    PipelineJob,
-    PipelineRunSummary,
-    EvaluationRun,
     ArticleEvaluation,
     ContentLifecycleEvent,
+    DailyBrief,
+    DailyBriefItem,
     LifecycleEventType,
+    ManipulationSpan,
+    PipelineLog,
+    StoryNeutralized,
+    StoryRaw,
+    TransparencySpan,
 )
 from app.services.retention.policy_service import get_active_policy
 
@@ -46,29 +42,26 @@ BRIEF_PROTECTION_HOURS = int(os.getenv("BRIEF_CUTOFF_HOURS", "24"))
 @dataclass
 class PurgeResult:
     """Result of a purge operation."""
+
     success: bool
     dry_run: bool = False
     stories_soft_deleted: int = 0
     stories_hard_deleted: int = 0
     stories_skipped: int = 0
     related_records_deleted: dict = field(default_factory=dict)
-    errors: List[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
     protected_by_brief: int = 0
     protected_by_hold: int = 0
 
 
-def _get_brief_protected_story_ids(db: Session) -> Set[uuid.UUID]:
+def _get_brief_protected_story_ids(db: Session) -> set[uuid.UUID]:
     """
     Get IDs of stories in the current brief (protected from deletion).
 
     Returns set of StoryRaw IDs that are in the current brief.
     """
     # Get current brief
-    brief = (
-        db.query(DailyBrief)
-        .filter(DailyBrief.is_current == True)
-        .first()
-    )
+    brief = db.query(DailyBrief).filter(DailyBrief.is_current == True).first()
 
     if not brief:
         return set()
@@ -81,11 +74,7 @@ def _get_brief_protected_story_ids(db: Session) -> Set[uuid.UUID]:
         return set()
 
     # Get raw IDs from neutralized
-    neutralized = (
-        db.query(StoryNeutralized.story_raw_id)
-        .filter(StoryNeutralized.id.in_(neutralized_ids))
-        .all()
-    )
+    neutralized = db.query(StoryNeutralized.story_raw_id).filter(StoryNeutralized.id.in_(neutralized_ids)).all()
 
     return {n.story_raw_id for n in neutralized}
 
@@ -94,6 +83,7 @@ def _invalidate_caches():
     """Invalidate brief and story caches after deletion."""
     try:
         from app.routers.brief import invalidate_brief_cache
+
         invalidate_brief_cache()
         logger.debug("Brief cache invalidated")
     except Exception as e:
@@ -101,6 +91,7 @@ def _invalidate_caches():
 
     try:
         from app.routers.stories import _story_cache, _transparency_cache
+
         _story_cache.clear()
         _transparency_cache.clear()
         logger.debug("Story caches invalidated")
@@ -113,15 +104,13 @@ def _log_lifecycle_event(
     story_id: uuid.UUID,
     event_type: LifecycleEventType,
     initiated_by: str,
-    idempotency_key: Optional[str] = None,
-    event_metadata: Optional[dict] = None,
+    idempotency_key: str | None = None,
+    event_metadata: dict | None = None,
 ):
     """Log a lifecycle event for audit trail."""
     if idempotency_key:
         existing = (
-            db.query(ContentLifecycleEvent)
-            .filter(ContentLifecycleEvent.idempotency_key == idempotency_key)
-            .first()
+            db.query(ContentLifecycleEvent).filter(ContentLifecycleEvent.idempotency_key == idempotency_key).first()
         )
         if existing:
             return existing
@@ -202,49 +191,52 @@ def _hard_delete_story_cascade(
 
     # Get all neutralized versions for this story
     neutralized_ids = [
-        n.id for n in
-        db.query(StoryNeutralized.id)
-        .filter(StoryNeutralized.story_raw_id == story_id)
-        .all()
+        n.id for n in db.query(StoryNeutralized.id).filter(StoryNeutralized.story_raw_id == story_id).all()
     ]
 
     # Level 1: Pure leaf tables
     counts["transparency_spans"] = (
-        db.query(TransparencySpan)
-        .filter(TransparencySpan.story_neutralized_id.in_(neutralized_ids))
-        .delete(synchronize_session=False)
-    ) if neutralized_ids else 0
+        (
+            db.query(TransparencySpan)
+            .filter(TransparencySpan.story_neutralized_id.in_(neutralized_ids))
+            .delete(synchronize_session=False)
+        )
+        if neutralized_ids
+        else 0
+    )
 
     counts["manipulation_spans"] = (
-        db.query(ManipulationSpan)
-        .filter(ManipulationSpan.story_neutralized_id.in_(neutralized_ids))
-        .delete(synchronize_session=False)
-    ) if neutralized_ids else 0
+        (
+            db.query(ManipulationSpan)
+            .filter(ManipulationSpan.story_neutralized_id.in_(neutralized_ids))
+            .delete(synchronize_session=False)
+        )
+        if neutralized_ids
+        else 0
+    )
 
     counts["daily_brief_items"] = (
-        db.query(DailyBriefItem)
-        .filter(DailyBriefItem.story_neutralized_id.in_(neutralized_ids))
-        .delete(synchronize_session=False)
-    ) if neutralized_ids else 0
+        (
+            db.query(DailyBriefItem)
+            .filter(DailyBriefItem.story_neutralized_id.in_(neutralized_ids))
+            .delete(synchronize_session=False)
+        )
+        if neutralized_ids
+        else 0
+    )
 
     counts["article_evaluations"] = (
-        db.query(ArticleEvaluation)
-        .filter(ArticleEvaluation.story_raw_id == story_id)
-        .delete(synchronize_session=False)
+        db.query(ArticleEvaluation).filter(ArticleEvaluation.story_raw_id == story_id).delete(synchronize_session=False)
     )
 
     # Level 2: StoryNeutralized
     counts["stories_neutralized"] = (
-        db.query(StoryNeutralized)
-        .filter(StoryNeutralized.story_raw_id == story_id)
-        .delete(synchronize_session=False)
+        db.query(StoryNeutralized).filter(StoryNeutralized.story_raw_id == story_id).delete(synchronize_session=False)
     )
 
     # Level 3: PipelineLog (references StoryRaw)
     counts["pipeline_logs"] = (
-        db.query(PipelineLog)
-        .filter(PipelineLog.story_raw_id == story_id)
-        .delete(synchronize_session=False)
+        db.query(PipelineLog).filter(PipelineLog.story_raw_id == story_id).delete(synchronize_session=False)
     )
 
     # Log before deleting
@@ -350,9 +342,7 @@ def purge_expired_content(
 
                 # Aggregate counts
                 for table, count in counts.items():
-                    result.related_records_deleted[table] = (
-                        result.related_records_deleted.get(table, 0) + count
-                    )
+                    result.related_records_deleted[table] = result.related_records_deleted.get(table, 0) + count
 
             except Exception as e:
                 logger.error(f"Failed to hard delete story {story.id}: {e}")
@@ -424,9 +414,7 @@ def purge_development_mode(
                 result.stories_hard_deleted += 1
 
                 for table, count in counts.items():
-                    result.related_records_deleted[table] = (
-                        result.related_records_deleted.get(table, 0) + count
-                    )
+                    result.related_records_deleted[table] = result.related_records_deleted.get(table, 0) + count
 
             except Exception as e:
                 logger.error(f"Failed to delete story {story.id}: {e}")
@@ -446,7 +434,7 @@ def purge_development_mode(
 
 def dry_run_purge(
     db: Session,
-    days: Optional[int] = None,
+    days: int | None = None,
     development_mode: bool = False,
 ) -> dict:
     """
@@ -497,22 +485,20 @@ def cleanup_orphaned_records(db: Session, dry_run: bool = False) -> dict:
         neutralized_ids = [n.id for n in orphaned_neutralized]
 
         # Delete related spans
-        db.query(TransparencySpan).filter(
-            TransparencySpan.story_neutralized_id.in_(neutralized_ids)
-        ).delete(synchronize_session=False)
+        db.query(TransparencySpan).filter(TransparencySpan.story_neutralized_id.in_(neutralized_ids)).delete(
+            synchronize_session=False
+        )
 
-        db.query(ManipulationSpan).filter(
-            ManipulationSpan.story_neutralized_id.in_(neutralized_ids)
-        ).delete(synchronize_session=False)
+        db.query(ManipulationSpan).filter(ManipulationSpan.story_neutralized_id.in_(neutralized_ids)).delete(
+            synchronize_session=False
+        )
 
-        db.query(DailyBriefItem).filter(
-            DailyBriefItem.story_neutralized_id.in_(neutralized_ids)
-        ).delete(synchronize_session=False)
+        db.query(DailyBriefItem).filter(DailyBriefItem.story_neutralized_id.in_(neutralized_ids)).delete(
+            synchronize_session=False
+        )
 
         # Delete orphaned neutralized
-        db.query(StoryNeutralized).filter(
-            StoryNeutralized.id.in_(neutralized_ids)
-        ).delete(synchronize_session=False)
+        db.query(StoryNeutralized).filter(StoryNeutralized.id.in_(neutralized_ids)).delete(synchronize_session=False)
 
         db.commit()
 

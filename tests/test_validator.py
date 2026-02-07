@@ -4,11 +4,12 @@ Unit tests for the NTRL-FIX Red-Line Validator.
 """
 
 import pytest
+
 from app.services.ntrl_fix import (
     RedLineValidator,
-    get_validator,
-    ValidationStatus,
     RiskLevel,
+    ValidationStatus,
+    get_validator,
 )
 
 

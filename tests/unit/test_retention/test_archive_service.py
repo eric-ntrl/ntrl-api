@@ -1,10 +1,9 @@
 # tests/unit/test_retention/test_archive_service.py
 """Unit tests for archive service."""
 
-import pytest
 import uuid
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 
 class TestFindArchivableStories:
@@ -16,7 +15,7 @@ class TestFindArchivableStories:
 
         mock_db = MagicMock()
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = None
             result = find_archivable_stories(mock_db)
 
@@ -24,8 +23,8 @@ class TestFindArchivableStories:
 
     def test_respects_active_days_cutoff(self):
         """Should only return stories older than active_days."""
-        from app.services.retention.archive_service import find_archivable_stories
         from app.models import RetentionPolicy
+        from app.services.retention.archive_service import find_archivable_stories
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.active_days = 7
@@ -36,7 +35,7 @@ class TestFindArchivableStories:
         mock_query = mock_db.query.return_value
         mock_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = mock_stories
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = mock_policy
             result = find_archivable_stories(mock_db)
 
@@ -44,8 +43,8 @@ class TestFindArchivableStories:
 
     def test_respects_custom_cutoff_date(self):
         """Should use provided cutoff_date instead of policy default."""
-        from app.services.retention.archive_service import find_archivable_stories
         from app.models import RetentionPolicy
+        from app.services.retention.archive_service import find_archivable_stories
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.active_days = 7
@@ -56,7 +55,7 @@ class TestFindArchivableStories:
 
         custom_cutoff = datetime.utcnow() - timedelta(days=3)
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = mock_policy
             result = find_archivable_stories(mock_db, cutoff_date=custom_cutoff)
 
@@ -69,8 +68,8 @@ class TestArchiveStory:
 
     def test_skips_already_archived_idempotent(self):
         """Should return True if story was already archived today."""
+        from app.models import StoryRaw
         from app.services.retention.archive_service import archive_story
-        from app.models import StoryRaw, ContentLifecycleEvent
 
         mock_story = MagicMock(spec=StoryRaw)
         mock_story.id = uuid.uuid4()
@@ -87,8 +86,8 @@ class TestArchiveStory:
 
     def test_deletes_from_hot_storage(self):
         """Should delete raw content from hot storage during archive."""
-        from app.services.retention.archive_service import archive_story
         from app.models import StoryRaw
+        from app.services.retention.archive_service import archive_story
 
         mock_story = MagicMock(spec=StoryRaw)
         mock_story.id = uuid.uuid4()
@@ -99,7 +98,7 @@ class TestArchiveStory:
 
         mock_storage = MagicMock()
 
-        with patch('app.services.retention.archive_service.get_storage_provider') as mock_get_storage:
+        with patch("app.services.retention.archive_service.get_storage_provider") as mock_get_storage:
             mock_get_storage.return_value = mock_storage
             result = archive_story(mock_db, mock_story, move_to_glacier=True)
 
@@ -107,8 +106,8 @@ class TestArchiveStory:
 
     def test_updates_story_status_on_success(self):
         """Should update story archive status and timestamp on success."""
+        from app.models import ArchiveStatus, StoryRaw
         from app.services.retention.archive_service import archive_story
-        from app.models import StoryRaw, ArchiveStatus
 
         mock_story = MagicMock(spec=StoryRaw)
         mock_story.id = uuid.uuid4()
@@ -117,7 +116,7 @@ class TestArchiveStory:
         mock_db = MagicMock()
         mock_db.query.return_value.filter.return_value.first.return_value = None
 
-        with patch('app.services.retention.archive_service.get_storage_provider') as mock_get_storage:
+        with patch("app.services.retention.archive_service.get_storage_provider") as mock_get_storage:
             mock_get_storage.return_value = MagicMock()
             result = archive_story(mock_db, mock_story, move_to_glacier=True)
 
@@ -136,7 +135,7 @@ class TestArchiveBatch:
 
         mock_db = MagicMock()
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = None
             result = archive_batch(mock_db)
 
@@ -145,15 +144,15 @@ class TestArchiveBatch:
 
     def test_skips_archival_in_hard_delete_mode(self):
         """Should skip archival when hard_delete_mode is enabled."""
-        from app.services.retention.archive_service import archive_batch
         from app.models import RetentionPolicy
+        from app.services.retention.archive_service import archive_batch
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.hard_delete_mode = True
 
         mock_db = MagicMock()
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = mock_policy
             result = archive_batch(mock_db, batch_size=100)
 
@@ -162,8 +161,8 @@ class TestArchiveBatch:
 
     def test_dry_run_does_not_archive(self):
         """Should not actually archive in dry_run mode."""
-        from app.services.retention.archive_service import archive_batch
         from app.models import RetentionPolicy, StoryRaw
+        from app.services.retention.archive_service import archive_batch
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.hard_delete_mode = False
@@ -173,9 +172,9 @@ class TestArchiveBatch:
 
         mock_db = MagicMock()
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get_policy:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get_policy:
             mock_get_policy.return_value = mock_policy
-            with patch('app.services.retention.archive_service.find_archivable_stories') as mock_find:
+            with patch("app.services.retention.archive_service.find_archivable_stories") as mock_find:
                 mock_find.return_value = mock_stories
                 result = archive_batch(mock_db, dry_run=True)
 
@@ -194,7 +193,7 @@ class TestGetRetentionStats:
 
         mock_db = MagicMock()
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = None
             result = get_retention_stats(mock_db)
 
@@ -202,8 +201,8 @@ class TestGetRetentionStats:
 
     def test_returns_counts_by_tier(self):
         """Should return story counts grouped by retention tier."""
-        from app.services.retention.archive_service import get_retention_stats
         from app.models import RetentionPolicy
+        from app.services.retention.archive_service import get_retention_stats
 
         mock_policy = MagicMock(spec=RetentionPolicy)
         mock_policy.name = "production"
@@ -216,7 +215,7 @@ class TestGetRetentionStats:
         mock_db.query.return_value.scalar.return_value = 100
         mock_db.query.return_value.filter.return_value.scalar.return_value = 10
 
-        with patch('app.services.retention.archive_service.get_active_policy') as mock_get:
+        with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = mock_policy
             result = get_retention_stats(mock_db)
 

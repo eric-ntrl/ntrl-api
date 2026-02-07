@@ -4,13 +4,13 @@ Unit tests for the NTRL-SCAN Lexical Detector.
 """
 
 import pytest
+
 from app.services.ntrl_scan.lexical_detector import (
     LexicalDetector,
     get_lexical_detector,
 )
 from app.services.ntrl_scan.types import (
     ArticleSegment,
-    DetectorSource,
     SpanAction,
 )
 

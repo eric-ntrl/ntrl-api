@@ -4,17 +4,18 @@ Unit tests for the NTRL-FIX Fixer orchestrator.
 """
 
 import pytest
+
 from app.services.ntrl_fix import (
-    NTRLFixer,
-    FixerConfig,
-    fix_article,
-    GeneratorConfig,
     FixAction,
+    FixerConfig,
+    GeneratorConfig,
+    NTRLFixer,
+    fix_article,
 )
 from app.services.ntrl_scan import (
+    ArticleSegment,
     NTRLScanner,
     ScannerConfig,
-    ArticleSegment,
 )
 
 
@@ -116,13 +117,13 @@ class TestFixerOutputs:
             body_scan=scan_result,
         )
 
-        assert hasattr(result, 'detail_full')
-        assert hasattr(result, 'detail_brief')
-        assert hasattr(result, 'feed_title')
-        assert hasattr(result, 'feed_summary')
-        assert hasattr(result, 'changes')
-        assert hasattr(result, 'validation')
-        assert hasattr(result, 'processing_time_ms')
+        assert hasattr(result, "detail_full")
+        assert hasattr(result, "detail_brief")
+        assert hasattr(result, "feed_title")
+        assert hasattr(result, "feed_summary")
+        assert hasattr(result, "changes")
+        assert hasattr(result, "validation")
+        assert hasattr(result, "processing_time_ms")
 
     @pytest.mark.asyncio
     async def test_validation_included(self, fixer, scanner):
@@ -133,8 +134,8 @@ class TestFixerOutputs:
         result = await fixer.fix(body=text, body_scan=scan_result)
 
         assert result.validation is not None
-        assert hasattr(result.validation, 'passed')
-        assert hasattr(result.validation, 'checks')
+        assert hasattr(result.validation, "passed")
+        assert hasattr(result.validation, "checks")
 
 
 class TestChangeRecords:
@@ -161,11 +162,11 @@ class TestChangeRecords:
         result = await fixer.fix(body=text, body_scan=scan_result)
 
         for change in result.changes:
-            assert hasattr(change, 'detection_id')
-            assert hasattr(change, 'type_id')
-            assert hasattr(change, 'before')
-            assert hasattr(change, 'after')
-            assert hasattr(change, 'action')
+            assert hasattr(change, "detection_id")
+            assert hasattr(change, "type_id")
+            assert hasattr(change, "before")
+            assert hasattr(change, "after")
+            assert hasattr(change, "action")
             assert isinstance(change.action, FixAction)
 
 

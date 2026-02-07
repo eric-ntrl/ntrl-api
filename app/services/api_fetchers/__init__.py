@@ -12,8 +12,8 @@ Supported APIs:
 """
 
 from app.services.api_fetchers.base import BaseFetcher, NormalizedEntry
-from app.services.api_fetchers.perigon_fetcher import PerigonFetcher
 from app.services.api_fetchers.newsdata_fetcher import NewsDataFetcher
+from app.services.api_fetchers.perigon_fetcher import PerigonFetcher
 
 __all__ = [
     "BaseFetcher",

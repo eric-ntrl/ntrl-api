@@ -12,7 +12,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import List, Optional, Literal
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -196,17 +196,18 @@ Grade based on neutrality, accuracy, and appropriate compression for the format.
 @dataclass
 class QualityScore:
     """Result from quality scoring."""
+
     score: float
     feedback: str
-    rule_violations: List[dict]
+    rule_violations: list[dict]
 
 
 def score_quality(
     original_text: str,
     neutral_text: str,
     provider: Literal["openai", "anthropic"] = "openai",
-    original_headline: Optional[str] = None,
-    neutral_headline: Optional[str] = None,
+    original_headline: str | None = None,
+    neutral_headline: str | None = None,
 ) -> QualityScore:
     """
     Score neutralization quality using an LLM.
@@ -252,6 +253,7 @@ def _score_with_openai(prompt: str) -> QualityScore:
 
     try:
         from openai import OpenAI
+
         client = OpenAI(api_key=api_key)
 
         response = client.chat.completions.create(
@@ -283,6 +285,7 @@ def _score_with_anthropic(prompt: str) -> QualityScore:
 
     try:
         import anthropic
+
         client = anthropic.Anthropic(api_key=api_key)
 
         response = client.messages.create(
@@ -356,9 +359,9 @@ DETAIL TITLE: {detail_title}"""
 
 
 def score_quality_batch(
-    items: List[dict],
+    items: list[dict],
     provider: Literal["openai", "anthropic"] = "openai",
-) -> List[QualityScore]:
+) -> list[QualityScore]:
     """
     Score multiple items.
 
@@ -382,9 +385,11 @@ def score_quality_batch(
             results.append(score)
         except Exception as e:
             logger.error(f"Failed to score item: {e}")
-            results.append(QualityScore(
-                score=0.0,
-                feedback=f"Scoring failed: {e}",
-                rule_violations=[],
-            ))
+            results.append(
+                QualityScore(
+                    score=0.0,
+                    feedback=f"Scoring failed: {e}",
+                    rule_violations=[],
+                )
+            )
     return results

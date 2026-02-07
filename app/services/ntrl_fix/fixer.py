@@ -13,23 +13,22 @@ Target latency: ~800ms total (generators run in parallel)
 
 import asyncio
 import time
-from typing import Optional
 from dataclasses import dataclass
 
+from app.taxonomy import CATEGORY_NAMES, get_type
+
+from ..ntrl_scan.types import ArticleSegment, MergedScanResult
+from .detail_brief_gen import DetailBriefGenerator, DetailBriefResult
+from .detail_full_gen import DetailFullGenerator, DetailFullResult
+from .feed_outputs_gen import FeedOutputsGenerator, FeedOutputsResult
 from .types import (
-    FixResult,
     ChangeRecord,
     FixAction,
+    FixResult,
     GeneratorConfig,
     ValidationResult,
 )
-from .detail_full_gen import DetailFullGenerator, DetailFullResult
-from .detail_brief_gen import DetailBriefGenerator, DetailBriefResult
-from .feed_outputs_gen import FeedOutputsGenerator, FeedOutputsResult
 from .validator import RedLineValidator, get_validator
-
-from ..ntrl_scan.types import MergedScanResult, ArticleSegment
-from app.taxonomy import get_type, CATEGORY_NAMES
 
 
 @dataclass
@@ -37,11 +36,11 @@ class FixerConfig:
     """Configuration for the NTRL Fixer."""
 
     # Generator settings
-    generator_config: Optional[GeneratorConfig] = None
+    generator_config: GeneratorConfig | None = None
 
     # Validation settings
     strict_validation: bool = True  # Fail on any invariance violation
-    retry_on_failure: bool = True   # Retry with conservative settings
+    retry_on_failure: bool = True  # Retry with conservative settings
     max_retries: int = 2
 
     # Fallback settings
@@ -62,15 +61,15 @@ class NTRLFixer:
         )
     """
 
-    def __init__(self, config: Optional[FixerConfig] = None):
+    def __init__(self, config: FixerConfig | None = None):
         """Initialize fixer with configuration."""
         self.config = config or FixerConfig()
 
         # Initialize generators (lazy)
-        self._detail_full_gen: Optional[DetailFullGenerator] = None
-        self._detail_brief_gen: Optional[DetailBriefGenerator] = None
-        self._feed_outputs_gen: Optional[FeedOutputsGenerator] = None
-        self._validator: Optional[RedLineValidator] = None
+        self._detail_full_gen: DetailFullGenerator | None = None
+        self._detail_brief_gen: DetailBriefGenerator | None = None
+        self._feed_outputs_gen: FeedOutputsGenerator | None = None
+        self._validator: RedLineValidator | None = None
 
     @property
     def detail_full_gen(self) -> DetailFullGenerator:
@@ -104,8 +103,8 @@ class NTRLFixer:
         self,
         body: str,
         title: str = "",
-        body_scan: Optional[MergedScanResult] = None,
-        title_scan: Optional[MergedScanResult] = None,
+        body_scan: MergedScanResult | None = None,
+        title_scan: MergedScanResult | None = None,
     ) -> FixResult:
         """
         Fix/neutralize article content using detected manipulation spans.
@@ -129,30 +128,17 @@ class NTRLFixer:
 
         # Create empty scan results if not provided
         if body_scan is None:
-            body_scan = MergedScanResult(
-                spans=[],
-                segment=ArticleSegment.BODY,
-                text_length=len(body)
-            )
+            body_scan = MergedScanResult(spans=[], segment=ArticleSegment.BODY, text_length=len(body))
 
         # Run all generators in parallel
-        detail_full_task = asyncio.create_task(
-            self.detail_full_gen.generate(body, body_scan)
-        )
-        detail_brief_task = asyncio.create_task(
-            self.detail_brief_gen.generate(body, body_scan)
-        )
-        feed_outputs_task = asyncio.create_task(
-            self.feed_outputs_gen.generate(body, title, title_scan)
-        )
+        detail_full_task = asyncio.create_task(self.detail_full_gen.generate(body, body_scan))
+        detail_brief_task = asyncio.create_task(self.detail_brief_gen.generate(body, body_scan))
+        feed_outputs_task = asyncio.create_task(self.feed_outputs_gen.generate(body, title, title_scan))
 
         # Await all
         try:
             detail_full, detail_brief, feed_outputs = await asyncio.gather(
-                detail_full_task,
-                detail_brief_task,
-                feed_outputs_task,
-                return_exceptions=True
+                detail_full_task, detail_brief_task, feed_outputs_task, return_exceptions=True
             )
         except Exception as e:
             print(f"Generator error: {e}")
@@ -173,16 +159,12 @@ class NTRLFixer:
 
         # Validate detail_full against original
         validation = self.validator.validate(
-            original=body,
-            rewritten=detail_full.text,
-            strict=self.config.strict_validation
+            original=body, rewritten=detail_full.text, strict=self.config.strict_validation
         )
 
         # If validation failed and retries enabled, try again with more conservative settings
         if not validation.passed and self.config.retry_on_failure:
-            detail_full, validation = await self._retry_with_fallback(
-                body, body_scan, validation
-            )
+            detail_full, validation = await self._retry_with_fallback(body, body_scan, validation)
 
         # Build change records from detail_full changes
         changes = self._build_change_records(detail_full.changes, body_scan)
@@ -198,14 +180,11 @@ class NTRLFixer:
             validation=validation,
             original_length=len(body),
             fixed_length=len(detail_full.text),
-            processing_time_ms=round(processing_time_ms, 2)
+            processing_time_ms=round(processing_time_ms, 2),
         )
 
     async def _retry_with_fallback(
-        self,
-        body: str,
-        body_scan: MergedScanResult,
-        original_validation: ValidationResult
+        self, body: str, body_scan: MergedScanResult, original_validation: ValidationResult
     ) -> tuple[DetailFullResult, ValidationResult]:
         """
         Retry generation with more conservative settings.
@@ -222,9 +201,7 @@ class NTRLFixer:
             result = self.detail_full_gen._mock_generate(body, body_scan.spans)
 
             validation = self.validator.validate(
-                original=body,
-                rewritten=result.text,
-                strict=self.config.strict_validation
+                original=body, rewritten=result.text, strict=self.config.strict_validation
             )
 
             if validation.passed:
@@ -234,29 +211,18 @@ class NTRLFixer:
         if self.config.fallback_to_original:
             return (
                 DetailFullResult(text=body, changes=[]),
-                ValidationResult(
-                    passed=True,
-                    checks={},
-                    summary="Fallback to original - no changes made"
-                )
+                ValidationResult(passed=True, checks={}, summary="Fallback to original - no changes made"),
             )
 
         # Return last attempt
         return result, validation
 
-    def _build_change_records(
-        self,
-        raw_changes: list[dict],
-        body_scan: MergedScanResult
-    ) -> list[ChangeRecord]:
+    def _build_change_records(self, raw_changes: list[dict], body_scan: MergedScanResult) -> list[ChangeRecord]:
         """Build ChangeRecord objects from raw change data."""
         records = []
 
         # Create lookup for detection metadata
-        detection_map = {
-            span.detection_id: span
-            for span in body_scan.spans
-        }
+        detection_map = {span.detection_id: span for span in body_scan.spans}
 
         for change in raw_changes:
             detection_id = change.get("detection_id", "")
@@ -295,7 +261,7 @@ class NTRLFixer:
                 action=action,
                 severity=detection.severity if detection else 1,
                 confidence=detection.confidence if detection else 0.0,
-                rationale=change.get("rationale", "")
+                rationale=change.get("rationale", ""),
             )
             records.append(record)
 
@@ -312,7 +278,7 @@ class NTRLFixer:
             validation=ValidationResult(passed=True, checks={}),
             original_length=0,
             fixed_length=0,
-            processing_time_ms=0.0
+            processing_time_ms=0.0,
         )
 
     def _fallback_result(self, body: str, title: str) -> FixResult:
@@ -323,14 +289,10 @@ class NTRLFixer:
             feed_title=title,
             feed_summary="",
             changes=[],
-            validation=ValidationResult(
-                passed=True,
-                checks={},
-                summary="Fallback to original - generation failed"
-            ),
+            validation=ValidationResult(passed=True, checks={}, summary="Fallback to original - generation failed"),
             original_length=len(body),
             fixed_length=len(body),
-            processing_time_ms=0.0
+            processing_time_ms=0.0,
         )
 
     async def close(self):
@@ -351,9 +313,9 @@ class NTRLFixer:
 async def fix_article(
     body: str,
     title: str = "",
-    body_scan: Optional[MergedScanResult] = None,
-    title_scan: Optional[MergedScanResult] = None,
-    config: Optional[FixerConfig] = None,
+    body_scan: MergedScanResult | None = None,
+    title_scan: MergedScanResult | None = None,
+    config: FixerConfig | None = None,
 ) -> FixResult:
     """
     Convenience function to fix an article.

@@ -9,14 +9,13 @@ DELETE /v1/sources/{slug}    - Remove a source
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app import models
+from app.database import get_db
 
 router = APIRouter(prefix="/v1/sources", tags=["sources"])
 
@@ -25,37 +24,42 @@ router = APIRouter(prefix="/v1/sources", tags=["sources"])
 # Schemas
 # -----------------------------------------------------------------------------
 
+
 class SourceCreate(BaseModel):
     """Request to create a new source."""
+
     name: str = Field(..., description="Display name", min_length=1, max_length=255)
     slug: str = Field(..., description="Unique identifier (e.g., 'npr', 'bbc')", min_length=1, max_length=64)
     rss_url: str = Field(..., description="RSS feed URL")
-    default_section: Optional[str] = Field(None, description="Default section: world, us, local, business, technology")
+    default_section: str | None = Field(None, description="Default section: world, us, local, business, technology")
     is_active: bool = Field(True, description="Whether to ingest from this source")
 
 
 class SourceResponse(BaseModel):
     """Source response."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     name: str
     slug: str
     rss_url: str
-    default_section: Optional[str]
+    default_section: str | None
     is_active: bool
     created_at: datetime
 
 
 class SourceListResponse(BaseModel):
     """List of sources."""
-    sources: List[SourceResponse]
+
+    sources: list[SourceResponse]
     total: int
 
 
 # -----------------------------------------------------------------------------
 # Endpoints
 # -----------------------------------------------------------------------------
+
 
 @router.get("", response_model=SourceListResponse)
 def list_sources(
@@ -100,10 +104,7 @@ def create_source(
     # Validate section if provided
     valid_sections = ["world", "us", "local", "business", "technology"]
     if request.default_section and request.default_section not in valid_sections:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid section. Must be one of: {', '.join(valid_sections)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid section. Must be one of: {', '.join(valid_sections)}")
 
     source = models.Source(
         id=uuid.uuid4(),

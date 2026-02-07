@@ -11,21 +11,20 @@ and ingestion code.
 """
 
 import re
-from typing import Optional
 
 # Matches Perigon-style truncation markers: "...[1811 symbols]", "...[234 chars]", etc.
-TRUNCATION_PATTERN = re.compile(r'\.\.\.\s*\[\d+\s*(?:symbols?|chars?|characters?)\]')
+TRUNCATION_PATTERN = re.compile(r"\.\.\.\s*\[\d+\s*(?:symbols?|chars?|characters?)\]")
 
 
-def has_truncation_markers(body: Optional[str]) -> bool:
+def has_truncation_markers(body: str | None) -> bool:
     """Check if text contains API truncation markers."""
     if not body:
         return False
     return bool(TRUNCATION_PATTERN.search(body))
 
 
-def strip_truncation_markers(body: Optional[str]) -> Optional[str]:
+def strip_truncation_markers(body: str | None) -> str | None:
     """Remove API truncation markers from text."""
     if not body:
         return body
-    return TRUNCATION_PATTERN.sub('', body).rstrip()
+    return TRUNCATION_PATTERN.sub("", body).rstrip()

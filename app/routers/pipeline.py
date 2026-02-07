@@ -11,25 +11,20 @@ Provides endpoints for:
 These endpoints use the new two-phase architecture for improved performance.
 """
 
-from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.ntrl_batcher import (
+    ArticleInput,
+    NTRLBatcher,
+)
+from app.services.ntrl_fix import FixerConfig, GeneratorConfig
 from app.services.ntrl_pipeline import (
     NTRLPipeline,
     PipelineConfig,
-    PipelineResult,
     ProcessingMode,
 )
-from app.services.ntrl_batcher import (
-    NTRLBatcher,
-    BatchConfig,
-    ArticleInput,
-    BatchResult,
-)
-from app.services.ntrl_scan import ScannerConfig, MergedScanResult, ArticleSegment
-from app.services.ntrl_fix import FixerConfig, GeneratorConfig
-
+from app.services.ntrl_scan import ScannerConfig
 
 router = APIRouter(prefix="/v2", tags=["ntrl-v2"])
 
@@ -38,8 +33,10 @@ router = APIRouter(prefix="/v2", tags=["ntrl-v2"])
 # Request/Response Models
 # ============================================================================
 
+
 class ScanRequest(BaseModel):
     """Request for detection only."""
+
     body: str = Field(..., description="Article body text")
     title: str = Field("", description="Article title")
     enable_semantic: bool = Field(True, description="Enable LLM-based semantic detection")
@@ -47,6 +44,7 @@ class ScanRequest(BaseModel):
 
 class ScanResponse(BaseModel):
     """Response from detection."""
+
     model_config = ConfigDict(from_attributes=True)
 
     body_detections: int
@@ -61,9 +59,10 @@ class ScanResponse(BaseModel):
 
 class ProcessRequest(BaseModel):
     """Request for full pipeline processing."""
+
     body: str = Field(..., description="Article body text")
     title: str = Field("", description="Article title")
-    deck: Optional[str] = Field(None, description="Article deck/subheadline")
+    deck: str | None = Field(None, description="Article deck/subheadline")
     enable_semantic: bool = Field(True, description="Enable semantic detection")
     mock_mode: bool = Field(False, description="Use mock LLM (for testing)")
     force: bool = Field(False, description="Force reprocessing (skip cache)")
@@ -71,6 +70,7 @@ class ProcessRequest(BaseModel):
 
 class ProcessResponse(BaseModel):
     """Response from full pipeline."""
+
     model_config = ConfigDict(from_attributes=True)
 
     # Neutralized content
@@ -97,6 +97,7 @@ class ProcessResponse(BaseModel):
 
 class BatchArticle(BaseModel):
     """Single article in batch request."""
+
     article_id: str
     body: str
     title: str = ""
@@ -104,6 +105,7 @@ class BatchArticle(BaseModel):
 
 class BatchRequest(BaseModel):
     """Request for batch processing."""
+
     articles: list[BatchArticle]
     enable_semantic: bool = Field(True, description="Enable semantic detection")
     mock_mode: bool = Field(False, description="Use mock LLM (for testing)")
@@ -111,18 +113,20 @@ class BatchRequest(BaseModel):
 
 class BatchResultItem(BaseModel):
     """Result for single article in batch."""
+
     article_id: str
     success: bool
-    detail_full: Optional[str] = None
-    feed_title: Optional[str] = None
+    detail_full: str | None = None
+    feed_title: str | None = None
     total_detections: int = 0
     total_changes: int = 0
     processing_time_ms: float = 0
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class BatchResponse(BaseModel):
     """Response from batch processing."""
+
     total_articles: int
     successful: int
     failed: int
@@ -133,12 +137,14 @@ class BatchResponse(BaseModel):
 
 class TransparencyRequest(BaseModel):
     """Request for transparency data."""
+
     body: str
     title: str = ""
 
 
 class TransparencyResponse(BaseModel):
     """Full transparency package response."""
+
     total_detections: int
     detections_by_category: dict[str, int]
     detections_by_severity: dict[int, int]
@@ -152,6 +158,7 @@ class TransparencyResponse(BaseModel):
 # ============================================================================
 # Endpoints
 # ============================================================================
+
 
 @router.post("/scan", response_model=ScanResponse)
 async def scan_article(request: ScanRequest):
@@ -263,9 +270,8 @@ async def process_article(request: ProcessRequest):
             detail_brief=result.detail_brief,
             feed_title=result.feed_title,
             feed_summary=result.feed_summary,
-            total_detections=result.body_scan.total_detections + (
-                result.title_scan.total_detections if result.title_scan else 0
-            ),
+            total_detections=result.body_scan.total_detections
+            + (result.title_scan.total_detections if result.title_scan else 0),
             total_changes=result.total_changes,
             passed_validation=result.passed_validation,
             total_time_ms=result.total_processing_time_ms,
@@ -299,10 +305,7 @@ async def process_batch(request: BatchRequest):
         )
 
     if len(request.articles) > 100:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum batch size is 100 articles"
-        )
+        raise HTTPException(status_code=400, detail="Maximum batch size is 100 articles")
 
     # Configure batcher
     pipeline_config = PipelineConfig(
@@ -336,22 +339,26 @@ async def process_batch(request: BatchRequest):
         for article in request.articles:
             if article.article_id in batch_result.results:
                 r = batch_result.results[article.article_id]
-                result_items.append(BatchResultItem(
-                    article_id=article.article_id,
-                    success=True,
-                    detail_full=r.detail_full,
-                    feed_title=r.feed_title,
-                    total_detections=r.body_scan.total_detections,
-                    total_changes=r.total_changes,
-                    processing_time_ms=r.total_processing_time_ms,
-                ))
+                result_items.append(
+                    BatchResultItem(
+                        article_id=article.article_id,
+                        success=True,
+                        detail_full=r.detail_full,
+                        feed_title=r.feed_title,
+                        total_detections=r.body_scan.total_detections,
+                        total_changes=r.total_changes,
+                        processing_time_ms=r.total_processing_time_ms,
+                    )
+                )
             else:
                 error = batch_result.failures.get(article.article_id, "Unknown error")
-                result_items.append(BatchResultItem(
-                    article_id=article.article_id,
-                    success=False,
-                    error=error,
-                ))
+                result_items.append(
+                    BatchResultItem(
+                        article_id=article.article_id,
+                        success=False,
+                        error=error,
+                    )
+                )
 
         return BatchResponse(
             total_articles=batch_result.total_articles,
@@ -390,10 +397,7 @@ async def get_transparency(request: TransparencyRequest):
         )
 
         if not result.transparency:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to generate transparency data"
-            )
+            raise HTTPException(status_code=500, detail="Failed to generate transparency data")
 
         return TransparencyResponse(
             total_detections=result.transparency.total_detections,
@@ -413,6 +417,7 @@ async def get_transparency(request: TransparencyRequest):
 # ============================================================================
 # Helper Functions
 # ============================================================================
+
 
 def _span_to_dict(span) -> dict:
     """Convert DetectionInstance to dict for API response."""

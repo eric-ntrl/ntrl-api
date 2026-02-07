@@ -11,19 +11,18 @@ Provides server-side search with:
 
 import logging
 from datetime import datetime
-from typing import List, Optional, Tuple
 
-from sqlalchemy import func, text, desc, and_
+from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
 
 from app import models
-from app.models import FeedCategory, FEED_CATEGORY_DISPLAY
+from app.models import FEED_CATEGORY_DISPLAY, FeedCategory
 from app.schemas.search import (
-    SearchResultItem,
     FacetCount,
     SearchFacets,
-    SearchSuggestion,
     SearchResponse,
+    SearchResultItem,
+    SearchSuggestion,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,10 +61,10 @@ class SearchService:
     def search(
         self,
         query: str,
-        categories: Optional[List[str]] = None,
-        sources: Optional[List[str]] = None,
-        published_after: Optional[datetime] = None,
-        published_before: Optional[datetime] = None,
+        categories: list[str] | None = None,
+        sources: list[str] | None = None,
+        published_after: datetime | None = None,
+        published_before: datetime | None = None,
         sort: str = "relevance",
         limit: int = 20,
         offset: int = 0,
@@ -100,7 +99,7 @@ class SearchService:
             )
 
         # Build the base query with full-text search
-        ts_query = func.plainto_tsquery('english', query)
+        ts_query = func.plainto_tsquery("english", query)
 
         # Base query: join neutralized -> raw -> source
         base_query = (
@@ -108,7 +107,7 @@ class SearchService:
                 models.StoryNeutralized,
                 models.StoryRaw,
                 models.Source,
-                func.ts_rank(models.StoryNeutralized.search_vector, ts_query).label('rank')
+                func.ts_rank(models.StoryNeutralized.search_vector, ts_query).label("rank"),
             )
             .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
             .join(models.Source, models.StoryRaw.source_id == models.Source.id)
@@ -116,7 +115,7 @@ class SearchService:
                 models.StoryNeutralized.is_current == True,
                 models.StoryNeutralized.neutralization_status == "success",
                 models.StoryRaw.is_duplicate == False,
-                models.StoryNeutralized.search_vector.op('@@')(ts_query),
+                models.StoryNeutralized.search_vector.op("@@")(ts_query),
             )
         )
 
@@ -141,11 +140,11 @@ class SearchService:
         if sort == "recency":
             base_query = base_query.order_by(
                 desc(models.StoryRaw.published_at),
-                text('rank DESC'),
+                text("rank DESC"),
             )
         else:  # relevance (default)
             base_query = base_query.order_by(
-                text('rank DESC'),
+                text("rank DESC"),
                 desc(models.StoryRaw.published_at),
             )
 
@@ -155,20 +154,22 @@ class SearchService:
         # Transform results
         items = []
         for neutralized, story_raw, source_obj, rank in results:
-            items.append(SearchResultItem(
-                id=str(neutralized.id),
-                feed_title=neutralized.feed_title,
-                feed_summary=neutralized.feed_summary,
-                detail_title=neutralized.detail_title,
-                detail_brief=neutralized.detail_brief,
-                source_name=source_obj.name,
-                source_slug=source_obj.slug,
-                source_url=story_raw.original_url,
-                feed_category=story_raw.feed_category,
-                published_at=story_raw.published_at,
-                has_manipulative_content=neutralized.has_manipulative_content,
-                rank=float(rank) if rank else None,
-            ))
+            items.append(
+                SearchResultItem(
+                    id=str(neutralized.id),
+                    feed_title=neutralized.feed_title,
+                    feed_summary=neutralized.feed_summary,
+                    detail_title=neutralized.detail_title,
+                    detail_brief=neutralized.detail_brief,
+                    source_name=source_obj.name,
+                    source_slug=source_obj.slug,
+                    source_url=story_raw.original_url,
+                    feed_category=story_raw.feed_category,
+                    published_at=story_raw.published_at,
+                    has_manipulative_content=neutralized.has_manipulative_content,
+                    rank=float(rank) if rank else None,
+                )
+            )
 
         # Get facets (unfiltered counts for showing available filters)
         facets = self._get_facets(query, ts_query)
@@ -195,17 +196,14 @@ class SearchService:
         """
         # Category facets
         category_counts = (
-            self.db.query(
-                models.StoryRaw.feed_category,
-                func.count(models.StoryNeutralized.id).label('count')
-            )
+            self.db.query(models.StoryRaw.feed_category, func.count(models.StoryNeutralized.id).label("count"))
             .join(models.StoryNeutralized, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
             .filter(
                 models.StoryNeutralized.is_current == True,
                 models.StoryNeutralized.neutralization_status == "success",
                 models.StoryRaw.is_duplicate == False,
                 models.StoryRaw.feed_category.isnot(None),
-                models.StoryNeutralized.search_vector.op('@@')(ts_query),
+                models.StoryNeutralized.search_vector.op("@@")(ts_query),
             )
             .group_by(models.StoryRaw.feed_category)
             .all()
@@ -215,11 +213,13 @@ class SearchService:
         for cat_value, count in category_counts:
             if cat_value:
                 label = FEED_CATEGORY_DISPLAY.get(cat_value, cat_value.title())
-                categories.append(FacetCount(
-                    key=cat_value,
-                    label=label,
-                    count=count,
-                ))
+                categories.append(
+                    FacetCount(
+                        key=cat_value,
+                        label=label,
+                        count=count,
+                    )
+                )
 
         # Sort categories by the standard order
         category_order = {cat.value: idx for idx, cat in enumerate(FeedCategory)}
@@ -227,36 +227,34 @@ class SearchService:
 
         # Source facets
         source_counts = (
-            self.db.query(
-                models.Source.slug,
-                models.Source.name,
-                func.count(models.StoryNeutralized.id).label('count')
-            )
+            self.db.query(models.Source.slug, models.Source.name, func.count(models.StoryNeutralized.id).label("count"))
             .join(models.StoryRaw, models.StoryRaw.source_id == models.Source.id)
             .join(models.StoryNeutralized, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
             .filter(
                 models.StoryNeutralized.is_current == True,
                 models.StoryNeutralized.neutralization_status == "success",
                 models.StoryRaw.is_duplicate == False,
-                models.StoryNeutralized.search_vector.op('@@')(ts_query),
+                models.StoryNeutralized.search_vector.op("@@")(ts_query),
             )
             .group_by(models.Source.slug, models.Source.name)
-            .order_by(desc('count'))
+            .order_by(desc("count"))
             .all()
         )
 
         sources = []
         for slug, name, count in source_counts:
             display_name = get_source_display_name(slug, name)
-            sources.append(FacetCount(
-                key=slug,
-                label=display_name,
-                count=count,
-            ))
+            sources.append(
+                FacetCount(
+                    key=slug,
+                    label=display_name,
+                    count=count,
+                )
+            )
 
         return SearchFacets(categories=categories, sources=sources)
 
-    def _get_suggestions(self, query: str) -> List[SearchSuggestion]:
+    def _get_suggestions(self, query: str) -> list[SearchSuggestion]:
         """
         Get auto-complete suggestions for the query.
 
@@ -281,22 +279,21 @@ class SearchService:
                         models.StoryRaw.is_duplicate == False,
                         models.StoryRaw.feed_category == cat.value,
                     )
-                    .scalar() or 0
+                    .scalar()
+                    or 0
                 )
                 if count > 0:
-                    suggestions.append(SearchSuggestion(
-                        type="section",
-                        value=cat.value,
-                        label=label,
-                        count=count,
-                    ))
+                    suggestions.append(
+                        SearchSuggestion(
+                            type="section",
+                            value=cat.value,
+                            label=label,
+                            count=count,
+                        )
+                    )
 
         # Match publisher names
-        sources = (
-            self.db.query(models.Source)
-            .filter(models.Source.is_active == True)
-            .all()
-        )
+        sources = self.db.query(models.Source).filter(models.Source.is_active == True).all()
 
         for source in sources:
             display_name = get_source_display_name(source.slug, source.name)
@@ -311,15 +308,18 @@ class SearchService:
                         models.StoryRaw.is_duplicate == False,
                         models.StoryRaw.source_id == source.id,
                     )
-                    .scalar() or 0
+                    .scalar()
+                    or 0
                 )
                 if count > 0:
-                    suggestions.append(SearchSuggestion(
-                        type="publisher",
-                        value=source.slug,
-                        label=display_name,
-                        count=count,
-                    ))
+                    suggestions.append(
+                        SearchSuggestion(
+                            type="publisher",
+                            value=source.slug,
+                            label=display_name,
+                            count=count,
+                        )
+                    )
 
         # Limit suggestions and sort by count
         suggestions.sort(key=lambda x: -(x.count or 0))

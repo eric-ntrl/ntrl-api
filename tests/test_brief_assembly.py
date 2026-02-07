@@ -10,23 +10,19 @@ Covers:
 
 import uuid
 from datetime import datetime, timedelta
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
+from app.models import FEED_CATEGORY_ORDER, FeedCategory
 from app.services.brief_assembly import (
+    DEFAULT_PRIORITY,
     BriefAssemblyService,
     StoryRow,
-    SOURCE_PRIORITY,
-    DEFAULT_PRIORITY,
 )
-from app.models import FeedCategory, FEED_CATEGORY_ORDER
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_source(slug: str = "ap", name: str = "AP News") -> MagicMock:
     """Create a mock Source object."""
@@ -101,6 +97,7 @@ def _make_story_row(
 # Test: Source priority lookup
 # ---------------------------------------------------------------------------
 
+
 class TestSourcePriority:
     """Tests for _get_source_priority."""
 
@@ -134,6 +131,7 @@ class TestSourcePriority:
 # ---------------------------------------------------------------------------
 # Test: Deterministic sorting
 # ---------------------------------------------------------------------------
+
 
 class TestSortStories:
     """Tests for _sort_stories deterministic ordering."""
@@ -230,6 +228,7 @@ class TestSortStories:
 # Test: Empty categories
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyCategories:
     """Tests that empty categories are handled correctly."""
 
@@ -282,6 +281,7 @@ class TestEmptyCategories:
 # Test: Story grouping into feed categories
 # ---------------------------------------------------------------------------
 
+
 class TestStoryGrouping:
     """Tests that stories are grouped into the correct feed categories."""
 
@@ -313,11 +313,13 @@ class TestStoryGrouping:
         raw_health = _make_story_raw(feed_category="health")
         n_health = _make_neutralized(story_raw_id=raw_health.id)
 
-        result = self._run_with_db_results([
-            (n_world, raw_world, source),
-            (n_sports, raw_sports, source),
-            (n_health, raw_health, source),
-        ])
+        result = self._run_with_db_results(
+            [
+                (n_world, raw_world, source),
+                (n_sports, raw_sports, source),
+                (n_health, raw_health, source),
+            ]
+        )
 
         assert len(result[FeedCategory.WORLD]) == 1
         assert len(result[FeedCategory.SPORTS]) == 1
@@ -388,10 +390,12 @@ class TestStoryGrouping:
         n_old = _make_neutralized(story_raw_id=raw_old.id)
         n_new = _make_neutralized(story_raw_id=raw_new.id)
 
-        result = self._run_with_db_results([
-            (n_old, raw_old, source_reuters),
-            (n_new, raw_new, source_ap),
-        ])
+        result = self._run_with_db_results(
+            [
+                (n_old, raw_old, source_reuters),
+                (n_new, raw_new, source_ap),
+            ]
+        )
 
         world_stories = result[FeedCategory.WORLD]
         assert len(world_stories) == 2

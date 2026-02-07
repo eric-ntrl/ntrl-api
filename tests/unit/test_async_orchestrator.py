@@ -4,10 +4,8 @@ Unit tests for AsyncPipelineOrchestrator.
 Tests stage execution, error handling, and cancellation.
 """
 
-import asyncio
 import uuid
-from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
 import pytest
 

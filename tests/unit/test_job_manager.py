@@ -4,14 +4,12 @@ Unit tests for PipelineJobManager.
 Tests job lifecycle: creation, status tracking, cancellation, and cleanup.
 """
 
-import asyncio
 import uuid
-from datetime import datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from app.models import PipelineJob, PipelineJobStatus
+from app.models import PipelineJobStatus
 
 
 class TestPipelineJobManager:
@@ -43,6 +41,7 @@ class TestPipelineJobManager:
     @pytest.fixture
     def mock_orchestrator_factory(self):
         """Mock orchestrator factory that returns a mock orchestrator."""
+
         async def execute():
             return {
                 "status": "completed",
@@ -133,9 +132,7 @@ class TestPipelineJobManager:
 
         mock_db.query.return_value.filter.return_value.first.return_value = mock_job
 
-        PipelineJobManager.update_job_stage(
-            mock_db, job_id, "ingest", {"total": 10, "success": 8}
-        )
+        PipelineJobManager.update_job_stage(mock_db, job_id, "ingest", {"total": 10, "success": 8})
 
         assert mock_job.current_stage == "ingest"
         assert "ingest" in mock_job.stage_progress
@@ -158,7 +155,9 @@ class TestPipelineJobManager:
         from app.services.pipeline_job_manager import PipelineJobManager
 
         mock_jobs = [MagicMock()]
-        mock_db.query.return_value.order_by.return_value.filter.return_value.limit.return_value.all.return_value = mock_jobs
+        mock_db.query.return_value.order_by.return_value.filter.return_value.limit.return_value.all.return_value = (
+            mock_jobs
+        )
 
         result = PipelineJobManager.list_recent_jobs(mock_db, limit=10, status="running")
 

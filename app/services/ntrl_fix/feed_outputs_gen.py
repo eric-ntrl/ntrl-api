@@ -12,13 +12,12 @@ Uses a fast model (Haiku/4o-mini) since this is a simple task.
 import json
 import os
 import time
-from typing import Optional
 from dataclasses import dataclass
+
 import httpx
 
-from .types import GeneratorConfig
 from ..ntrl_scan.types import MergedScanResult
-
+from .types import GeneratorConfig
 
 FEED_OUTPUTS_PROMPT = """Generate a neutral headline and summary for this news article.
 
@@ -62,6 +61,7 @@ Return ONLY valid JSON."""
 @dataclass
 class FeedOutputsResult:
     """Result from feed outputs generation."""
+
     feed_title: str
     feed_summary: str
     processing_time_ms: float = 0.0
@@ -74,10 +74,10 @@ class FeedOutputsGenerator:
     Uses a fast model for this simple task to minimize latency.
     """
 
-    def __init__(self, config: Optional[GeneratorConfig] = None):
+    def __init__(self, config: GeneratorConfig | None = None):
         """Initialize with configuration."""
         self.config = config or GeneratorConfig()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
         if self.config.provider == "auto":
             self._auto_configure()
@@ -103,7 +103,7 @@ class FeedOutputsGenerator:
         self,
         body: str,
         original_title: str = "",
-        title_scan: Optional[MergedScanResult] = None,
+        title_scan: MergedScanResult | None = None,
     ) -> FeedOutputsResult:
         """
         Generate neutralized feed title and summary.
@@ -119,11 +119,7 @@ class FeedOutputsGenerator:
         start_time = time.perf_counter()
 
         if not body or not body.strip():
-            return FeedOutputsResult(
-                feed_title="",
-                feed_summary="",
-                processing_time_ms=0.0
-            )
+            return FeedOutputsResult(feed_title="", feed_summary="", processing_time_ms=0.0)
 
         # Summarize title issues for context
         title_issues = self._summarize_title_issues(title_scan)
@@ -141,34 +137,33 @@ class FeedOutputsGenerator:
         result.processing_time_ms = (time.perf_counter() - start_time) * 1000
         return result
 
-    def _summarize_title_issues(
-        self,
-        title_scan: Optional[MergedScanResult]
-    ) -> str:
+    def _summarize_title_issues(self, title_scan: MergedScanResult | None) -> str:
         """Summarize issues found in title."""
         if not title_scan or not title_scan.spans:
             return "None detected"
 
         issues = []
         for span in title_scan.spans:
-            issues.append(f"{span.type_id_primary}: \"{span.text}\"")
+            issues.append(f'{span.type_id_primary}: "{span.text}"')
 
         return "; ".join(issues[:5])
 
-    def _mock_generate(
-        self,
-        body: str,
-        original_title: str
-    ) -> FeedOutputsResult:
+    def _mock_generate(self, body: str, original_title: str) -> FeedOutputsResult:
         """Mock generation for testing."""
         # Clean up title
         title = original_title or ""
 
         # Remove common manipulation patterns
         removals = [
-            "BREAKING:", "BREAKING ", "JUST IN:", "URGENT:",
-            "DEVELOPING:", "ALERT:", "EXCLUSIVE:",
-            "You won't believe", "You Won't Believe",
+            "BREAKING:",
+            "BREAKING ",
+            "JUST IN:",
+            "URGENT:",
+            "DEVELOPING:",
+            "ALERT:",
+            "EXCLUSIVE:",
+            "You won't believe",
+            "You Won't Believe",
         ]
         for r in removals:
             title = title.replace(r, "")
@@ -192,7 +187,7 @@ class FeedOutputsGenerator:
 
         # If no title, extract from first sentence
         if not title:
-            first_sentence = body.split('.')[0].strip()
+            first_sentence = body.split(".")[0].strip()
             title = first_sentence[:80] if first_sentence else "News Update"
 
         # Truncate if too long
@@ -203,21 +198,13 @@ class FeedOutputsGenerator:
         summary = body[:150].strip()
         if len(summary) >= 150:
             # Find last complete word
-            last_space = summary.rfind(' ')
+            last_space = summary.rfind(" ")
             if last_space > 100:
                 summary = summary[:last_space] + "..."
 
-        return FeedOutputsResult(
-            feed_title=title,
-            feed_summary=summary
-        )
+        return FeedOutputsResult(feed_title=title, feed_summary=summary)
 
-    async def _openai_generate(
-        self,
-        body: str,
-        original_title: str,
-        title_issues: str
-    ) -> FeedOutputsResult:
+    async def _openai_generate(self, body: str, original_title: str, title_issues: str) -> FeedOutputsResult:
         """Generate using OpenAI API."""
         client = await self._get_client()
 
@@ -225,9 +212,7 @@ class FeedOutputsGenerator:
         body_truncated = body[:2000] if len(body) > 2000 else body
 
         prompt = FEED_OUTPUTS_PROMPT.format(
-            body=body_truncated,
-            original_title=original_title or "(none provided)",
-            title_issues=title_issues
+            body=body_truncated, original_title=original_title or "(none provided)", title_issues=title_issues
         )
 
         response = await client.post(
@@ -253,21 +238,14 @@ class FeedOutputsGenerator:
 
         return self._parse_response(content, body, original_title)
 
-    async def _anthropic_generate(
-        self,
-        body: str,
-        original_title: str,
-        title_issues: str
-    ) -> FeedOutputsResult:
+    async def _anthropic_generate(self, body: str, original_title: str, title_issues: str) -> FeedOutputsResult:
         """Generate using Anthropic API."""
         client = await self._get_client()
 
         body_truncated = body[:2000] if len(body) > 2000 else body
 
         prompt = FEED_OUTPUTS_PROMPT.format(
-            body=body_truncated,
-            original_title=original_title or "(none provided)",
-            title_issues=title_issues
+            body=body_truncated, original_title=original_title or "(none provided)", title_issues=title_issues
         )
 
         response = await client.post(
@@ -293,19 +271,11 @@ class FeedOutputsGenerator:
 
         return self._parse_response(content, body, original_title)
 
-    def _parse_response(
-        self,
-        content: str,
-        body: str,
-        original_title: str
-    ) -> FeedOutputsResult:
+    def _parse_response(self, content: str, body: str, original_title: str) -> FeedOutputsResult:
         """Parse LLM response."""
         try:
             data = json.loads(content)
-            return FeedOutputsResult(
-                feed_title=data.get("feed_title", ""),
-                feed_summary=data.get("feed_summary", "")
-            )
+            return FeedOutputsResult(feed_title=data.get("feed_title", ""), feed_summary=data.get("feed_summary", ""))
         except json.JSONDecodeError:
             return self._mock_generate(body, original_title)
 

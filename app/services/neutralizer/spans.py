@@ -7,7 +7,6 @@ filtering spans inside quoted speech, and removing false positives.
 """
 
 import logging
-from typing import List
 
 from app.models import SpanAction, SpanReason
 
@@ -17,10 +16,10 @@ logger = logging.getLogger(__name__)
 # Quote character pairs for matching (opening -> closing)
 # Using Unicode escapes to ensure curly quotes are correctly defined
 QUOTE_PAIRS = {
-    '"': '"',           # Straight double quote (U+0022)
-    '\u201c': '\u201d', # Curly double quotes: \u201c -> \u201d (U+201C -> U+201D)
-    "'": "'",           # Straight single quote (U+0027)
-    '\u2018': '\u2019', # Curly single quotes: \u2018 -> \u2019 (U+2018 -> U+2019)
+    '"': '"',  # Straight double quote (U+0022)
+    "\u201c": "\u201d",  # Curly double quotes: \u201c -> \u201d (U+201C -> U+201D)
+    "'": "'",  # Straight single quote (U+0027)
+    "\u2018": "\u2019",  # Curly single quotes: \u2018 -> \u2019 (U+2018 -> U+2019)
 }
 
 # All characters that can open a quote
@@ -34,66 +33,111 @@ QUOTE_CHARS_CLOSE = set(QUOTE_PAIRS.values())
 # Only include multi-word phrases - single words are too likely to have legitimate uses
 FALSE_POSITIVE_PHRASES = {
     # Medical terms (multi-word)
-    "bowel cancer", "breast cancer", "lung cancer", "skin cancer",
-    "prostate cancer", "colon cancer", "cancer treatment", "cancer diagnosis",
-    "cancer research", "cancer patient", "cancer patients", "cancer tests",
-
+    "bowel cancer",
+    "breast cancer",
+    "lung cancer",
+    "skin cancer",
+    "prostate cancer",
+    "colon cancer",
+    "cancer treatment",
+    "cancer diagnosis",
+    "cancer research",
+    "cancer patient",
+    "cancer patients",
+    "cancer tests",
     # Neutral news verb phrases
-    "tests will", "will be", "according to", "reported that",
-
+    "tests will",
+    "will be",
+    "according to",
+    "reported that",
     # Factual descriptors (multi-word)
-    "spot more", "getting worse", "getting better",
-
+    "spot more",
+    "getting worse",
+    "getting better",
     # Temporal phrases
-    "every year", "each year", "this week", "last week", "this year", "last year",
-
+    "every year",
+    "each year",
+    "this week",
+    "last week",
+    "this year",
+    "last year",
     # Data/statistics (multi-word)
-    "highest cost", "lowest cost", "most affected", "least affected",
-
+    "highest cost",
+    "lowest cost",
+    "most affected",
+    "least affected",
     # UI/metadata (multi-word)
-    "minutes ago", "hours ago", "sign up", "read more", "continue reading",
-    "health newsletter", "email address",
-
+    "minutes ago",
+    "hours ago",
+    "sign up",
+    "read more",
+    "continue reading",
+    "health newsletter",
+    "email address",
     # Professional service terms (legitimate professions)
-    "crisis management", "reputation management", "crisis manager",
-    "public relations", "media relations", "investor relations",
-    "communications director", "crisis communications",
-    "pr firm", "pr agency", "publicist",
-
+    "crisis management",
+    "reputation management",
+    "crisis manager",
+    "public relations",
+    "media relations",
+    "investor relations",
+    "communications director",
+    "crisis communications",
+    "pr firm",
+    "pr agency",
+    "publicist",
     # Legal and epistemic language (factual, not manipulative)
-    "allegedly struck", "faces further charges", "faces charges",
-    "further charges", "found guilty", "pleaded guilty",
-    "sentenced to", "charged with", "convicted of",
-
+    "allegedly struck",
+    "faces further charges",
+    "faces charges",
+    "further charges",
+    "found guilty",
+    "pleaded guilty",
+    "sentenced to",
+    "charged with",
+    "convicted of",
     # Technical and factual terms
-    "emergency inspection", "emergency services", "emergency response",
-    "emergency department", "emergency room",
-    "higher prolonged borrowing costs", "borrowing costs",
-
+    "emergency inspection",
+    "emergency services",
+    "emergency response",
+    "emergency department",
+    "emergency room",
+    "higher prolonged borrowing costs",
+    "borrowing costs",
     # Factual comparisons and descriptors
-    "even bigger", "even larger", "even smaller",
-    "the dominant story", "dominant position",
-    "wide-reaching consequences", "far-reaching consequences",
+    "even bigger",
+    "even larger",
+    "even smaller",
+    "the dominant story",
+    "dominant position",
+    "wide-reaching consequences",
+    "far-reaching consequences",
     "striking the right balance",
-
     # Product and feature descriptions (factual)
-    "quickly sync", "not unlike",
-
+    "quickly sync",
+    "not unlike",
     # Crime reporting — factual legal/police terminology
-    "suspicion of attempted murder", "suspicion of murder",
-    "suspicion of assault", "suspicion of robbery",
-    "arrested on suspicion", "detained on suspicion",
-    "attempted murder", "attempted robbery",
-
+    "suspicion of attempted murder",
+    "suspicion of murder",
+    "suspicion of assault",
+    "suspicion of robbery",
+    "arrested on suspicion",
+    "detained on suspicion",
+    "attempted murder",
+    "attempted robbery",
     # Real estate / property descriptions (factual specs)
-    "square-foot house", "square-foot home", "square-foot property",
-    "oversaw significant changes", "significant changes",
-
+    "square-foot house",
+    "square-foot home",
+    "square-foot property",
+    "oversaw significant changes",
+    "significant changes",
     # Entertainment industry terms (neutral)
-    "to star in", "to co-star in", "set to star",
-
+    "to star in",
+    "to co-star in",
+    "set to star",
     # Career/professional transitions (factual)
-    "departing to make a transition", "longest-tenured",
+    "departing to make a transition",
+    "longest-tenured",
     "make a transition",
 }
 
@@ -135,7 +179,6 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
         "agenda_signaling": SpanReason.AGENDA_SIGNALING,
         "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
         "editorial_voice": SpanReason.EDITORIAL_VOICE,
-
         # Defensive aliases (prompt categories 6-14 that might appear)
         "loaded_verbs": SpanReason.RHETORICAL_FRAMING,
         "loaded_idioms": SpanReason.RHETORICAL_FRAMING,
@@ -144,7 +187,6 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
         "sports_event_hype": SpanReason.SELLING,
         "entertainment_celebrity_hype": SpanReason.SELLING,
         "agenda_framing": SpanReason.AGENDA_SIGNALING,
-
         # Old/alternative names that might exist in prompts
         "emotional_manipulation": SpanReason.EMOTIONAL_TRIGGER,
         "emotional": SpanReason.EMOTIONAL_TRIGGER,
@@ -156,10 +198,7 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
 
     result = reason_map.get(reason_str.lower().strip())
     if result is None:
-        logger.warning(
-            f"[SPAN_DETECTION] Unknown reason '{reason_str}', "
-            "defaulting to RHETORICAL_FRAMING"
-        )
+        logger.warning(f"[SPAN_DETECTION] Unknown reason '{reason_str}', defaulting to RHETORICAL_FRAMING")
         return SpanReason.RHETORICAL_FRAMING
     return result
 
@@ -212,20 +251,22 @@ def find_phrase_positions(body: str, llm_phrases: list) -> list:
             if pos == -1:
                 pos = body_lower.find(phrase_lower, start)
                 if pos != -1:
-                    phrase = body[pos:pos + len(phrase)]
+                    phrase = body[pos : pos + len(phrase)]
 
             if pos == -1:
                 break
 
-            spans.append(TransparencySpan(
-                field="body",
-                start_char=pos,
-                end_char=pos + len(phrase),
-                original_text=body[pos:pos + len(phrase)],
-                action=action,
-                reason=reason,
-                replacement_text=replacement if action == SpanAction.REPLACED else None,
-            ))
+            spans.append(
+                TransparencySpan(
+                    field="body",
+                    start_char=pos,
+                    end_char=pos + len(phrase),
+                    original_text=body[pos : pos + len(phrase)],
+                    action=action,
+                    reason=reason,
+                    replacement_text=replacement if action == SpanAction.REPLACED else None,
+                )
+            )
 
             start = pos + 1
 
@@ -306,10 +347,7 @@ def filter_spans_in_quotes(body: str, spans: list) -> list:
     # Filter out spans inside quotes
     filtered = []
     for span in spans:
-        inside_quote = any(
-            start <= span.start_char and span.end_char <= end
-            for start, end in quote_ranges
-        )
+        inside_quote = any(start <= span.start_char and span.end_char <= end for start, end in quote_ranges)
         if not inside_quote:
             filtered.append(span)
 
@@ -361,6 +399,7 @@ def filter_false_positives(spans: list) -> list:
 # Multi-Pass Span Merging
 # -----------------------------------------------------------------------------
 
+
 def merge_multi_pass_spans(span_lists: list, body: str) -> list:
     """
     Merge spans from multiple detection passes into a unified list.
@@ -378,7 +417,6 @@ def merge_multi_pass_spans(span_lists: list, body: str) -> list:
         Merged and deduplicated list of TransparencySpan
     """
     # Import here to avoid circular import
-    from app.services.neutralizer import TransparencySpan
 
     if not span_lists:
         return []
@@ -389,11 +427,13 @@ def merge_multi_pass_spans(span_lists: list, body: str) -> list:
         if not spans:
             continue
         for span in spans:
-            all_spans.append({
-                "span": span,
-                "pass_idx": pass_idx,
-                "key": f"{span.start_char}:{span.end_char}:{span.original_text.lower()}"
-            })
+            all_spans.append(
+                {
+                    "span": span,
+                    "pass_idx": pass_idx,
+                    "key": f"{span.start_char}:{span.end_char}:{span.original_text.lower()}",
+                }
+            )
 
     if not all_spans:
         return []
@@ -433,10 +473,11 @@ def merge_multi_pass_spans(span_lists: list, body: str) -> list:
         for item in group[1:]:
             span = item["span"]
             # Prefer REPLACED over REMOVED over SOFTENED (more informative)
-            if span.action.value > best.action.value:
-                best = span
-            # If same action, prefer longer (more specific) phrase
-            elif span.action == best.action and len(span.original_text) > len(best.original_text):
+            if (
+                span.action.value > best.action.value
+                or span.action == best.action
+                and len(span.original_text) > len(best.original_text)
+            ):
                 best = span
 
         if multi_model:
@@ -460,14 +501,16 @@ def merge_multi_pass_spans(span_lists: list, body: str) -> list:
                 non_overlapping[-1] = span
                 last_end = span.end_char
 
-    logger.info(f"[SPAN_MERGING] Merged {sum(len(sl) if sl else 0 for sl in span_lists)} spans → {len(non_overlapping)} unique")
+    logger.info(
+        f"[SPAN_MERGING] Merged {sum(len(sl) if sl else 0 for sl in span_lists)} spans → {len(non_overlapping)} unique"
+    )
     return non_overlapping
 
 
 def _spans_overlap(span1, span2) -> bool:
     """Check if two spans overlap (share any characters)."""
     # Spans overlap if one starts before the other ends
-    return (span1.start_char < span2.end_char and span2.start_char < span1.end_char)
+    return span1.start_char < span2.end_char and span2.start_char < span1.end_char
 
 
 def adjust_chunk_positions(spans: list, chunk_offset: int) -> list:
@@ -492,15 +535,17 @@ def adjust_chunk_positions(spans: list, chunk_offset: int) -> list:
 
     adjusted = []
     for span in spans:
-        adjusted.append(TransparencySpan(
-            field=span.field,
-            start_char=span.start_char + chunk_offset,
-            end_char=span.end_char + chunk_offset,
-            original_text=span.original_text,
-            action=span.action,
-            reason=span.reason,
-            replacement_text=span.replacement_text,
-        ))
+        adjusted.append(
+            TransparencySpan(
+                field=span.field,
+                start_char=span.start_char + chunk_offset,
+                end_char=span.end_char + chunk_offset,
+                original_text=span.original_text,
+                action=span.action,
+                reason=span.reason,
+                replacement_text=span.replacement_text,
+            )
+        )
 
     return adjusted
 

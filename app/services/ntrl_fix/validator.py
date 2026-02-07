@@ -22,7 +22,7 @@ Any failure in these checks indicates the rewrite may have changed meaning.
 
 import re
 from functools import lru_cache
-from typing import Optional
+
 import spacy
 from spacy.tokens import Doc
 
@@ -30,7 +30,6 @@ from .types import (
     CheckResult,
     ValidationResult,
     ValidationStatus,
-    RiskLevel,
 )
 
 
@@ -41,6 +40,7 @@ def _get_spacy_model(model_name: str = "en_core_web_sm"):
         nlp = spacy.load(model_name)
     except OSError:
         import subprocess
+
         subprocess.run(["python", "-m", "spacy", "download", model_name])
         nlp = spacy.load(model_name)
     return nlp
@@ -56,49 +56,107 @@ class RedLineValidator:
 
     # Soft modality words that should not become hard
     SOFT_MODALS = {
-        "alleged", "allegedly", "may", "might", "could", "likely",
-        "suspected", "possible", "possibly", "perhaps", "reportedly",
-        "apparently", "supposedly", "seemingly", "potentially",
-        "uncertain", "unconfirmed", "claimed", "purported"
+        "alleged",
+        "allegedly",
+        "may",
+        "might",
+        "could",
+        "likely",
+        "suspected",
+        "possible",
+        "possibly",
+        "perhaps",
+        "reportedly",
+        "apparently",
+        "supposedly",
+        "seemingly",
+        "potentially",
+        "uncertain",
+        "unconfirmed",
+        "claimed",
+        "purported",
     }
 
     # Hard modality words that soft modals shouldn't become
     HARD_MODALS = {
-        "confirmed", "proven", "did", "will", "definitely",
-        "certainly", "absolutely", "undoubtedly", "clearly",
-        "obviously", "known", "established", "verified", "true"
+        "confirmed",
+        "proven",
+        "did",
+        "will",
+        "definitely",
+        "certainly",
+        "absolutely",
+        "undoubtedly",
+        "clearly",
+        "obviously",
+        "known",
+        "established",
+        "verified",
+        "true",
     }
 
     # Scope words that affect meaning
     SCOPE_WORDS = {
-        "all", "every", "none", "no", "some", "most", "many",
-        "few", "several", "any", "each", "both", "only", "just"
+        "all",
+        "every",
+        "none",
+        "no",
+        "some",
+        "most",
+        "many",
+        "few",
+        "several",
+        "any",
+        "each",
+        "both",
+        "only",
+        "just",
     }
 
     # Negation words
     NEGATION_WORDS = {
-        "not", "no", "never", "neither", "nor", "none",
-        "nothing", "nobody", "nowhere", "without", "deny",
-        "denied", "refuse", "refused", "reject", "rejected"
+        "not",
+        "no",
+        "never",
+        "neither",
+        "nor",
+        "none",
+        "nothing",
+        "nobody",
+        "nowhere",
+        "without",
+        "deny",
+        "denied",
+        "refuse",
+        "refused",
+        "reject",
+        "rejected",
     }
 
     # Causal indicators
     CAUSAL_WORDS = {
-        "because", "caused", "causes", "causing", "due to",
-        "result", "resulted", "resulting", "led to", "leads to",
-        "therefore", "thus", "hence", "consequently", "so"
+        "because",
+        "caused",
+        "causes",
+        "causing",
+        "due to",
+        "result",
+        "resulted",
+        "resulting",
+        "led to",
+        "leads to",
+        "therefore",
+        "thus",
+        "hence",
+        "consequently",
+        "so",
     }
 
     def __init__(self, model_name: str = "en_core_web_sm"):
         """Initialize with lazy-loaded spaCy model."""
         self.nlp = _get_spacy_model(model_name)
 
-    def validate(
-        self,
-        original: str,
-        rewritten: str,
-        strict: bool = True
-    ) -> ValidationResult:
+    def validate(self, original: str, rewritten: str, strict: bool = True) -> ValidationResult:
         """
         Validate rewritten content against original.
 
@@ -129,15 +187,13 @@ class RedLineValidator:
         }
 
         # Determine overall pass/fail
-        failures = [name for name, check in checks.items()
-                   if check.status == ValidationStatus.FAILED]
+        failures = [name for name, check in checks.items() if check.status == ValidationStatus.FAILED]
 
         if strict:
             passed = len(failures) == 0
         else:
             # In non-strict mode, allow some failures
-            critical_checks = {"entity_invariance", "number_invariance",
-                             "quote_integrity", "negation_integrity"}
+            critical_checks = {"entity_invariance", "number_invariance", "quote_integrity", "negation_integrity"}
             critical_failures = [f for f in failures if f in critical_checks]
             passed = len(critical_failures) == 0
 
@@ -147,11 +203,7 @@ class RedLineValidator:
             failures=failures,
         )
 
-    def _check_entities(
-        self,
-        original_doc: Doc,
-        rewritten_doc: Doc
-    ) -> CheckResult:
+    def _check_entities(self, original_doc: Doc, rewritten_doc: Doc) -> CheckResult:
         """
         Check that named entities are preserved.
 
@@ -179,13 +231,11 @@ class RedLineValidator:
                 check_name="entity_invariance",
                 status=ValidationStatus.FAILED,
                 message=f"Missing entities: {', '.join(list(missing)[:5])}",
-                details={"missing": list(missing)}
+                details={"missing": list(missing)},
             )
 
         return CheckResult(
-            check_name="entity_invariance",
-            status=ValidationStatus.PASSED,
-            message="All named entities preserved"
+            check_name="entity_invariance", status=ValidationStatus.PASSED, message="All named entities preserved"
         )
 
     def _check_numbers(self, original: str, rewritten: str) -> CheckResult:
@@ -219,36 +269,22 @@ class RedLineValidator:
                 check_name="number_invariance",
                 status=ValidationStatus.FAILED,
                 message=f"Missing numbers: {', '.join(list(missing)[:5])}",
-                details={"missing": list(missing)}
+                details={"missing": list(missing)},
             )
 
         return CheckResult(
-            check_name="number_invariance",
-            status=ValidationStatus.PASSED,
-            message="All numbers preserved"
+            check_name="number_invariance", status=ValidationStatus.PASSED, message="All numbers preserved"
         )
 
-    def _check_dates(
-        self,
-        original_doc: Doc,
-        rewritten_doc: Doc
-    ) -> CheckResult:
+    def _check_dates(self, original_doc: Doc, rewritten_doc: Doc) -> CheckResult:
         """
         Check that all dates are preserved.
 
         Uses spaCy's DATE entity recognition.
         """
-        original_dates = {
-            ent.text.lower().strip()
-            for ent in original_doc.ents
-            if ent.label_ == "DATE"
-        }
+        original_dates = {ent.text.lower().strip() for ent in original_doc.ents if ent.label_ == "DATE"}
 
-        rewritten_dates = {
-            ent.text.lower().strip()
-            for ent in rewritten_doc.ents
-            if ent.label_ == "DATE"
-        }
+        rewritten_dates = {ent.text.lower().strip() for ent in rewritten_doc.ents if ent.label_ == "DATE"}
 
         missing = original_dates - rewritten_dates
 
@@ -257,14 +293,10 @@ class RedLineValidator:
                 check_name="date_invariance",
                 status=ValidationStatus.FAILED,
                 message=f"Missing dates: {', '.join(list(missing)[:3])}",
-                details={"missing": list(missing)}
+                details={"missing": list(missing)},
             )
 
-        return CheckResult(
-            check_name="date_invariance",
-            status=ValidationStatus.PASSED,
-            message="All dates preserved"
-        )
+        return CheckResult(check_name="date_invariance", status=ValidationStatus.PASSED, message="All dates preserved")
 
     def _check_attributions(self, original: str, rewritten: str) -> CheckResult:
         """
@@ -300,14 +332,12 @@ class RedLineValidator:
             return CheckResult(
                 check_name="attribution_invariance",
                 status=ValidationStatus.WARNING,
-                message=f"Potentially changed attributions",
-                details={"missing": list(missing)[:3]}
+                message="Potentially changed attributions",
+                details={"missing": list(missing)[:3]},
             )
 
         return CheckResult(
-            check_name="attribution_invariance",
-            status=ValidationStatus.PASSED,
-            message="Attributions preserved"
+            check_name="attribution_invariance", status=ValidationStatus.PASSED, message="Attributions preserved"
         )
 
     def _check_modality(self, original: str, rewritten: str) -> CheckResult:
@@ -334,13 +364,11 @@ class RedLineValidator:
                 check_name="modality_invariance",
                 status=ValidationStatus.FAILED,
                 message=f"Modality upgraded: {violations[0]}",
-                details={"violations": violations}
+                details={"violations": violations},
             )
 
         return CheckResult(
-            check_name="modality_invariance",
-            status=ValidationStatus.PASSED,
-            message="Modality levels preserved"
+            check_name="modality_invariance", status=ValidationStatus.PASSED, message="Modality levels preserved"
         )
 
     def _check_causality(self, original: str, rewritten: str) -> CheckResult:
@@ -359,7 +387,7 @@ class RedLineValidator:
             return CheckResult(
                 check_name="causality_invariance",
                 status=ValidationStatus.PASSED,
-                message="No causal claims to preserve"
+                message="No causal claims to preserve",
             )
 
         # Check if causal language is preserved
@@ -370,13 +398,11 @@ class RedLineValidator:
                 check_name="causality_invariance",
                 status=ValidationStatus.WARNING,
                 message=f"Causal language changed: {', '.join(missing_causal[:3])}",
-                details={"missing": missing_causal}
+                details={"missing": missing_causal},
             )
 
         return CheckResult(
-            check_name="causality_invariance",
-            status=ValidationStatus.PASSED,
-            message="Causal relationships preserved"
+            check_name="causality_invariance", status=ValidationStatus.PASSED, message="Causal relationships preserved"
         )
 
     def _check_risk(self, original: str, rewritten: str) -> CheckResult:
@@ -386,9 +412,19 @@ class RedLineValidator:
         Ensures safety-relevant information isn't removed.
         """
         risk_indicators = [
-            "warning", "danger", "risk", "threat", "hazard",
-            "emergency", "critical", "severe", "urgent",
-            "evacuate", "avoid", "caution", "alert"
+            "warning",
+            "danger",
+            "risk",
+            "threat",
+            "hazard",
+            "emergency",
+            "critical",
+            "severe",
+            "urgent",
+            "evacuate",
+            "avoid",
+            "caution",
+            "alert",
         ]
 
         original_lower = original.lower()
@@ -402,13 +438,11 @@ class RedLineValidator:
                 check_name="risk_invariance",
                 status=ValidationStatus.FAILED,
                 message=f"Risk indicators removed: {', '.join(missing_risks)}",
-                details={"removed": missing_risks}
+                details={"removed": missing_risks},
             )
 
         return CheckResult(
-            check_name="risk_invariance",
-            status=ValidationStatus.PASSED,
-            message="Risk levels preserved"
+            check_name="risk_invariance", status=ValidationStatus.PASSED, message="Risk levels preserved"
         )
 
     def _check_quotes(self, original: str, rewritten: str) -> CheckResult:
@@ -436,14 +470,12 @@ class RedLineValidator:
             return CheckResult(
                 check_name="quote_integrity",
                 status=ValidationStatus.FAILED,
-                message=f"Quotes modified or removed",
-                details={"missing": missing_quotes[:3]}
+                message="Quotes modified or removed",
+                details={"missing": missing_quotes[:3]},
             )
 
         return CheckResult(
-            check_name="quote_integrity",
-            status=ValidationStatus.PASSED,
-            message="All quotes preserved verbatim"
+            check_name="quote_integrity", status=ValidationStatus.PASSED, message="All quotes preserved verbatim"
         )
 
     def _check_scope(self, original: str, rewritten: str) -> CheckResult:
@@ -469,13 +501,11 @@ class RedLineValidator:
                 check_name="scope_invariance",
                 status=ValidationStatus.WARNING,
                 message=f"Scope may have changed: {scope_changes[0]}",
-                details={"changes": scope_changes}
+                details={"changes": scope_changes},
             )
 
         return CheckResult(
-            check_name="scope_invariance",
-            status=ValidationStatus.PASSED,
-            message="Scope quantifiers preserved"
+            check_name="scope_invariance", status=ValidationStatus.PASSED, message="Scope quantifiers preserved"
         )
 
     def _check_negation(self, original: str, rewritten: str) -> CheckResult:
@@ -490,8 +520,8 @@ class RedLineValidator:
         removed_negations = []
 
         for neg in self.NEGATION_WORDS:
-            original_count = len(re.findall(r'\b' + neg + r'\b', original_lower))
-            rewritten_count = len(re.findall(r'\b' + neg + r'\b', rewritten_lower))
+            original_count = len(re.findall(r"\b" + neg + r"\b", original_lower))
+            rewritten_count = len(re.findall(r"\b" + neg + r"\b", rewritten_lower))
 
             if original_count > rewritten_count:
                 removed_negations.append(neg)
@@ -501,13 +531,11 @@ class RedLineValidator:
                 check_name="negation_integrity",
                 status=ValidationStatus.FAILED,
                 message=f"Negations removed: {', '.join(removed_negations)}",
-                details={"removed": removed_negations}
+                details={"removed": removed_negations},
             )
 
         return CheckResult(
-            check_name="negation_integrity",
-            status=ValidationStatus.PASSED,
-            message="Negations preserved"
+            check_name="negation_integrity", status=ValidationStatus.PASSED, message="Negations preserved"
         )
 
 

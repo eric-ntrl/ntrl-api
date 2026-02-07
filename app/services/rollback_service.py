@@ -9,8 +9,8 @@ when quality degrades beyond configured thresholds.
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Any
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -25,11 +25,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 ROLLBACK_TRIGGERS = {
-    "overall_score_drop": 0.5,            # 0.5+ point drop triggers rollback
+    "overall_score_drop": 0.5,  # 0.5+ point drop triggers rollback
     "classification_accuracy_drop": 0.10,  # 10% accuracy drop
-    "neutralization_score_drop": 0.75,     # 0.75+ point drop
-    "span_precision_drop": 0.15,           # 15% precision drop
-    "span_recall_drop": 0.15,              # 15% recall drop
+    "neutralization_score_drop": 0.75,  # 0.75+ point drop
+    "span_precision_drop": 0.15,  # 15% precision drop
+    "span_recall_drop": 0.15,  # 15% recall drop
 }
 
 # Map degradation triggers to the prompt most likely responsible
@@ -48,24 +48,26 @@ BASELINE_LOOKBACK_RUNS = 5
 @dataclass
 class DegradationCheck:
     """Result of checking for quality degradation."""
+
     degraded: bool
-    trigger_name: Optional[str] = None
-    current_value: Optional[float] = None
-    previous_value: Optional[float] = None
-    threshold: Optional[float] = None
-    drop_amount: Optional[float] = None
-    all_triggers: Optional[List[str]] = None  # All triggers that fired
+    trigger_name: str | None = None
+    current_value: float | None = None
+    previous_value: float | None = None
+    threshold: float | None = None
+    drop_amount: float | None = None
+    all_triggers: list[str] | None = None  # All triggers that fired
 
 
 @dataclass
 class RollbackResult:
     """Result of a rollback operation."""
+
     success: bool
     prompt_name: str
     from_version: int
     to_version: int
     reason: str
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class RollbackService:
@@ -76,7 +78,7 @@ class RollbackService:
     rollback when thresholds are exceeded.
     """
 
-    def __init__(self, triggers: Optional[Dict[str, float]] = None):
+    def __init__(self, triggers: dict[str, float] | None = None):
         """Initialize with custom triggers or use defaults."""
         self.triggers = triggers or ROLLBACK_TRIGGERS
 
@@ -85,7 +87,7 @@ class RollbackService:
         db: Session,
         current_eval_id: str,
         auto_rollback: bool = True,
-    ) -> Optional[RollbackResult]:
+    ) -> RollbackResult | None:
         """
         Check for degradation and optionally perform rollback.
 
@@ -104,9 +106,9 @@ class RollbackService:
         logger.info(f"[ROLLBACK] Checking evaluation {current_eval_id} for degradation")
 
         # Get current evaluation
-        current_eval = db.query(models.EvaluationRun).filter(
-            models.EvaluationRun.id == uuid.UUID(current_eval_id)
-        ).first()
+        current_eval = (
+            db.query(models.EvaluationRun).filter(models.EvaluationRun.id == uuid.UUID(current_eval_id)).first()
+        )
 
         if not current_eval:
             logger.warning(f"[ROLLBACK] Evaluation {current_eval_id} not found")
@@ -152,15 +154,11 @@ class RollbackService:
             return None
 
         # Determine which prompts to roll back using metric-to-prompt mapping
-        prompts_to_rollback = self._select_prompts_to_rollback(
-            changed_prompts, degradation
-        )
+        prompts_to_rollback = self._select_prompts_to_rollback(changed_prompts, degradation)
 
         if not auto_rollback:
             prompt_names = [p.name for p in prompts_to_rollback]
-            logger.info(
-                f"[ROLLBACK] Would rollback {prompt_names} (auto_rollback=False)"
-            )
+            logger.info(f"[ROLLBACK] Would rollback {prompt_names} (auto_rollback=False)")
             first = prompts_to_rollback[0]
             return RollbackResult(
                 success=False,
@@ -182,14 +180,9 @@ class RollbackService:
             )
             results.append(result)
             if result.success:
-                logger.info(
-                    f"[ROLLBACK] Rolled back '{prompt.name}' "
-                    f"v{result.from_version} → v{result.to_version}"
-                )
+                logger.info(f"[ROLLBACK] Rolled back '{prompt.name}' v{result.from_version} → v{result.to_version}")
             else:
-                logger.error(
-                    f"[ROLLBACK] Failed to rollback '{prompt.name}': {result.error}"
-                )
+                logger.error(f"[ROLLBACK] Failed to rollback '{prompt.name}': {result.error}")
 
         # Update evaluation run with rollback info
         successful_rollbacks = [r for r in results if r.success]
@@ -267,7 +260,7 @@ class RollbackService:
         db: Session,
         previous_eval: models.EvaluationRun,
         current_eval: models.EvaluationRun,
-    ) -> List[models.Prompt]:
+    ) -> list[models.Prompt]:
         """Find prompts that were updated between evaluations.
 
         Returns prompts in deterministic order (most recently changed first).
@@ -294,11 +287,7 @@ class RollbackService:
             return []
 
         # Fetch prompts and preserve the ordering from prompt_ids
-        prompts = (
-            db.query(models.Prompt)
-            .filter(models.Prompt.id.in_(prompt_ids))
-            .all()
-        )
+        prompts = db.query(models.Prompt).filter(models.Prompt.id.in_(prompt_ids)).all()
 
         # Re-order to match prompt_ids ordering
         prompt_by_id = {p.id: p for p in prompts}
@@ -306,9 +295,9 @@ class RollbackService:
 
     def _select_prompts_to_rollback(
         self,
-        changed_prompts: List[models.Prompt],
+        changed_prompts: list[models.Prompt],
         degradation: DegradationCheck,
-    ) -> List[models.Prompt]:
+    ) -> list[models.Prompt]:
         """Select which prompts to roll back based on metric-to-prompt mapping.
 
         If a specific metric triggered (e.g., neutralization_score_drop),
@@ -320,10 +309,7 @@ class RollbackService:
         # If overall score dropped or multiple metrics triggered,
         # roll back everything
         if "overall_score_drop" in triggers or len(triggers) > 1:
-            logger.info(
-                f"[ROLLBACK] Rolling back ALL {len(changed_prompts)} changed prompts "
-                f"(triggers: {triggers})"
-            )
+            logger.info(f"[ROLLBACK] Rolling back ALL {len(changed_prompts)} changed prompts (triggers: {triggers})")
             return changed_prompts
 
         # Single specific metric trigger - find the corresponding prompt
@@ -334,15 +320,12 @@ class RollbackService:
             # Try to find the specific prompt in the changed list
             target = [p for p in changed_prompts if p.name == target_prompt_name]
             if target:
-                logger.info(
-                    f"[ROLLBACK] Targeting '{target_prompt_name}' for {trigger}"
-                )
+                logger.info(f"[ROLLBACK] Targeting '{target_prompt_name}' for {trigger}")
                 return target
 
         # Fallback: roll back all changed prompts
         logger.info(
-            f"[ROLLBACK] Target prompt not in changed list, "
-            f"rolling back ALL {len(changed_prompts)} changed prompts"
+            f"[ROLLBACK] Target prompt not in changed list, rolling back ALL {len(changed_prompts)} changed prompts"
         )
         return changed_prompts
 
@@ -405,8 +388,8 @@ class RollbackService:
         self,
         db: Session,
         prompt_name: str,
-        model: Optional[str] = None,
-        target_version: Optional[int] = None,
+        model: str | None = None,
+        target_version: int | None = None,
         reason: str = "Manual rollback",
     ) -> RollbackResult:
         """
@@ -494,7 +477,7 @@ class RollbackService:
             prompt.content = target_version_entry.content
             prompt.version = new_version
             prompt.current_version_id = rollback_entry.id
-            prompt.updated_at = datetime.now(timezone.utc)
+            prompt.updated_at = datetime.now(UTC)
 
             db.commit()
 
@@ -527,8 +510,8 @@ class RollbackService:
         self,
         db: Session,
         prompt_name: str,
-        model: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+        model: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Get rollback history for a prompt."""
         query = db.query(models.Prompt).filter(models.Prompt.name == prompt_name)
         if model:

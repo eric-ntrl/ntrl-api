@@ -9,22 +9,21 @@ GET /v1/stories/{id}/transparency - Get transparency view with what was removed
 import concurrent.futures
 import logging
 import uuid
-from typing import List, Optional
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app import models
+from app.database import get_db
 from app.schemas.stories import (
+    LLMPhraseItem,
+    PipelineTrace,
+    SpanDetectionDebug,
+    StoryDebug,
     StoryDetail,
     StoryTransparency,
     TransparencySpanResponse,
-    StoryDebug,
-    SpanDetectionDebug,
-    PipelineTrace,
-    LLMPhraseItem,
 )
 from app.storage.factory import get_storage_provider
 
@@ -63,7 +62,7 @@ def invalidate_transparency_cache(story_id: str, neutralized_id: str = None) -> 
     return found
 
 
-def _do_download(uri: str) -> Optional[str]:
+def _do_download(uri: str) -> str | None:
     """Download content from storage (runs in thread for timeout support)."""
     storage = get_storage_provider()
     result = storage.download(uri)
@@ -72,7 +71,7 @@ def _do_download(uri: str) -> Optional[str]:
     return None
 
 
-def _get_body_from_storage(story_raw: models.StoryRaw, timeout_seconds: int = 8) -> Optional[str]:
+def _get_body_from_storage(story_raw: models.StoryRaw, timeout_seconds: int = 8) -> str | None:
     """
     Retrieve body content from object storage with timeout.
 
@@ -110,11 +109,7 @@ def _get_story_or_404(db: Session, story_id: str) -> tuple:
         raise HTTPException(status_code=400, detail="Invalid story ID format")
 
     # First try to find by neutralized ID
-    neutralized = (
-        db.query(models.StoryNeutralized)
-        .filter(models.StoryNeutralized.id == story_uuid)
-        .first()
-    )
+    neutralized = db.query(models.StoryNeutralized).filter(models.StoryNeutralized.id == story_uuid).first()
 
     if neutralized:
         story_raw = neutralized.story_raw
@@ -132,11 +127,7 @@ def _get_story_or_404(db: Session, story_id: str) -> tuple:
                 neutralized = current
     else:
         # Try by raw story ID
-        story_raw = (
-            db.query(models.StoryRaw)
-            .filter(models.StoryRaw.id == story_uuid)
-            .first()
-        )
+        story_raw = db.query(models.StoryRaw).filter(models.StoryRaw.id == story_uuid).first()
 
         if not story_raw:
             raise HTTPException(status_code=404, detail="Story not found")
@@ -165,39 +156,43 @@ def _get_story_or_404(db: Session, story_id: str) -> tuple:
 # List Stories
 # -----------------------------------------------------------------------------
 
-from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
 
 class StoryListItem(BaseModel):
     """Story list item showing before/after comparison."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     # Original (before)
     original_title: str
-    original_description: Optional[str]
+    original_description: str | None
     # Filtered (after)
-    feed_title: Optional[str]
-    feed_summary: Optional[str]
+    feed_title: str | None
+    feed_summary: str | None
     # Metadata
     source_name: str
     source_slug: str
     source_url: str
     published_at: datetime
-    section: Optional[str]
+    section: str | None
     has_manipulative_content: bool
     is_neutralized: bool
 
 
 class StoryListResponse(BaseModel):
     """List of stories."""
-    stories: List[StoryListItem]
+
+    stories: list[StoryListItem]
     total: int
 
 
 @router.get("", response_model=StoryListResponse)
 def list_stories(
-    source_slug: Optional[str] = None,
+    source_slug: str | None = None,
     neutralized_only: bool = False,
     limit: int = 50,
     offset: int = 0,
@@ -208,59 +203,45 @@ def list_stories(
 
     Filter by source_slug or show only neutralized stories.
     """
-    query = (
-        db.query(models.StoryRaw)
-        .filter(models.StoryRaw.is_duplicate == False)
-        .join(models.Source)
-    )
+    query = db.query(models.StoryRaw).filter(models.StoryRaw.is_duplicate == False).join(models.Source)
 
     if source_slug:
         query = query.filter(models.Source.slug == source_slug)
 
     if neutralized_only:
-        query = query.join(
-            models.StoryNeutralized,
-            models.StoryRaw.id == models.StoryNeutralized.story_raw_id
-        ).filter(
+        query = query.join(models.StoryNeutralized, models.StoryRaw.id == models.StoryNeutralized.story_raw_id).filter(
             models.StoryNeutralized.is_current == True,
             models.StoryNeutralized.neutralization_status == "success",  # Only show successful
         )
 
     total = query.count()
-    stories_raw = (
-        query
-        .order_by(models.StoryRaw.published_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    stories_raw = query.order_by(models.StoryRaw.published_at.desc()).offset(offset).limit(limit).all()
 
     result = []
     for story in stories_raw:
         # Get current neutralization if exists
         neutralized = (
             db.query(models.StoryNeutralized)
-            .filter(
-                models.StoryNeutralized.story_raw_id == story.id,
-                models.StoryNeutralized.is_current == True
-            )
+            .filter(models.StoryNeutralized.story_raw_id == story.id, models.StoryNeutralized.is_current == True)
             .first()
         )
 
-        result.append(StoryListItem(
-            id=str(story.id),
-            original_title=story.original_title,
-            original_description=story.original_description,
-            feed_title=neutralized.feed_title if neutralized else None,
-            feed_summary=neutralized.feed_summary if neutralized else None,
-            source_name=story.source.name,
-            source_slug=story.source.slug,
-            source_url=story.original_url,
-            published_at=story.published_at,
-            section=story.section,
-            has_manipulative_content=neutralized.has_manipulative_content if neutralized else False,
-            is_neutralized=neutralized is not None,
-        ))
+        result.append(
+            StoryListItem(
+                id=str(story.id),
+                original_title=story.original_title,
+                original_description=story.original_description,
+                feed_title=neutralized.feed_title if neutralized else None,
+                feed_summary=neutralized.feed_summary if neutralized else None,
+                source_name=story.source.name,
+                source_slug=story.source.slug,
+                source_url=story.original_url,
+                published_at=story.published_at,
+                section=story.section,
+                has_manipulative_content=neutralized.has_manipulative_content if neutralized else False,
+                is_neutralized=neutralized is not None,
+            )
+        )
 
     return StoryListResponse(stories=result, total=total)
 
@@ -357,6 +338,7 @@ def get_story_transparency(
     original_body = _get_body_from_storage(story_raw)
     if original_body:
         from app.utils.content_sanitizer import strip_truncation_markers
+
         original_body = strip_truncation_markers(original_body)
 
     result = StoryTransparency(
@@ -382,7 +364,7 @@ def get_story_transparency(
     return result
 
 
-def _check_readability(text: Optional[str]) -> tuple[bool, list[str]]:
+def _check_readability(text: str | None) -> tuple[bool, list[str]]:
     """
     Basic readability check for neutralized text.
     Returns (is_readable, list_of_issues).
@@ -394,7 +376,7 @@ def _check_readability(text: Optional[str]) -> tuple[bool, list[str]]:
 
     # Check for garbled text indicators
     # 1. Unusual character sequences (non-English patterns)
-    unusual_chars = len([c for c in text if ord(c) > 127 and c not in '""''—–…'])
+    unusual_chars = len([c for c in text if ord(c) > 127 and c not in '""—–…'])
     if unusual_chars > len(text) * 0.05:  # More than 5% unusual chars
         issues.append(f"High unusual character ratio: {unusual_chars}/{len(text)}")
 
@@ -408,18 +390,18 @@ def _check_readability(text: Optional[str]) -> tuple[bool, list[str]]:
                 break
 
     # 3. Missing sentence boundaries
-    sentences = text.split('.')
+    sentences = text.split(".")
     avg_sentence_len = len(text) / max(len(sentences), 1)
     if avg_sentence_len > 500:  # Very long sentences suggest missing punctuation
         issues.append(f"Long sentence avg: {avg_sentence_len:.0f} chars")
 
     # 4. Truncation indicator
-    if text.endswith('...') or text.endswith('…') or text.endswith('['):
+    if text.endswith("...") or text.endswith("…") or text.endswith("["):
         issues.append("Text appears truncated")
 
     # 5. JSON/structured data leak
-    if '{' in text and '}' in text and ':' in text:
-        if text.count('{') > 2 or text.count('"') > 10:
+    if "{" in text and "}" in text and ":" in text:
+        if text.count("{") > 2 or text.count('"') > 10:
             issues.append("Possible JSON/structured data in text")
 
     return len(issues) == 0, issues
@@ -467,9 +449,7 @@ def get_story_debug(
 
     # Get total span count
     total_spans = (
-        db.query(models.TransparencySpan)
-        .filter(models.TransparencySpan.story_neutralized_id == neutralized.id)
-        .count()
+        db.query(models.TransparencySpan).filter(models.TransparencySpan.story_neutralized_id == neutralized.id).count()
     )
 
     # Check readability of detail_full
@@ -482,7 +462,9 @@ def get_story_debug(
     if original_body and spans:
         for span in spans:
             if span.start_char >= original_body_length or span.end_char > original_body_length:
-                issues.append(f"Span out of bounds: {span.start_char}-{span.end_char} (body len: {original_body_length})")
+                issues.append(
+                    f"Span out of bounds: {span.start_char}-{span.end_char} (body len: {original_body_length})"
+                )
                 break
 
     # Check detail_brief
@@ -526,6 +508,7 @@ def get_story_debug_spans(
     different results than stored spans if the prompt or model has changed.
     """
     import os
+
     from app.services.neutralizer import detect_spans_debug_openai
 
     neutralized, story_raw, source = _get_story_or_404(db, story_id)
@@ -565,6 +548,7 @@ def get_story_debug_spans(
     # Run debug detection
     # IMPORTANT: Use same model as production to avoid confusing discrepancies
     from app.config import get_settings
+
     model = get_settings().SPAN_DETECTION_MODEL
     debug_result = detect_spans_debug_openai(original_body, api_key, model)
 
@@ -594,8 +578,8 @@ def get_story_debug_spans(
             start_char=span.start_char,
             end_char=span.end_char,
             original_text=span.original_text,
-            action=span.action.value if hasattr(span.action, 'value') else str(span.action),
-            reason=span.reason.value if hasattr(span.reason, 'value') else str(span.reason),
+            action=span.action.value if hasattr(span.action, "value") else str(span.action),
+            reason=span.reason.value if hasattr(span.reason, "value") else str(span.reason),
             replacement_text=span.replacement_text,
         )
         for span in debug_result.spans_final
