@@ -3070,15 +3070,18 @@ def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> list[Tra
         user_prompt = build_span_detection_prompt(body)
         logger.info(f"[SPAN_DETECTION] Starting LLM call, model={model}, body_length={len(body)}")
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        # Some models (e.g. gpt-5-mini) only support temperature=1
+        create_kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": SPAN_DETECTION_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.3,  # Balanced temp for variety while maintaining consistency
-            response_format={"type": "json_object"},
-        )
+            "response_format": {"type": "json_object"},
+        }
+        if not model.startswith("gpt-5"):
+            create_kwargs["temperature"] = 0.3
+        response = client.chat.completions.create(**create_kwargs)
 
         # Parse LLM response
         content = response.choices[0].message.content.strip()
@@ -3632,15 +3635,18 @@ def detect_spans_adversarial_pass(
             f"[SPAN_DETECTION] Adversarial pass starting, model={model}, already_detected={len(detected_phrases)}"
         )
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        # Some models (e.g. gpt-5-mini) only support temperature=1
+        create_kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": ADVERSARIAL_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
+            "response_format": {"type": "json_object"},
+        }
+        if not model.startswith("gpt-5"):
+            create_kwargs["temperature"] = 0.3
+        response = client.chat.completions.create(**create_kwargs)
 
         content = response.choices[0].message.content.strip()
 
@@ -4819,15 +4825,18 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
 
             detail_full_model = get_settings().DETAIL_FULL_MODEL or self._model
 
-            response = client.chat.completions.create(
-                model=detail_full_model,
-                messages=[
+            # Some models (e.g. gpt-5-mini) only support temperature=1
+            create_kwargs: dict[str, Any] = {
+                "model": detail_full_model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.3,
-                # No JSON format - plain text synthesis
-            )
+            }
+            if not detail_full_model.startswith("gpt-5"):
+                create_kwargs["temperature"] = 0.3
+
+            response = client.chat.completions.create(**create_kwargs)
 
             detail_full = response.choices[0].message.content.strip()
 
@@ -6173,24 +6182,21 @@ class NeutralizerService:
                 # Pass title for headline manipulation detection
                 if body:
                     detail_full_result = self.provider._neutralize_detail_full(body, title=title)
-                    transparency_spans = detail_full_result.spans
 
-                    # V2 pattern-based detection disabled - produces too many false positives
-                    # (256+ spans per article vs ~20-50 from LLM). The regex/spaCy patterns
-                    # flag neutral news language like "Sunday", "protesters", "intensive".
-                    # LLM detection is contextually aware and sufficient.
-                    #
-                    # try:
-                    #     enhanced_spans = _enhance_spans_with_v2_scan(body, transparency_spans)
-                    #     if len(enhanced_spans) != len(transparency_spans):
-                    #         logger.info(
-                    #             f"Story {story_id}: V2 scan enhanced spans "
-                    #             f"({len(transparency_spans)} LLM → {len(enhanced_spans)} total)"
-                    #         )
-                    #     transparency_spans = enhanced_spans
-                    # except Exception as e:
-                    #     logger.warning(f"V2 scan enhancement failed for story {story_id}: {e}")
-                    #     # Continue with LLM spans only
+                    # Check for failure status (no mock fallback)
+                    if detail_full_result.status != "success":
+                        logger.error(
+                            f"detail_full FAILED for story {story_id}: "
+                            f"status={detail_full_result.status}, "
+                            f"reason={detail_full_result.failure_reason}"
+                        )
+                        return {
+                            "story_id": story_id,
+                            "status": "failed",
+                            "error": f"detail_full failed: {detail_full_result.failure_reason}",
+                        }
+
+                    transparency_spans = detail_full_result.spans
                 else:
                     detail_full_result = DetailFullResult(detail_full="", spans=[])
                     transparency_spans = []
