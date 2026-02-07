@@ -8,7 +8,7 @@ Fail fast with clear error messages if required config is missing.
 
 import os
 from functools import lru_cache
-from typing import Optional
+from typing import ClassVar, Optional, Set
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -61,8 +61,8 @@ class Settings(BaseSettings):
         description="Override model for detail_full neutralization (e.g., gpt-4o). Empty = use OPENAI_MODEL.",
     )
     SPAN_DETECTION_MODEL: str = Field(
-        default="gpt-4o",
-        description="OpenAI model for span detection (can be different from neutralization model)",
+        default="gpt-5-mini",
+        description="OpenAI model for span detection (supports gpt-5-mini, gpt-5.1, gpt-4o-mini)",
     )
 
     # Teacher LLM Configuration
@@ -71,13 +71,13 @@ class Settings(BaseSettings):
         description="Model for evaluation/grading (supports claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5, gpt-4o)",
     )
     OPTIMIZER_MODEL: str = Field(
-        default="gpt-4o",
-        description="Model for prompt improvement generation (supports gpt-4o, o3, o1-mini, o1)",
+        default="gpt-5-mini",
+        description="Model for prompt improvement generation (supports gpt-5-mini, gpt-5.1, o3, o1-mini)",
     )
 
     # Span Detection Configuration
     SPAN_DETECTION_MODE: str = Field(
-        default="single",
+        default="multi_pass",
         description="Span detection mode: 'single' (original) or 'multi_pass' (99% recall target)",
     )
     SPAN_CHUNK_SIZE: int = Field(
@@ -161,6 +161,21 @@ class Settings(BaseSettings):
         default=False,
         description="Enable NewsData.io API ingestion",
     )
+
+    # Deprecated models that will be retired or have been retired
+    DEPRECATED_MODELS: ClassVar[Set[str]] = {"gpt-4o", "gpt-4o-2024-08-06", "gpt-4-turbo"}
+
+    @field_validator("SPAN_DETECTION_MODEL", "OPTIMIZER_MODEL", "OPENAI_MODEL")
+    @classmethod
+    def warn_deprecated_model(cls, v: str) -> str:
+        """Log a warning if a deprecated/retiring model is configured."""
+        import logging
+        if v in cls.DEPRECATED_MODELS:
+            logging.getLogger(__name__).warning(
+                f"Model '{v}' is deprecated or retiring soon. "
+                f"Consider switching to gpt-5-mini or gpt-5.1."
+            )
+        return v
 
     @field_validator("DATABASE_URL")
     @classmethod

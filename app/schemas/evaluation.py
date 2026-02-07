@@ -60,9 +60,9 @@ class EvaluationRunRequest(BaseModel):
         None,
         description="Pipeline run to evaluate (default: most recent)"
     )
-    teacher_model: str = Field(
-        "gpt-4o",
-        description="Teacher model for evaluation"
+    teacher_model: Optional[str] = Field(
+        None,
+        description="Teacher model for evaluation (default: uses EVAL_MODEL config)"
     )
     sample_size: int = Field(
         10,
@@ -297,9 +297,9 @@ class ScheduledRunEvaluationConfig(BaseModel):
         False,
         description="Run teacher evaluation after pipeline"
     )
-    teacher_model: str = Field(
-        "gpt-4o",
-        description="Model to use for evaluation"
+    teacher_model: Optional[str] = Field(
+        None,
+        description="Model to use for evaluation (default: uses EVAL_MODEL config)"
     )
     eval_sample_size: int = Field(
         10,

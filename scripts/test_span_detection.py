@@ -75,7 +75,7 @@ def test_local_body(body: str) -> dict:
         print("ERROR: OPENAI_API_KEY not set in environment")
         sys.exit(1)
 
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o")
+    model = os.environ.get("SPAN_DETECTION_MODEL", "gpt-5-mini")
     result = detect_spans_debug_openai(body, api_key, model)
 
     return {

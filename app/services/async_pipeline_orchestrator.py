@@ -525,8 +525,8 @@ class AsyncPipelineOrchestrator:
 
         try:
             with log_stage(stage_name, self.trace_id):
-                eval_model = self.config.get("teacher_model", "gpt-4o")
-                if eval_model == "gpt-4o":  # Use config default
+                eval_model = self.config.get("teacher_model")
+                if eval_model is None:  # No override, use config default
                     eval_model = settings.EVAL_MODEL
 
                 service = EvaluationService(teacher_model=eval_model)

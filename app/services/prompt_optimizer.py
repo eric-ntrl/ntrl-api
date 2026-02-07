@@ -88,9 +88,10 @@ class PromptOptimizer:
     prompt improvements. All changes are versioned for rollback.
     """
 
-    def __init__(self, teacher_model: str = "gpt-4o"):
+    def __init__(self, teacher_model: Optional[str] = None):
         """Initialize the optimizer."""
-        self.teacher_model = teacher_model
+        from app.config import get_settings
+        self.teacher_model = teacher_model or get_settings().OPTIMIZER_MODEL
         self._total_input_tokens = 0
         self._total_output_tokens = 0
 

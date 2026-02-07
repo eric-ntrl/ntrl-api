@@ -2,8 +2,8 @@
 """
 Teacher LLM evaluation service for automated prompt optimization.
 
-Uses a stronger LLM (GPT-4o) to evaluate the quality of classification,
-neutralization, and span detection produced by production LLMs (GPT-4o-mini).
+Uses a teacher LLM to evaluate the quality of classification,
+neutralization, and span detection produced by production LLMs.
 
 The evaluation results drive prompt improvements and rollback decisions.
 """
@@ -35,6 +35,8 @@ MODEL_PRICING = {
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     "claude-opus-4-5": {"input": 5.00, "output": 25.00},
     # OpenAI
+    "gpt-5-mini": {"input": 0.25, "output": 2.00},
+    "gpt-5.1": {"input": 1.25, "output": 10.00},
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "o3": {"input": 2.00, "output": 8.00},
     "o3-mini": {"input": 0.55, "output": 2.20},
@@ -45,7 +47,7 @@ MODEL_PRICING = {
 }
 
 
-def _calculate_cost(input_tokens: int, output_tokens: int, model: str = "gpt-4o") -> float:
+def _calculate_cost(input_tokens: int, output_tokens: int, model: str = "claude-opus-4-5") -> float:
     """Calculate estimated cost in USD."""
     # Find matching pricing tier
     for model_key, pricing in MODEL_PRICING.items():
@@ -249,14 +251,15 @@ class EvaluationService:
 
     After a pipeline run, this service:
     1. Samples articles using stratified sampling (tabloid vs quality sources)
-    2. Uses GPT-4o to evaluate classification, neutralization, and spans
+    2. Uses teacher LLM to evaluate classification, neutralization, and spans
     3. Stores detailed results in article_evaluations
     4. Computes aggregate metrics and recommendations
     """
 
-    def __init__(self, teacher_model: str = "gpt-4o"):
+    def __init__(self, teacher_model: Optional[str] = None):
         """Initialize the evaluation service."""
-        self.teacher_model = teacher_model
+        from app.config import get_settings
+        self.teacher_model = teacher_model or get_settings().EVAL_MODEL
         self._total_input_tokens = 0
         self._total_output_tokens = 0
 

@@ -94,7 +94,7 @@ class DetailBriefGenerator:
             self.config.model = self.config.model or "claude-3-5-sonnet-20241022"
         elif os.getenv("OPENAI_API_KEY"):
             self.config.provider = "openai"
-            self.config.model = self.config.model or "gpt-4o"
+            self.config.model = self.config.model or "gpt-5-mini"
         else:
             self.config.provider = "mock"
 

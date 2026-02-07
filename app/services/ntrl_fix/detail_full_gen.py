@@ -139,7 +139,7 @@ class DetailFullGenerator:
         """Auto-configure from environment variables."""
         if os.getenv("OPENAI_API_KEY"):
             self.config.provider = "openai"
-            self.config.model = self.config.model or "gpt-4o"
+            self.config.model = self.config.model or "gpt-5-mini"
         elif os.getenv("ANTHROPIC_API_KEY"):
             self.config.provider = "anthropic"
             self.config.model = self.config.model or "claude-3-5-sonnet-20241022"

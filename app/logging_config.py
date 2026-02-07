@@ -222,7 +222,7 @@ def log_llm_call(provider: str, model: str, call_type: str):
     Logs call start and end with timing, tokens, and cost estimates.
 
     Usage:
-        with log_llm_call("openai", "gpt-4o", "neutralize") as metrics:
+        with log_llm_call("openai", "gpt-5-mini", "neutralize") as metrics:
             response = await client.chat(...)
             metrics["tokens_in"] = response.usage.prompt_tokens
             metrics["tokens_out"] = response.usage.completion_tokens
@@ -418,6 +418,8 @@ LLM_COSTS = {
     # OpenAI
     ("openai", "gpt-4o"): {"input": 2.50, "output": 10.00},
     ("openai", "gpt-4o-mini"): {"input": 0.15, "output": 0.60},
+    ("openai", "gpt-5-mini"): {"input": 0.25, "output": 2.00},
+    ("openai", "gpt-5.1"): {"input": 1.25, "output": 10.00},
     # Anthropic
     ("anthropic", "claude-3-5-sonnet-20241022"): {"input": 3.00, "output": 15.00},
     ("anthropic", "claude-3-haiku-20240307"): {"input": 0.25, "output": 1.25},

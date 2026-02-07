@@ -802,7 +802,7 @@ class ScheduledRunRequest(BaseModel):
 
     # Evaluation options
     enable_evaluation: bool = Field(False, description="Run teacher evaluation after pipeline")
-    teacher_model: str = Field("gpt-4o", description="Model to use for evaluation")
+    teacher_model: Optional[str] = Field(None, description="Model to use for evaluation (default: uses EVAL_MODEL config)")
     eval_sample_size: int = Field(10, ge=1, le=50, description="Number of articles to evaluate")
     enable_auto_optimize: bool = Field(False, description="Auto-apply prompt improvements")
 
@@ -1004,7 +1004,7 @@ def run_scheduled_pipeline(
 
             # Use config defaults, allow request to override
             eval_model = request.teacher_model
-            if eval_model == "gpt-4o":  # Schema default, use config instead
+            if eval_model is None:  # No override, use config default
                 eval_model = settings.EVAL_MODEL
             optimizer_model = settings.OPTIMIZER_MODEL
 
@@ -1703,7 +1703,7 @@ def run_evaluation(
 
     # Use config defaults if request uses schema defaults
     eval_model = request.teacher_model
-    if eval_model == "gpt-4o":  # Schema default, use config instead
+    if eval_model is None:  # No override, use config default
         eval_model = settings.EVAL_MODEL
     optimizer_model = settings.OPTIMIZER_MODEL
 
