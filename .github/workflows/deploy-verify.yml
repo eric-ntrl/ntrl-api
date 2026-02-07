@@ -8,8 +8,6 @@ jobs:
   verify:
     name: Verify Staging Deploy
     runs-on: ubuntu-latest
-    # Only run after CI passes
-    needs: []
 
     steps:
       - name: Wait for Railway deploy
