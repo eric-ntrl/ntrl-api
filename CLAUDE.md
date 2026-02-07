@@ -197,11 +197,15 @@ Follow the branch and commit conventions in the root `CLAUDE.md`. Key points for
 
 - **Branch prefixes**: `feature/`, `fix/`, `docs/`, `refactor/`, `chore/`
 - **Conventional commits**: `type: description` format, enforced by `pre-commit` hooks
-- **Pre-commit checks**: `ruff` linting/formatting + secret detection, runs on every commit
-- **CI**: GitHub Actions runs `ruff check` + `pytest` on every PR to `main`
-- **Deploy verification**: After merge to `main`, `deploy-verify.yml` checks Railway health
+- **Pre-commit checks**: ruff lint/format, secret detection (`scripts/check-secrets.sh`), private key detection, merge conflict markers, trailing whitespace, YAML validation (excludes `.github/`)
+- **CI** (`ci.yml`): ruff check + ruff format --check + pytest (255 unit tests w/ Postgres service container). Uses `NEUTRALIZER_PROVIDER=mock` and `STORAGE_PROVIDER=local` to avoid LLM/S3 costs.
+- **Deploy verification** (`deploy-verify.yml`): After push to `main`, waits 120s for Railway, then hits `/health` and `/v1/brief`. Requires `STAGING_API_KEY` GitHub secret.
 
-Install hooks after cloning: `pipenv install --dev && pipenv run pre-commit install --hook-type pre-commit --hook-type commit-msg`
+Install hooks after cloning:
+```bash
+pipenv install --dev
+pipenv run pre-commit install --hook-type pre-commit --hook-type commit-msg
+```
 
 ## Key Gotchas
 
