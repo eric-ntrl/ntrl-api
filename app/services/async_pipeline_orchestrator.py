@@ -547,6 +547,8 @@ class AsyncPipelineOrchestrator:
                     metrics={
                         "classification_accuracy": result.classification_accuracy,
                         "avg_neutralization_score": result.avg_neutralization_score,
+                        "avg_span_precision": result.avg_span_precision,
+                        "avg_span_recall": result.avg_span_recall,
                         "overall_quality_score": result.overall_quality_score,
                         "estimated_cost_usd": result.estimated_cost_usd,
                     },
