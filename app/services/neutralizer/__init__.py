@@ -2399,18 +2399,6 @@ VERIFICATION: Before outputting, scan for these scope words in your brief:
 - Does the original have "expected to"? → Your brief MUST have "expected to"
 
 ═══════════════════════════════════════════════════════════════════════════════
-ARTICLE PURPOSE PRESERVATION
-═══════════════════════════════════════════════════════════════════════════════
-
-The feed_title MUST reflect the PRIMARY PURPOSE of the article:
-- Promotional content (giveaways, competitions, reviews): title must indicate it's
-  promotional, e.g., "Win a Copy of [Book Title] in Weekly Competition" NOT
-  "[Character] Expected to Star in Documentary"
-- Travel reviews/guides: title should indicate it's a review or guide, not breaking news
-- Do NOT reframe fictional content as real events or real people
-- Do NOT convert entertainment/lifestyle content into hard news framing
-
-═══════════════════════════════════════════════════════════════════════════════
 DO NOT
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2480,6 +2468,15 @@ CONTENT RULES:
 - NO emotional language, urgency, clickbait, questions, or teasers
 - NO colons introducing clauses (e.g., "Breaking: X happens")
 - NO ALL-CAPS except acronyms (NATO, FBI, CEO)
+
+ARTICLE PURPOSE PRESERVATION:
+- The feed_title MUST reflect the PRIMARY PURPOSE of the article
+- Promotional content (giveaways, competitions, reviews): title must indicate it's
+  promotional, e.g., "Win a Copy of [Book Title] in Weekly Competition" NOT
+  "[Character] Expected to Star in Documentary"
+- Travel reviews/guides: title should indicate it's a review or guide, not breaking news
+- Do NOT reframe fictional content as real events or real people
+- Do NOT convert entertainment/lifestyle content into hard news framing
 
 GOOD: "Apple Expected to Announce New iPhone Feature at Spring Event" (61 chars) ✓
 GOOD: "Senate Passes $1.2 Trillion Infrastructure Bill After Week of Debate" (68 chars) ✓
