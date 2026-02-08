@@ -3,12 +3,14 @@ Robust article body extraction with retries and fallback extractors.
 
 This module provides a hardened body extraction service that:
 - Retries failed downloads with exponential backoff (3 attempts: 1s, 2s, 4s)
-- Falls back to newspaper3k when trafilatura fails
+- Falls back through readability-lxml and newspaper3k when trafilatura fails
+- Downloads HTML once and passes to all extractors (reduces network calls)
 - Tracks detailed failure reasons for observability
 """
 
 import configparser
 import logging
+import re
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -44,13 +46,13 @@ class ExtractionResult:
     failure_reason: ExtractionFailureReason | None = None
     attempts: int = 1
     duration_ms: int = 0
-    extractor_used: str = "trafilatura"  # "trafilatura" or "newspaper3k"
+    extractor_used: str = "trafilatura"  # "trafilatura", "readability", or "newspaper3k"
 
 
 class BodyExtractor:
     """Extract article body with retries, fallback extractors, and detailed failure tracking."""
 
-    MIN_BODY_LENGTH = 100
+    MIN_BODY_LENGTH = 200
     TIMEOUT_SECONDS = 15
 
     @retry(
@@ -71,8 +73,40 @@ class BodyExtractor:
         )
         return trafilatura.fetch_url(url, config=config)
 
+    def _try_trafilatura(self, html: str) -> str | None:
+        """Extract text using trafilatura from pre-downloaded HTML."""
+        try:
+            text = trafilatura.extract(
+                html,
+                include_comments=False,
+                include_tables=False,
+                no_fallback=False,
+            )
+            if text and len(text) >= self.MIN_BODY_LENGTH:
+                return text
+        except Exception as e:
+            logger.debug(f"trafilatura extraction failed: {e}")
+        return None
+
+    def _try_readability(self, html: str) -> str | None:
+        """Fallback extractor using readability-lxml (Mozilla algorithm)."""
+        try:
+            from readability import Document
+
+            doc = Document(html)
+            summary = doc.summary()
+            # readability returns HTML, strip tags
+            clean_text = re.sub(r"<[^>]+>", "", summary)
+            clean_text = clean_text.strip()
+            if clean_text and len(clean_text) >= self.MIN_BODY_LENGTH:
+                logger.debug(f"readability extracted {len(clean_text)} chars")
+                return clean_text
+        except Exception as e:
+            logger.debug(f"readability fallback failed: {e}")
+        return None
+
     def _try_newspaper3k(self, url: str) -> str | None:
-        """Fallback extractor using newspaper3k."""
+        """Fallback extractor using newspaper3k (re-downloads the page)."""
         try:
             from newspaper import Article
 
@@ -91,31 +125,31 @@ class BodyExtractor:
         Extract article body with retries, fallback, and detailed failure tracking.
 
         Extraction flow:
-        1. Try trafilatura with 3 retries (exponential backoff: 1s, 2s, 4s)
-        2. If trafilatura fails to download or extract, try newspaper3k
-        3. Return detailed result with failure reason if all attempts fail
+        1. Download HTML once with retries (exponential backoff: 1s, 2s, 4s)
+        2. Try trafilatura on the downloaded HTML
+        3. If failed: try readability-lxml on the same HTML
+        4. If failed: try newspaper3k (re-downloads as last resort)
+        5. Return detailed result with failure reason if all attempts fail
         """
         start_time = time.time()
         attempts = 0
-        extractor_used = "trafilatura"
 
         try:
             attempts = 1
             downloaded = self._fetch_with_retry(url)
 
             if not downloaded:
-                # Try newspaper3k fallback for download failure
+                # Download failed — try newspaper3k which does its own download
                 logger.warning(f"trafilatura download failed for {url}, trying newspaper3k")
                 text = self._try_newspaper3k(url)
                 if text:
-                    extractor_used = "newspaper3k"
                     return ExtractionResult(
                         success=True,
                         body=text,
                         char_count=len(text),
                         attempts=attempts,
                         duration_ms=int((time.time() - start_time) * 1000),
-                        extractor_used=extractor_used,
+                        extractor_used="newspaper3k",
                     )
                 return ExtractionResult(
                     success=False,
@@ -124,60 +158,46 @@ class BodyExtractor:
                     duration_ms=int((time.time() - start_time) * 1000),
                 )
 
-            text = trafilatura.extract(
-                downloaded,
-                include_comments=False,
-                include_tables=False,
-                no_fallback=False,
-            )
-
-            # If trafilatura extraction fails or content too short, try newspaper3k
-            if not text or len(text) < self.MIN_BODY_LENGTH:
-                logger.debug(
-                    f"trafilatura extraction insufficient ({len(text) if text else 0} chars), trying newspaper3k"
-                )
-                fallback_text = self._try_newspaper3k(url)
-                if fallback_text:
-                    extractor_used = "newspaper3k"
+            # Try extractors in order on the same downloaded HTML
+            extractors = [
+                (lambda h: self._try_trafilatura(h), "trafilatura"),
+                (lambda h: self._try_readability(h), "readability"),
+            ]
+            for extractor_fn, name in extractors:
+                text = extractor_fn(downloaded)
+                if text:
+                    logger.debug(f"{name} extracted {len(text)} chars from {url}")
                     return ExtractionResult(
                         success=True,
-                        body=fallback_text,
-                        char_count=len(fallback_text),
+                        body=text,
+                        char_count=len(text),
                         attempts=attempts,
                         duration_ms=int((time.time() - start_time) * 1000),
-                        extractor_used=extractor_used,
+                        extractor_used=name,
                     )
 
-            if not text:
+            # Last HTML-based extractors failed — try newspaper3k (re-downloads)
+            logger.debug(f"trafilatura and readability insufficient for {url}, trying newspaper3k")
+            text = self._try_newspaper3k(url)
+            if text:
                 return ExtractionResult(
-                    success=False,
-                    failure_reason=ExtractionFailureReason.EXTRACTION_FAILED,
-                    attempts=attempts,
-                    duration_ms=int((time.time() - start_time) * 1000),
-                )
-
-            if len(text) < self.MIN_BODY_LENGTH:
-                return ExtractionResult(
-                    success=False,
+                    success=True,
                     body=text,
                     char_count=len(text),
-                    failure_reason=ExtractionFailureReason.CONTENT_TOO_SHORT,
                     attempts=attempts,
                     duration_ms=int((time.time() - start_time) * 1000),
+                    extractor_used="newspaper3k",
                 )
 
-            logger.debug(f"trafilatura extracted {len(text)} chars from {url}")
             return ExtractionResult(
-                success=True,
-                body=text,
-                char_count=len(text),
+                success=False,
+                failure_reason=ExtractionFailureReason.EXTRACTION_FAILED,
                 attempts=attempts,
                 duration_ms=int((time.time() - start_time) * 1000),
-                extractor_used=extractor_used,
             )
 
         except Exception as e:
-            logger.warning(f"All trafilatura attempts failed for {url}: {e}")
+            logger.warning(f"All extraction attempts failed for {url}: {e}")
             # Last resort: try newspaper3k
             fallback_text = self._try_newspaper3k(url)
             if fallback_text:

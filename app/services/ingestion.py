@@ -285,6 +285,10 @@ class IngestionService:
         if not published:
             published = datetime.utcnow()
 
+        # Flag articles with insufficient bodies for early filtering
+        # This prevents wasted LLM neutralization on short RSS excerpts
+        body_is_truncated = bool(body and len(body) < 500)
+
         return {
             "url": url,
             "title": title,
@@ -294,6 +298,7 @@ class IngestionService:
             "published_at": published,
             "source_slug": source.slug,
             "raw_entry": dict(entry),
+            "body_is_truncated": body_is_truncated,
             # Extraction metrics
             "body_downloaded": body_downloaded,
             "extractor_used": extractor_used,
@@ -390,6 +395,8 @@ class IngestionService:
                         section=section.value,
                         is_duplicate=False,
                         feed_entry_id=normalized["raw_entry"].get("id"),
+                        # Content completeness
+                        body_is_truncated=normalized.get("body_is_truncated", False),
                         # S3 storage references
                         raw_content_uri=storage_meta["uri"] if storage_meta else None,
                         raw_content_hash=storage_meta["hash"] if storage_meta else None,
