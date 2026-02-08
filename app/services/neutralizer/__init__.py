@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app import models
@@ -6424,11 +6425,35 @@ class NeutralizerService:
                 models.StoryRaw.is_duplicate == False,
                 models.StoryRaw.raw_content_available == True,
                 models.StoryRaw.raw_content_uri.isnot(None),
+                # Early QC: skip articles with truncated bodies
+                models.StoryRaw.body_is_truncated != True,
+                # Early QC: skip articles with insufficient body size
+                or_(
+                    models.StoryRaw.raw_content_size.is_(None),  # NULL = unknown, allow through
+                    models.StoryRaw.raw_content_size >= 500,
+                ),
             )
             if not force:
                 # Only get stories without current neutralization
                 subq = db.query(models.StoryNeutralized.story_raw_id).filter(models.StoryNeutralized.is_current == True)
                 query = query.filter(~models.StoryRaw.id.in_(subq))
+
+            # Log early-filtered count for observability
+            skipped_truncated = (
+                db.query(func.count(models.StoryRaw.id))
+                .filter(
+                    models.StoryRaw.is_duplicate == False,
+                    models.StoryRaw.raw_content_available == True,
+                    models.StoryRaw.raw_content_uri.isnot(None),
+                    or_(
+                        models.StoryRaw.body_is_truncated == True,
+                        models.StoryRaw.raw_content_size < 500,
+                    ),
+                )
+                .scalar()
+            )
+            if skipped_truncated:
+                logger.info(f"Early filter: skipped {skipped_truncated} articles with truncated/insufficient bodies")
 
         # Prioritize fresh articles - most recent first
         stories = query.order_by(models.StoryRaw.published_at.desc()).limit(limit).all()
