@@ -107,89 +107,15 @@ Runs between NEUTRALIZE and BRIEF ASSEMBLE. Articles must pass **all 18 checks**
 
 ## Railway MCP Tools
 
-Native Railway integration available via MCP:
-
-| Tool | Purpose |
-|------|---------|
-| `railway_status` | Get service status and deploy state |
-| `railway_logs` | Fetch logs (with optional filter) |
-| `railway_deploys` | List recent deployments |
-| `railway_deploy_wait` | Wait for deploy to complete |
-| `railway_deploy_verify` | Wait + smoke test endpoints |
-| `railway_env_get/set` | Manage environment variables |
-| `railway_restart` | Restart the service |
+Railway MCP integration available for deployment operations. See root `CLAUDE.md` for full tool reference.
 
 ## Async Pipeline Architecture
 
-Key components:
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| `PipelineJob` | `app/models.py` | Job state persistence |
-| `PipelineJobManager` | `app/services/pipeline_job_manager.py` | Job lifecycle |
-| `AsyncPipelineOrchestrator` | `app/services/async_pipeline_orchestrator.py` | Stage execution |
-| `CircuitBreaker` | `app/services/resilience.py` | Failure protection |
-| `PipelineLogger` | `app/logging_config.py` | Structured JSON logging |
-
-### Alerts
-
-| Alert Code | Threshold | Trigger |
-|------------|-----------|---------|
-| `llm_latency_high` | >5s avg | LLM calls slow |
-| `pipeline_duration_high` | >10 min | Pipeline too slow |
-| `token_usage_high` | >500k tokens | Cost concern |
+Key components: `PipelineJob`, `PipelineJobManager`, `AsyncPipelineOrchestrator`, `CircuitBreaker`. Details: `.claude/reference/async-architecture.md`
 
 ## Data Retention System
 
-3-tier retention system for compliance and clean development iteration:
-
-| Tier | Window | Description |
-|------|--------|-------------|
-| **Active** | 0-7 days | Full access, all features work |
-| **Compliance** | 7d-12mo | Metadata + neutralized content retained |
-| **Deleted** | >12mo | Permanent removal |
-
-### Retention CLI
-
-```bash
-# Check current status
-pipenv run python -m app.cli.retention status
-
-# Preview what would be purged
-pipenv run python -m app.cli.retention purge --dry-run
-
-# Development mode purge (hard delete)
-pipenv run python -m app.cli.retention purge --dev --days 3 --confirm
-
-# Switch retention policy
-pipenv run python -m app.cli.retention set-policy production
-```
-
-### Retention API Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/v1/admin/retention/status` | GET | Current retention stats |
-| `/v1/admin/retention/policy` | GET/PUT | View/update policy |
-| `/v1/admin/retention/purge` | POST | Trigger purge (requires confirm) |
-| `/v1/admin/retention/dry-run` | POST | Preview purge |
-
-### Key Components
-
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| `RetentionPolicy` | `app/models.py` | Configurable retention windows |
-| `ContentLifecycleEvent` | `app/models.py` | Immutable audit trail |
-| `policy_service` | `app/services/retention/` | Policy CRUD |
-| `archive_service` | `app/services/retention/` | Tier transitions |
-| `purge_service` | `app/services/retention/` | FK-safe deletion |
-
-### Safety Features
-
-- **Brief protection**: Never deletes articles in current brief
-- **Legal hold**: Stories with `legal_hold=True` cannot be deleted
-- **Soft delete grace**: 24-hour window before hard delete
-- **Dry run**: Preview before executing any purge
+3-tier system: Active (0-7d), Compliance (7d-12mo), Deleted (>12mo). CLI, API endpoints, and safety features (brief protection, legal hold, dry run). Details: `.claude/reference/data-retention.md`
 
 ## Git Workflow
 
@@ -215,6 +141,8 @@ pipenv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 - **Limits**: Ingest 25, Classify 200, Neutralize 25 (development caps)
 - **MockNeutralizerProvider**: Test-only, never production fallback
 - **Retention**: Never delete articles in current brief or under legal hold
+- **gpt-5-mini temperature**: Does not support `temperature != 1` — omit the parameter entirely
+- **`_neutralize_content()` vs `neutralize_story()`**: Both paths must check `detail_full_result.status` for failures
 
 ## Detailed Documentation
 
