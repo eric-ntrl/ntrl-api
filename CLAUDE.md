@@ -133,6 +133,29 @@ pipenv install --dev
 pipenv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
+## Prompt Architecture
+
+**The `prompts` database table is the source of truth for all LLM prompts, not the hardcoded constants in code.**
+
+| Function | Behavior |
+|----------|----------|
+| `get_prompt(name, model)` | Checks DB first (60s cache) → falls back to hardcoded constant |
+| `get_model_agnostic_prompt(name)` | Same DB-first lookup, ignores model column |
+| `PUT /v1/prompts/{name}` | Updates DB prompt, increments version, clears cache |
+| Auto-optimization | Writes improved prompts to DB, creates version history |
+
+### Rules
+
+1. **Always update DB prompts via API** after changing hardcoded constants — code changes alone are invisible to production
+2. **Keep hardcoded constants in sync** as documentation and fallback, but they are NOT the active prompts
+3. **Auto-optimized prompts** (span detection): `high_recall_prompt`, `adversarial_prompt`, `span_detection_prompt`
+4. **Manually managed prompts**: `synthesis_detail_full_prompt`, `compression_feed_outputs_prompt`
+5. **After prompt changes**: Sync to DB → run eval → verify scores
+
+### Common Trap
+
+Editing hardcoded prompts and seeing tests pass (mock provider) does NOT mean production uses the new prompt. The DB row takes precedence. Always `PUT /v1/prompts/{name}` after code changes.
+
 ## Key Gotchas
 
 - **Spans**: Always reference `original_body`, not `detail_full`
