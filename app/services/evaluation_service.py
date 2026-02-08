@@ -416,7 +416,7 @@ class EvaluationService:
             logger.info(
                 f"[EVAL] Completed: accuracy={classification_accuracy:.2%}, "
                 f"neutralization={avg_neutralization_score:.1f}/10, "
-                f"span_precision={avg_span_precision:.2%}, "
+                f"span_precision={avg_span_precision:.2%}, span_recall={avg_span_recall:.2%}, "
                 f"overall={overall_quality_score:.1f}/10, "
                 f"cost=${estimated_cost:.2f}"
             )
@@ -601,7 +601,9 @@ class EvaluationService:
                 assigned_domain=story_raw.domain,
                 assigned_feed_category=story_raw.feed_category,
             )
-            eval_data.classification_correct = class_result.get("domain_correct", False)
+            eval_data.classification_correct = class_result.get("domain_correct", False) and class_result.get(
+                "feed_category_correct", False
+            )
             eval_data.expected_domain = class_result.get("expected_domain")
             eval_data.expected_feed_category = class_result.get("expected_feed_category")
             eval_data.classification_feedback = class_result.get("reasoning")
