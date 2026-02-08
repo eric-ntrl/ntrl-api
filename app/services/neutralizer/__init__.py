@@ -1066,6 +1066,15 @@ CLICKBAIT (remove entirely):
 ALL CAPS (convert to regular case):
 - Except acronyms like NATO, FBI, CEO
 
+AGENDA SIGNALING (replace with neutral descriptors or remove):
+- "Radical-left", "far-left", "far-right" → remove label or use neutral descriptor
+- "socialist" (as editorial label) → use official title/role
+- "extremist", "militant" → remove unless describing armed group
+- "rabble-rouser", "agitator" → "activist" or "organizer"
+- "whined", "plotted", "prowled" → "said", "planned", "walked"
+- "bombshell" → "report"
+- "shockwaves", "sent shockwaves" → remove or "reactions"
+
 ═══════════════════════════════════════════════════════════════════════════════
 PRESERVE EXACTLY
 ═══════════════════════════════════════════════════════════════════════════════
@@ -3426,11 +3435,32 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> list[
 
 
 # -----------------------------------------------------------------------------
+# Shared Manipulation Categories (single source of truth for all prompts)
+# -----------------------------------------------------------------------------
+
+MANIPULATION_CATEGORIES = """
+1. URGENCY INFLATION: BREAKING, JUST IN, developing, scrambling, racing, crisis
+2. EMOTIONAL TRIGGERS: shocking, devastating, stunning, slams, blasts, rips, outraged, furious, gutted
+3. CLICKBAIT: "You won't believe", "Here's what happened", "The truth about"
+4. SELLING/HYPE: revolutionary, game-changer, groundbreaking, viral, mogul, tycoon, whopping, staggering
+5. AGENDA SIGNALING: "radical-left", "far-left", "radical right", "extremist", "socialist" (as editorial label), "invasion" (for immigration), "crisis" (editorialized)
+6. LOADED VERBS: "admits" (implies guilt), "claims" (implies doubt), "concedes", "whined", "plotted", "prowled", "snarled" (instead of said/planned/walked)
+7. AGENDA FRAMING: "the crisis at the border", "threatens our way of life", "controversial decision" (labeling not reporting), "bombshell report"
+8. SPORTS/EVENT HYPE: brilliant, stunning, magnificent, phenomenal, blockbuster, mega, epic
+9. LOADED PERSONAL DESCRIPTORS: "rabble-rouser", "agitator", "firebrand", "hack", handsome, hostile, menacing
+10. HYPERBOLIC ADJECTIVES: punishing, brutal, incredible, extraordinary, "of the century"
+11. LOADED IDIOMS: "came under fire", "in the crosshairs", "in hot water", "sent shockwaves", "on the warpath"
+12. ENTERTAINMENT HYPE: "romantic escape", "showed off figure", "luxury yacht", "A-list couple", "celebrity hotspot"
+13. EDITORIAL VOICE: "we're glad", "naturally", "of course", "shockwaves", "Border Czar", "lunatic", "absurd"
+"""
+
+# -----------------------------------------------------------------------------
 # High-Recall Detection (Phase 2 - Claude Haiku)
 # -----------------------------------------------------------------------------
 
 # High-recall user prompt (calibrated detection — catch real manipulation, skip standard journalism)
-HIGH_RECALL_USER_PROMPT = """Your job is to identify manipulative language in this news article — phrases that attempt to influence the reader rather than inform.
+HIGH_RECALL_USER_PROMPT = (
+    """Your job is to identify manipulative language in this news article — phrases that attempt to influence the reader rather than inform.
 
 DO NOT flag:
 - Standard attribution verbs used neutrally: said, stated, noted, reported, explained, described, added, wrote, according to
@@ -3440,15 +3470,9 @@ DO NOT flag:
 - Common journalism phrasing: "breaking news", "developing story", "sources say"
 
 DO flag these categories:
-- Editorial voice: "we're glad", "naturally", "of course", "as it should", "key" (when emphasizing)
-- Subtle urgency: "careens toward", "scrambling", "racing against", "escape hatch"
-- Sports/entertainment hype in news context
-- Loaded verbs disguised as neutral: "admits" instead of "said", "claims", "concedes"
-- Amplifiers: "whopping", "staggering", "eye-watering", "massive", "enormous"
-- Emotional states: "ecstatic", "outraged", "furious", "seething", "gutted", "devastated"
-- Tabloid vocabulary: "A-list", "celeb", "mogul", "haunts", "hotspot"
-- Sensational imagery: "shockwaves", "firestorm", "whirlwind"
-
+"""
+    + MANIPULATION_CATEGORIES
+    + """
 ARTICLE BODY:
 \"\"\"
 {body}
@@ -3465,6 +3489,7 @@ IMPORTANT - Use ONLY these 7 reason values:
 - agenda_signaling
 - rhetorical_framing
 - editorial_voice"""
+)
 
 
 def detect_spans_high_recall_anthropic(
@@ -3568,7 +3593,8 @@ def detect_spans_high_recall_anthropic(
 # -----------------------------------------------------------------------------
 
 # Adversarial user prompt (validates first pass + finds what was missed)
-ADVERSARIAL_USER_PROMPT = """You are reviewing a first-pass analysis of manipulative language in a news article.
+ADVERSARIAL_USER_PROMPT = (
+    """You are reviewing a first-pass analysis of manipulative language in a news article.
 
 ARTICLE BODY:
 \"\"\"
@@ -3587,12 +3613,10 @@ JOB 1 — VALIDATE: Review each phrase detected above. Remove any that are FALSE
 - Technical, legal, or domain-specific terminology
 - Common journalism phrasing that is neutral in context
 
-JOB 2 — FIND MISSED: Look for manipulative phrases the first pass missed:
-- Subtle editorial voice ("naturally", "key", "crucial", "of course")
-- Context-dependent hype (sports words in political coverage)
-- Loaded verbs ("admits", "claims", "concedes", "insists")
-- Amplifiers ("whopping", "staggering", "massive")
-- Subtle urgency ("careens", "scrambling", "racing")
+JOB 2 — FIND MISSED: Look for manipulative phrases the first pass missed across ALL categories:
+"""
+    + MANIPULATION_CATEGORIES
+    + """
 
 Return JSON with TWO arrays:
 {{"keep": [{{"phrase": "EXACT text", "reason": "CATEGORY", "action": "remove|replace", "replacement": "text or null"}}],
@@ -3611,6 +3635,7 @@ IMPORTANT - Use ONLY these 7 reason values:
 - editorial_voice
 
 If all first-pass phrases are valid and nothing was missed: {{"keep": [<all first pass phrases>], "new": []}}"""
+)
 
 
 def detect_spans_adversarial_pass(
