@@ -65,7 +65,7 @@ class EvaluationRunRequest(BaseModel):
     teacher_model: str | None = Field(
         None, description="Teacher model for evaluation (default: uses EVAL_MODEL config)"
     )
-    sample_size: int = Field(10, ge=1, le=50, description="Number of articles to sample for evaluation")
+    sample_size: int = Field(30, ge=1, le=50, description="Number of articles to sample for evaluation")
     enable_auto_optimize: bool = Field(False, description="Automatically apply prompt improvements if issues found")
 
 
@@ -290,5 +290,5 @@ class ScheduledRunEvaluationConfig(BaseModel):
 
     enable_evaluation: bool = Field(False, description="Run teacher evaluation after pipeline")
     teacher_model: str | None = Field(None, description="Model to use for evaluation (default: uses EVAL_MODEL config)")
-    eval_sample_size: int = Field(10, ge=1, le=50, description="Number of articles to evaluate")
+    eval_sample_size: int = Field(30, ge=1, le=50, description="Number of articles to evaluate")
     enable_auto_optimize: bool = Field(False, description="Auto-apply prompt improvements")

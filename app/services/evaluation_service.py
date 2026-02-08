@@ -13,7 +13,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -137,6 +137,16 @@ A CORRECT SPAN must:
 1. Be genuinely manipulative (emotional trigger, urgency inflation, clickbait, editorial voice, etc.)
 2. NOT be inside quoted speech (direct quotes should be preserved)
 3. NOT be a false positive (professional terms, medical terminology, etc.)
+
+CONTENT-TYPE CALIBRATION:
+When evaluating span detection quality, consider the article's genre:
+- Travel/lifestyle articles may legitimately use descriptive superlatives ("stunning views", "breathtaking scenery")
+- Horoscope/astrology content uses speculative language ("destined", "cosmic") by genre convention
+- Sports reporting uses more vivid language ("brilliant performance", "dominant display") than hard news
+- Entertainment/culture reviews use evaluative language ("masterful", "riveting") as critical vocabulary
+- Promotional content (competitions, giveaways) should flag promotional framing but not product descriptions
+Adjust your precision/recall estimates accordingly — a "false positive" in hard news
+may be a correct detection in tabloid celebrity coverage, and vice versa.
 
 Evaluate:
 1. PRECISION: What fraction of detected spans are correctly manipulative?
@@ -517,7 +527,7 @@ class EvaluationService:
         )
         sample.extend(mixed_stories)
 
-        # If we didn't get enough, fill from any source
+        # If we didn't get enough, fill from any source within pipeline window
         if len(sample) < sample_size:
             remaining = sample_size - len(sample)
             existing_ids = {s[0].id for s in sample}
@@ -528,6 +538,31 @@ class EvaluationService:
                 .all()
             )
             sample.extend(more)
+
+        # Fallback: if pipeline window returned too few articles (e.g. re-neutralized
+        # articles via /v1/neutralize/run fall outside the pipeline run window),
+        # expand to a 24-hour time-based window
+        if len(sample) < sample_size:
+            remaining = sample_size - len(sample)
+            existing_ids = {s[0].id for s in sample}
+            cutoff = datetime.now(UTC) - timedelta(hours=24)
+            fallback_query = (
+                db.query(models.StoryRaw, models.StoryNeutralized)
+                .join(models.StoryNeutralized, models.StoryRaw.id == models.StoryNeutralized.story_raw_id)
+                .filter(models.StoryNeutralized.is_current == True)
+                .filter(models.StoryNeutralized.neutralization_status == "success")
+                .filter(models.StoryNeutralized.created_at >= cutoff)
+                .filter(~models.StoryRaw.id.in_(existing_ids))
+                .order_by(models.StoryNeutralized.created_at.desc())
+                .limit(remaining)
+                .all()
+            )
+            if fallback_query:
+                logger.info(
+                    f"[EVAL] Pipeline window had {len(sample)} articles, "
+                    f"expanded to 24h window: +{len(fallback_query)} articles"
+                )
+                sample.extend(fallback_query)
 
         return sample[:sample_size]
 
@@ -606,6 +641,7 @@ class EvaluationService:
                 original_title=story_raw.original_title,
                 original_body=original_body[:5000] if original_body else "",
                 detected_spans=spans,
+                feed_category=story_raw.feed_category,
             )
             eval_data.span_precision = span_result.get("estimated_precision")
             eval_data.span_recall = span_result.get("estimated_recall")
@@ -693,12 +729,15 @@ Evaluate the neutralization quality."""
         original_title: str,
         original_body: str,
         detected_spans: list[dict],
+        feed_category: str | None = None,
     ) -> dict[str, Any]:
         """Use teacher LLM to evaluate span detection quality."""
         spans_text = json.dumps(detected_spans, indent=2) if detected_spans else "[]"
 
+        category_line = f"\nArticle Category: {feed_category}" if feed_category else ""
+
         user_prompt = f"""ORIGINAL ARTICLE:
-Title: {original_title}
+Title: {original_title}{category_line}
 Body: {original_body}
 
 DETECTED MANIPULATION SPANS:

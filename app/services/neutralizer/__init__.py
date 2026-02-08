@@ -1075,6 +1075,13 @@ AGENDA SIGNALING (replace with neutral descriptors or remove):
 - "bombshell" → "report"
 - "shockwaves", "sent shockwaves" → remove or "reactions"
 
+GENRE-APPROPRIATE LANGUAGE (do NOT over-neutralize):
+- Travel articles: "stunning views", "breathtaking scenery" are factual descriptions, not hype
+- Sports reporting: "brilliant performance" is editorial but "scored three goals" is factual
+- Horoscopes: "cosmic alignment", "fate" are genre conventions, not manipulation
+- Product reviews: "excellent build quality" is opinion but legitimate in review context
+Focus neutralization on language that MISLEADS, not language that DESCRIBES.
+
 ═══════════════════════════════════════════════════════════════════════════════
 PRESERVE EXACTLY
 ═══════════════════════════════════════════════════════════════════════════════
@@ -1580,6 +1587,60 @@ def get_model_agnostic_prompt(name: str, default: str) -> str:
     # Use default if prompt not found
     _prompt_cache[cache_key] = default
     return default
+
+
+def build_content_type_hint(feed_category: str | None) -> str:
+    """Build content-type context hint for span detection prompts.
+
+    Provides genre-specific guidance so span detection doesn't flag
+    legitimate language conventions as manipulative.
+    """
+    if not feed_category:
+        return "CONTENT-TYPE CONTEXT: General news article. Apply all detection categories at full sensitivity."
+
+    category = feed_category.lower()
+
+    hints = {
+        "culture": (
+            "CONTENT-TYPE CONTEXT: This is a CULTURE/ENTERTAINMENT article.\n"
+            "- Descriptive language about performances, art, or media is EXPECTED, not manipulative.\n"
+            '- "Stunning performance", "breathtaking", "masterful" are legitimate critical vocabulary.\n'
+            "- For PROMOTIONAL content (competitions, giveaways, book/film promotions): flag promotional\n"
+            '  framing ("lucky winners", "exclusive offer") but NOT descriptions of the work being promoted.\n'
+            '- For HOROSCOPE/ASTROLOGY content: "destined", "cosmic", "fate" are genre conventions, not manipulation.\n'
+            "- Only flag language that MISLEADS readers, not language that DESCRIBES or REVIEWS."
+        ),
+        "sports": (
+            "CONTENT-TYPE CONTEXT: This is a SPORTS article.\n"
+            "- Sports reporting uses superlatives more than hard news — calibrate accordingly.\n"
+            '- "Brilliant performance", "dominant display", "stunning victory" are standard sports writing.\n'
+            "- Only flag language that editorializes BEYOND the sporting event (agenda framing, political commentary).\n"
+            "- Game/match descriptions with vivid language are EXPECTED in sports journalism."
+        ),
+        "science": (
+            "CONTENT-TYPE CONTEXT: This is a SCIENCE/RESEARCH article.\n"
+            '- "Groundbreaking", "revolutionary" are overused but sometimes factual for genuine breakthroughs.\n'
+            "- Flag selling/hype when it exaggerates preliminary findings or overpromises implications.\n"
+            "- Technical terminology is NEVER manipulative, even if dramatic-sounding."
+        ),
+        "health": (
+            "CONTENT-TYPE CONTEXT: This is a HEALTH/MEDICINE article.\n"
+            '- Medical urgency language may be FACTUAL ("alarming rise in cases").\n'
+            "- Flag emotional amplification that goes beyond public health communication.\n"
+            "- Technical medical terms are NEVER manipulative."
+        ),
+        "technology": (
+            "CONTENT-TYPE CONTEXT: This is a TECHNOLOGY article.\n"
+            '- Product launches use promotional language — flag "revolutionary", "game-changer" as selling/hype.\n'
+            "- Technical capabilities described accurately are NOT manipulation.\n"
+            "- Industry jargon and benchmarks are factual, not hype."
+        ),
+    }
+
+    return hints.get(
+        category,
+        "CONTENT-TYPE CONTEXT: General news article. Apply all detection categories at full sensitivity.",
+    )
 
 
 def get_high_recall_prompt() -> str:
@@ -2336,6 +2397,18 @@ VERIFICATION: Before outputting, scan for these scope words in your brief:
 - Does the original have "entire"? → Your brief MUST have "entire"
 - Does the original have "every"? → Your brief MUST have "every"
 - Does the original have "expected to"? → Your brief MUST have "expected to"
+
+═══════════════════════════════════════════════════════════════════════════════
+ARTICLE PURPOSE PRESERVATION
+═══════════════════════════════════════════════════════════════════════════════
+
+The feed_title MUST reflect the PRIMARY PURPOSE of the article:
+- Promotional content (giveaways, competitions, reviews): title must indicate it's
+  promotional, e.g., "Win a Copy of [Book Title] in Weekly Competition" NOT
+  "[Character] Expected to Star in Documentary"
+- Travel reviews/guides: title should indicate it's a review or guide, not breaking news
+- Do NOT reframe fictional content as real events or real people
+- Do NOT convert entertainment/lifestyle content into hard news framing
 
 ═══════════════════════════════════════════════════════════════════════════════
 DO NOT
@@ -3440,18 +3513,18 @@ def detect_spans_via_llm_anthropic(body: str, api_key: str, model: str) -> list[
 
 MANIPULATION_CATEGORIES = """
 1. URGENCY INFLATION: BREAKING, JUST IN, developing, scrambling, racing, crisis
-2. EMOTIONAL TRIGGERS: shocking, devastating, stunning, slams, blasts, rips, outraged, furious, gutted
+2. EMOTIONAL TRIGGERS: shocking, devastating, slams, blasts, rips, outraged, furious, gutted
 3. CLICKBAIT: "You won't believe", "Here's what happened", "The truth about"
 4. SELLING/HYPE: revolutionary, game-changer, groundbreaking, viral, mogul, tycoon, whopping, staggering
 5. AGENDA SIGNALING: "radical-left", "far-left", "radical right", "extremist", "socialist" (as editorial label), "invasion" (for immigration), "crisis" (editorialized)
 6. LOADED VERBS: "admits" (implies guilt), "claims" (implies doubt), "concedes", "whined", "plotted", "prowled", "snarled" (instead of said/planned/walked)
 7. AGENDA FRAMING: "the crisis at the border", "threatens our way of life", "controversial decision" (labeling not reporting), "bombshell report"
-8. SPORTS/EVENT HYPE: brilliant, stunning, magnificent, phenomenal, blockbuster, mega, epic
+8. SPORTS/EVENT HYPE: stunning, brilliant, magnificent, phenomenal, blockbuster, mega, epic
 9. LOADED PERSONAL DESCRIPTORS: "rabble-rouser", "agitator", "firebrand", "hack", handsome, hostile, menacing
 10. HYPERBOLIC ADJECTIVES: punishing, brutal, incredible, extraordinary, "of the century"
 11. LOADED IDIOMS: "came under fire", "in the crosshairs", "in hot water", "sent shockwaves", "on the warpath"
 12. ENTERTAINMENT HYPE: "romantic escape", "showed off figure", "luxury yacht", "A-list couple", "celebrity hotspot"
-13. EDITORIAL VOICE: "we're glad", "naturally", "of course", "shockwaves", "Border Czar", "lunatic", "absurd"
+13. EDITORIAL VOICE: "we're glad", "naturally", "of course", "Border Czar", "lunatic", "absurd"
 """
 
 # -----------------------------------------------------------------------------
@@ -3461,6 +3534,8 @@ MANIPULATION_CATEGORIES = """
 # High-recall user prompt (calibrated detection — catch real manipulation, skip standard journalism)
 HIGH_RECALL_USER_PROMPT = (
     """Your job is to identify manipulative language in this news article — phrases that attempt to influence the reader rather than inform.
+
+{content_type_hint}
 
 DO NOT flag:
 - Standard attribution verbs used neutrally: said, stated, noted, reported, explained, described, added, wrote, according to
@@ -3493,7 +3568,10 @@ IMPORTANT - Use ONLY these 7 reason values:
 
 
 def detect_spans_high_recall_anthropic(
-    body: str, api_key: str, model: str = "claude-haiku-4-5"
+    body: str,
+    api_key: str,
+    model: str = "claude-haiku-4-5",
+    feed_category: str | None = None,
 ) -> list[TransparencySpan]:
     """
     High-recall span detection using Claude Haiku with aggressive prompting.
@@ -3505,6 +3583,7 @@ def detect_spans_high_recall_anthropic(
         body: Original article body text
         api_key: Anthropic API key
         model: Model name (default claude-haiku-4-5 for speed/cost)
+        feed_category: Article genre for content-type-aware detection
 
     Returns:
         List of TransparencySpan (may include false positives)
@@ -3521,7 +3600,8 @@ def detect_spans_high_recall_anthropic(
 
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_high_recall_prompt()
-        user_prompt = prompt_template.format(body=body)
+        content_type_hint = build_content_type_hint(feed_category)
+        user_prompt = prompt_template.format(body=body, content_type_hint=content_type_hint)
         logger.info(f"[SPAN_DETECTION] High-recall pass starting, model={model}, body_length={len(body)}")
 
         response = client.messages.create(
@@ -3596,6 +3676,8 @@ def detect_spans_high_recall_anthropic(
 ADVERSARIAL_USER_PROMPT = (
     """You are reviewing a first-pass analysis of manipulative language in a news article.
 
+{content_type_hint}
+
 ARTICLE BODY:
 \"\"\"
 {body}
@@ -3644,6 +3726,7 @@ def detect_spans_adversarial_pass(
     api_key: str,
     model: str = "gpt-4o-mini",
     pass1_spans: list | None = None,
+    feed_category: str | None = None,
 ) -> tuple[list[TransparencySpan], list[TransparencySpan]]:
     """
     Adversarial second pass that validates first-pass detections and finds missed phrases.
@@ -3658,6 +3741,7 @@ def detect_spans_adversarial_pass(
         api_key: OpenAI API key
         model: Model name (default gpt-4o-mini)
         pass1_spans: Optional Pass 1 TransparencySpan objects (for reason context)
+        feed_category: Article genre for content-type-aware detection
 
     Returns:
         Tuple of (validated_spans, new_spans):
@@ -3688,7 +3772,12 @@ def detect_spans_adversarial_pass(
 
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_adversarial_prompt()
-        user_prompt = prompt_template.format(detected_phrases=detected_list, body=body)
+        content_type_hint = build_content_type_hint(feed_category)
+        user_prompt = prompt_template.format(
+            detected_phrases=detected_list,
+            body=body,
+            content_type_hint=content_type_hint,
+        )
         logger.info(
             f"[SPAN_DETECTION] Adversarial pass starting, model={model}, already_detected={len(detected_phrases)}"
         )
@@ -3782,6 +3871,7 @@ async def detect_spans_multi_pass_async(
     anthropic_model: str = "claude-haiku-4-5",
     chunk_size: int = 3000,
     overlap_size: int = 500,
+    feed_category: str | None = None,
 ) -> list[TransparencySpan]:
     """
     Multi-pass span detection with chunking for high recall.
@@ -3800,6 +3890,7 @@ async def detect_spans_multi_pass_async(
         anthropic_model: Model for high-recall pass
         chunk_size: Chunk size for long articles
         overlap_size: Overlap between chunks
+        feed_category: Article genre for content-type-aware detection
 
     Returns:
         Merged list of TransparencySpan (target: 99% recall)
@@ -3833,7 +3924,13 @@ async def detect_spans_multi_pass_async(
         """Run high-recall pass on a single chunk."""
         loop = asyncio.get_event_loop()
         spans = await loop.run_in_executor(
-            executor, lambda: detect_spans_high_recall_anthropic(chunk.text, anthropic_api_key, anthropic_model)
+            executor,
+            lambda: detect_spans_high_recall_anthropic(
+                chunk.text,
+                anthropic_api_key,
+                anthropic_model,
+                feed_category=feed_category,
+            ),
         )
         # Adjust positions from chunk-relative to body-relative
         return adjust_chunk_positions(spans or [], chunk.start_offset)
@@ -3853,6 +3950,7 @@ async def detect_spans_multi_pass_async(
                 openai_api_key,
                 openai_model,
                 pass1_spans=chunk_pass1_spans,
+                feed_category=feed_category,
             ),
         )
         # Adjust positions from chunk-relative to body-relative
@@ -3935,6 +4033,7 @@ def detect_spans_multi_pass(
     anthropic_model: str = "claude-haiku-4-5",
     chunk_size: int = 3000,
     overlap_size: int = 500,
+    feed_category: str | None = None,
 ) -> list[TransparencySpan]:
     """
     Synchronous wrapper for multi-pass span detection.
@@ -3952,7 +4051,14 @@ def detect_spans_multi_pass(
             nest_asyncio.apply()
             return loop.run_until_complete(
                 detect_spans_multi_pass_async(
-                    body, openai_api_key, anthropic_api_key, openai_model, anthropic_model, chunk_size, overlap_size
+                    body,
+                    openai_api_key,
+                    anthropic_api_key,
+                    openai_model,
+                    anthropic_model,
+                    chunk_size,
+                    overlap_size,
+                    feed_category=feed_category,
                 )
             )
     except RuntimeError:
@@ -3961,7 +4067,14 @@ def detect_spans_multi_pass(
     # No running loop - create one
     return asyncio.run(
         detect_spans_multi_pass_async(
-            body, openai_api_key, anthropic_api_key, openai_model, anthropic_model, chunk_size, overlap_size
+            body,
+            openai_api_key,
+            anthropic_api_key,
+            openai_model,
+            anthropic_model,
+            chunk_size,
+            overlap_size,
+            feed_category=feed_category,
         )
     )
 
@@ -3975,6 +4088,7 @@ def detect_spans_with_mode(
     openai_model: str = "gpt-4o-mini",
     anthropic_model: str = "claude-haiku-4-5",
     title: str = None,
+    feed_category: str | None = None,
 ) -> list[TransparencySpan]:
     """
     Detect spans using the specified detection mode.
@@ -3992,6 +4106,7 @@ def detect_spans_with_mode(
         openai_model: OpenAI model name
         anthropic_model: Anthropic model name
         title: Original article title (optional, for headline manipulation detection)
+        feed_category: Article genre for content-type-aware detection
 
     Returns:
         List of TransparencySpan with field="title" or field="body"
@@ -4023,6 +4138,7 @@ def detect_spans_with_mode(
             anthropic_api_key=anthropic_api_key,
             openai_model=openai_model,
             anthropic_model=anthropic_model,
+            feed_category=feed_category,
         )
     else:
         # Single pass mode (original behavior)
@@ -4142,6 +4258,7 @@ def _detect_spans_with_config(
     provider_type: str = "openai",
     provider_model: str = "gpt-4o-mini",
     title: str = None,
+    feed_category: str | None = None,
 ) -> list[TransparencySpan]:
     """
     Detect spans using the mode configured in settings.SPAN_DETECTION_MODE.
@@ -4156,6 +4273,7 @@ def _detect_spans_with_config(
         provider_type: "openai", "gemini", or "anthropic"
         provider_model: The model name (e.g., "gpt-4o-mini")
         title: Original article title (optional, for headline manipulation detection)
+        feed_category: Article genre for content-type-aware detection
 
     Returns:
         List of TransparencySpan with field="title" or field="body"
@@ -4192,6 +4310,7 @@ def _detect_spans_with_config(
                 openai_model=settings.ADVERSARIAL_MODEL,
                 anthropic_model=settings.HIGH_RECALL_MODEL,
                 title=title,
+                feed_category=feed_category,
             )
             return spans if spans is not None else []
 
@@ -4871,7 +4990,13 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             logger.error(f"OpenAI neutralization failed: {e}")
             raise NeutralizationResponseError(f"OpenAI neutralization failed: {str(e)}")
 
-    def _neutralize_detail_full(self, body: str, title: str = None, retry_count: int = 0) -> DetailFullResult:
+    def _neutralize_detail_full(
+        self,
+        body: str,
+        title: str = None,
+        retry_count: int = 0,
+        feed_category: str | None = None,
+    ) -> DetailFullResult:
         """
         Neutralize an article body using OpenAI with SYNTHESIS approach.
 
@@ -4889,6 +5014,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             body: Article body text
             title: Original article title (for headline manipulation detection)
             retry_count: Current retry attempt number
+            feed_category: Article genre for content-type-aware span detection
         """
         MAX_RETRIES = 2
 
@@ -4910,6 +5036,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             provider_type="openai",
             provider_model=self._model,
             title=title,
+            feed_category=feed_category,
         )
         logger.info(
             f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})"
@@ -5218,7 +5345,13 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             logger.error(f"Gemini neutralization failed: {e}")
             raise NeutralizationResponseError(f"Gemini neutralization failed: {str(e)}")
 
-    def _neutralize_detail_full(self, body: str, title: str = None, retry_count: int = 0) -> DetailFullResult:
+    def _neutralize_detail_full(
+        self,
+        body: str,
+        title: str = None,
+        retry_count: int = 0,
+        feed_category: str | None = None,
+    ) -> DetailFullResult:
         """
         Neutralize an article body using Gemini with SYNTHESIS approach.
 
@@ -5230,6 +5363,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             body: Article body text
             title: Original article title (for headline manipulation detection)
             retry_count: Current retry attempt number
+            feed_category: Article genre for content-type-aware span detection
         """
         MAX_RETRIES = 2
 
@@ -5254,6 +5388,7 @@ class GeminiNeutralizerProvider(NeutralizerProvider):
             provider_type="gemini",
             provider_model=self._model,
             title=title,
+            feed_category=feed_category,
         )
         logger.info(
             f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})"
@@ -5550,7 +5685,13 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             logger.error(f"Anthropic neutralization failed: {e}")
             raise NeutralizationResponseError(f"Anthropic neutralization failed: {str(e)}")
 
-    def _neutralize_detail_full(self, body: str, title: str = None, retry_count: int = 0) -> DetailFullResult:
+    def _neutralize_detail_full(
+        self,
+        body: str,
+        title: str = None,
+        retry_count: int = 0,
+        feed_category: str | None = None,
+    ) -> DetailFullResult:
         """
         Neutralize an article body using Anthropic Claude with SYNTHESIS approach.
 
@@ -5562,6 +5703,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             body: Article body text
             title: Original article title (for headline manipulation detection)
             retry_count: Current retry attempt number
+            feed_category: Article genre for content-type-aware span detection
         """
         MAX_RETRIES = 2
 
@@ -5583,6 +5725,7 @@ class AnthropicNeutralizerProvider(NeutralizerProvider):
             provider_type="anthropic",
             provider_model=self._model,
             title=title,
+            feed_category=feed_category,
         )
         logger.info(
             f"Span detection completed with {len(spans)} spans (title spans: {sum(1 for s in spans if s.field == 'title')})"
@@ -6003,9 +6146,13 @@ class NeutralizerService:
             # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
                 # Call 1: Filter & Track - produces detail_full and spans
-                # Pass title for headline manipulation detection
+                # Pass title and feed_category for content-type-aware detection
                 if body:
-                    detail_full_result = self.provider._neutralize_detail_full(body, title=story.original_title)
+                    detail_full_result = self.provider._neutralize_detail_full(
+                        body,
+                        title=story.original_title,
+                        feed_category=story.feed_category,
+                    )
 
                     # Check for failure status (new architecture: no mock fallback)
                     if detail_full_result.status != "success":
@@ -6260,6 +6407,7 @@ class NeutralizerService:
         title: str,
         description: str | None,
         body: str | None,
+        feed_category: str | None = None,
     ) -> dict[str, Any]:
         """
         Neutralize content using 3-call LLM pipeline (thread-safe, no db operations).
@@ -6269,6 +6417,13 @@ class NeutralizerService:
         1. Filter & Track - produces detail_full and transparency spans
         2. Synthesize - produces detail_brief
         3. Compress - produces feed_title, feed_summary, detail_title
+
+        Args:
+            story_id: Story UUID
+            title: Original article title
+            description: Original article description
+            body: Original article body
+            feed_category: Article genre for content-type-aware span detection
 
         Returns:
             Dict with neutralization result, transparency spans, or error
@@ -6283,9 +6438,13 @@ class NeutralizerService:
             # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
                 # Call 1: Filter & Track - produces detail_full and spans
-                # Pass title for headline manipulation detection
+                # Pass title and feed_category for content-type-aware detection
                 if body:
-                    detail_full_result = self.provider._neutralize_detail_full(body, title=title)
+                    detail_full_result = self.provider._neutralize_detail_full(
+                        body,
+                        title=title,
+                        feed_category=feed_category,
+                    )
 
                     # Check for failure status (no mock fallback)
                     if detail_full_result.status != "success":
@@ -6518,6 +6677,7 @@ class NeutralizerService:
                     "title": story.original_title,
                     "description": story.original_description,
                     "body": body,
+                    "feed_category": story.feed_category,
                     "story_obj": story,  # Keep reference for db operations
                 }
             )
@@ -6547,6 +6707,7 @@ class NeutralizerService:
                     sd["title"],
                     sd["description"],
                     sd["body"],
+                    sd.get("feed_category"),
                 ): sd["story_id"]
                 for sd in story_data
             }
