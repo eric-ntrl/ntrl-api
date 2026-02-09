@@ -89,12 +89,18 @@ DOMAINS (pick exactly one):
 - environment_climate: Climate change, pollution, conservation, wildlife, sustainability
 - science_research: Scientific discoveries, space, physics, biology, research studies
 - health_medicine: Medical, diseases, treatments, public health, mental health, pharmaceuticals
-- technology: AI, software, hardware, internet, tech companies, innovation
+- technology: AI, software, hardware, internet, tech companies, innovation, cybersecurity, hacking, data breaches, malware
 - media_information: Journalism, social media, misinformation, content moderation, press
-- sports_competition: Professional/amateur sports, competitions, athletes, leagues
+- sports_competition: Professional/amateur sports, competitions, athletes, leagues, sports broadcasting, sports punditry, commentary about athletes
 - society_culture: Social issues, education, arts, religion, cultural movements
 - lifestyle_personal: Celebrity, entertainment, food, travel, fashion, personal finance
 - incidents_disasters: Natural disasters, accidents, emergencies, mass incidents, weather events
+
+BOUNDARY CASES — classify by primary subject matter, not incidental angles:
+- Sports broadcasting, punditry, and commentary about athletes or games → sports_competition (NOT media_information)
+- Cybersecurity incidents, hacking, data breaches, malware, ransomware → technology (NOT crime_public_safety)
+- Financial fraud or corporate crime → crime_public_safety only if the focus is on arrests/prosecution; otherwise business_industry or finance_markets
+- Celebrity legal cases → law_justice if focused on the court proceedings; lifestyle_personal if focused on the celebrity
 
 GEOGRAPHY (pick exactly one):
 - international: Non-US or multi-country focus

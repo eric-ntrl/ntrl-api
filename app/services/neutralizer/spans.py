@@ -32,6 +32,14 @@ QUOTE_CHARS_CLOSE = set(QUOTE_PAIRS.values())
 
 # Known false positive EXACT phrases that LLMs commonly flag incorrectly
 # Only include multi-word phrases - single words are too likely to have legitimate uses
+#
+# AUDIT LOG (Phase 2, Feb 9 2026):
+#   Removed over-filters that killed recall: "getting worse", "getting better",
+#   "even bigger", "even larger", "even smaller", "the dominant story",
+#   "significant changes", "wide-reaching consequences", "far-reaching consequences",
+#   "striking the right balance", "oversaw significant changes"
+#   Added recurrent FPs from teacher eval: product reviews, sports nicknames,
+#   financial guidance, weather descriptors
 FALSE_POSITIVE_PHRASES = {
     # Medical terms (multi-word)
     "bowel cancer",
@@ -53,8 +61,6 @@ FALSE_POSITIVE_PHRASES = {
     "reported that",
     # Factual descriptors (multi-word)
     "spot more",
-    "getting worse",
-    "getting better",
     # Temporal phrases
     "every year",
     "each year",
@@ -106,14 +112,7 @@ FALSE_POSITIVE_PHRASES = {
     "higher prolonged borrowing costs",
     "borrowing costs",
     # Factual comparisons and descriptors
-    "even bigger",
-    "even larger",
-    "even smaller",
-    "the dominant story",
     "dominant position",
-    "wide-reaching consequences",
-    "far-reaching consequences",
-    "striking the right balance",
     # Product and feature descriptions (factual)
     "quickly sync",
     "not unlike",
@@ -130,8 +129,6 @@ FALSE_POSITIVE_PHRASES = {
     "square-foot house",
     "square-foot home",
     "square-foot property",
-    "oversaw significant changes",
-    "significant changes",
     # Entertainment industry terms (neutral)
     "to star in",
     "to co-star in",
@@ -140,6 +137,52 @@ FALSE_POSITIVE_PHRASES = {
     "departing to make a transition",
     "longest-tenured",
     "make a transition",
+    # Product review language (common FPs in review/comparison articles)
+    "best in class",
+    "top pick",
+    "editor's choice",
+    "editors' choice",
+    "best overall",
+    "best value",
+    "our top pick",
+    "highly rated",
+    "top rated",
+    "best seller",
+    "best-seller",
+    # Sports nicknames and common sports descriptors
+    "the great",
+    "triple crown",
+    "grand slam",
+    "hall of fame",
+    "hall of famer",
+    "all-star",
+    "mvp candidate",
+    "number one seed",
+    "top seed",
+    "defending champion",
+    "defending champions",
+    "reigning champion",
+    "reigning champions",
+    # Financial guidance / market reporting (factual)
+    "buy rating",
+    "sell rating",
+    "hold rating",
+    "price target",
+    "market cap",
+    "year over year",
+    "quarter over quarter",
+    "earnings per share",
+    "revenue growth",
+    "profit margin",
+    # Weather descriptors (factual, not manipulative)
+    "severe weather",
+    "severe thunderstorm",
+    "winter storm",
+    "tropical storm",
+    "heat advisory",
+    "wind advisory",
+    "flood warning",
+    "tornado warning",
 }
 
 # Regex patterns that match false positives (case-insensitive)
