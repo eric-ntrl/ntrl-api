@@ -98,9 +98,15 @@ DOMAINS (pick exactly one):
 
 BOUNDARY CASES — classify by primary subject matter, not incidental angles:
 - Sports broadcasting, punditry, and commentary about athletes or games → sports_competition (NOT media_information)
-- Cybersecurity incidents, hacking, data breaches, malware, ransomware → technology (NOT crime_public_safety)
+- Articles about athletes' personal lives, families, or off-field activities → sports_competition if the person is identified primarily as an athlete (NOT society_culture or lifestyle_personal)
+- Athlete career milestones, youth academy promotions, transfers, retirements → sports_competition
+- Olympic athletes, Winter/Summer Olympics coverage → sports_competition
+- Sports TV presenters clashing or sports media disputes → sports_competition (NOT media_information)
+- Cybersecurity incidents, hacking, data breaches, malware, ransomware → technology (NOT crime_public_safety or security_defense)
 - Financial fraud or corporate crime → crime_public_safety only if the focus is on arrests/prosecution; otherwise business_industry or finance_markets
 - Celebrity legal cases → law_justice if focused on the court proceedings; lifestyle_personal if focused on the celebrity
+- Movie trailers, film reviews, entertainment industry news → lifestyle_personal (NOT media_information)
+- Shopping deals, sales events, product promotions → business_industry (NOT lifestyle_personal)
 
 GEOGRAPHY (pick exactly one):
 - international: Non-US or multi-country focus

@@ -193,8 +193,8 @@ FALSE_POSITIVE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^(said|stated|noted|reported|remarked|explained|described|added|wrote|told)$", re.IGNORECASE),
     # Factual superlatives in data/comparison context
     re.compile(r"^(highest|lowest|largest|smallest|most|least)\s+(in|since|of|among|on)\b", re.IGNORECASE),
-    # Legal/epistemic verbs that are factual in crime reporting
-    re.compile(r"^(alleged|allegedly|suspected|reportedly)\b", re.IGNORECASE),
+    # Legal/epistemic verbs — only standalone words, not "alleged secret girlfriend"
+    re.compile(r"^(alleged|allegedly|suspected|reportedly)$", re.IGNORECASE),
     # Standard temporal/metadata phrases
     re.compile(r"^(updated|published|posted)\s+(on|at)\b", re.IGNORECASE),
 ]
