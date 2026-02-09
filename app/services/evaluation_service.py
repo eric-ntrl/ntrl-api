@@ -75,15 +75,26 @@ DOMAIN → FEED_CATEGORY MAPPING RULES:
   - local → local
   - mixed → us
 
+BOUNDARY CASES — articles often span multiple domains. Classify by PRIMARY subject:
+- Sports broadcasting, punditry, athlete personal lives → sports_competition
+- Cybersecurity, hacking, data breaches → technology (not crime_public_safety)
+- Movie/entertainment/celebrity news → lifestyle_personal (not media_information)
+- Shopping deals, product promotions → business_industry
+
 Evaluate:
 1. Is the assigned domain correct for this article?
 2. Does the feed_category correctly follow from domain + geography?
 3. What domain/feed_category would you assign?
 
+IMPORTANT RULES:
+- If the assigned domain is REASONABLE for the article (even if you might choose differently), mark domain_correct as TRUE. Only mark FALSE when the classification is clearly wrong.
+- If you mark domain_correct as FALSE, you MUST provide a specific expected_domain from the taxonomy above. Never leave expected_domain null/empty when marking incorrect.
+- Many articles legitimately span multiple domains. Give the classifier the benefit of the doubt on borderline cases.
+
 Respond with JSON:
 {
   "domain_correct": true/false,
-  "expected_domain": "<correct domain if different>",
+  "expected_domain": "<correct domain if different, REQUIRED when domain_correct is false>",
   "feed_category_correct": true/false,
   "expected_feed_category": "<correct category if different>",
   "confidence": 0.0-1.0,
@@ -521,8 +532,23 @@ class EvaluationService:
                 db.add(article_eval)
 
             # Compute aggregate metrics
-            classification_correct_count = sum(1 for e in article_evals if e.classification_correct is True)
-            classification_accuracy = classification_correct_count / len(article_evals) if article_evals else 0.0
+            # Only count articles where the teacher gave a definitive answer:
+            # - classification_correct=True → correct
+            # - classification_correct=False AND expected_domain is not None → incorrect
+            # - classification_correct=False AND expected_domain is None → ambiguous, exclude
+            definitive_evals = [
+                e
+                for e in article_evals
+                if e.classification_correct is True or (e.classification_correct is False and e.expected_domain)
+            ]
+            classification_correct_count = sum(1 for e in definitive_evals if e.classification_correct is True)
+            classification_accuracy = classification_correct_count / len(definitive_evals) if definitive_evals else 0.0
+            ambiguous_count = len(article_evals) - len(definitive_evals)
+            if ambiguous_count > 0:
+                logger.info(
+                    f"[EVAL] Classification: {ambiguous_count} ambiguous articles excluded "
+                    f"(teacher marked wrong but provided no expected_domain)"
+                )
 
             neutralization_scores = [
                 e.neutralization_score for e in article_evals if e.neutralization_score is not None
@@ -1021,9 +1047,14 @@ Evaluate the span detection quality (precision and recall)."""
         ]
         span_suggestions = [e.span_prompt_suggestion for e in article_evals if e.span_prompt_suggestion]
 
-        # Calculate aggregate metrics
-        classification_correct_count = sum(1 for e in article_evals if e.classification_correct is True)
-        classification_accuracy = classification_correct_count / len(article_evals) if article_evals else 0.0
+        # Calculate aggregate metrics (exclude ambiguous: teacher said wrong but gave no alternative)
+        definitive_evals = [
+            e
+            for e in article_evals
+            if e.classification_correct is True or (e.classification_correct is False and e.expected_domain)
+        ]
+        classification_correct_count = sum(1 for e in definitive_evals if e.classification_correct is True)
+        classification_accuracy = classification_correct_count / len(definitive_evals) if definitive_evals else 0.0
 
         neutralization_scores = [e.neutralization_score for e in article_evals if e.neutralization_score is not None]
         avg_neutralization = sum(neutralization_scores) / len(neutralization_scores) if neutralization_scores else 0.0
