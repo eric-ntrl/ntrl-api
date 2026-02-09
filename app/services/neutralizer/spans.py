@@ -173,11 +173,11 @@ def _parse_span_action(action_str: str) -> SpanAction:
 def _parse_span_reason(reason_str: str) -> SpanReason:
     """Parse a span reason string to SpanReason enum.
 
-    Maps both the 7 canonical categories AND defensive aliases for
+    Maps both the 8 canonical categories AND defensive aliases for
     any category names that might appear in LLM output or DB prompts.
     """
     reason_map = {
-        # 7 canonical categories (from prompt line 1318)
+        # 8 canonical categories (from prompt line 1318)
         "clickbait": SpanReason.CLICKBAIT,
         "urgency_inflation": SpanReason.URGENCY_INFLATION,
         "emotional_trigger": SpanReason.EMOTIONAL_TRIGGER,
@@ -185,7 +185,11 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
         "agenda_signaling": SpanReason.AGENDA_SIGNALING,
         "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
         "editorial_voice": SpanReason.EDITORIAL_VOICE,
+        "selective_quoting": SpanReason.SELECTIVE_QUOTING,
         # Defensive aliases (prompt categories 6-14 that might appear)
+        "selective_quote": SpanReason.SELECTIVE_QUOTING,
+        "scare_quotes": SpanReason.SELECTIVE_QUOTING,
+        "cherry_picked_quote": SpanReason.SELECTIVE_QUOTING,
         "loaded_verbs": SpanReason.RHETORICAL_FRAMING,
         "loaded_idioms": SpanReason.RHETORICAL_FRAMING,
         "loaded_personal_descriptors": SpanReason.EMOTIONAL_TRIGGER,
@@ -310,7 +314,11 @@ def is_contraction_apostrophe(body: str, pos: int) -> bool:
 
 def filter_spans_in_quotes(body: str, spans: list) -> list:
     """
-    Remove spans that fall inside quotation marks.
+    Reclassify spans inside quotation marks as selective_quoting.
+
+    Instead of removing spans in quotes (which killed recall), reclassifies them
+    with reason=SELECTIVE_QUOTING and action=SOFTENED. This preserves the span
+    for recall while giving users insight into editorial quote selection.
 
     Handles multiple quote types: straight/curly double/single quotes.
     Distinguishes between apostrophes used as quote marks vs contractions.
@@ -350,19 +358,33 @@ def filter_spans_in_quotes(body: str, spans: list) -> list:
     if not quote_ranges:
         return spans
 
-    # Filter out spans inside quotes
-    filtered = []
+    # Reclassify spans inside quotes as selective_quoting
+    from app.services.neutralizer import TransparencySpan  # lazy import to avoid circular
+
+    result = []
+    reclassified_count = 0
     for span in spans:
         inside_quote = any(start <= span.start_char and span.end_char <= end for start, end in quote_ranges)
-        if not inside_quote:
-            filtered.append(span)
+        if inside_quote:
+            reclassified = TransparencySpan(
+                field=span.field,
+                start_char=span.start_char,
+                end_char=span.end_char,
+                original_text=span.original_text,
+                action=SpanAction.SOFTENED,
+                reason=SpanReason.SELECTIVE_QUOTING,
+                replacement_text=span.replacement_text,
+            )
+            result.append(reclassified)
+            reclassified_count += 1
+        else:
+            result.append(span)
 
-    filtered_count = len(spans) - len(filtered)
-    if filtered_count > 0:
-        removed_texts = [s.original_text for s in spans if s not in filtered]
-        logger.info(f"[SPAN_RECALL_DEBUG] Quote filter removed {filtered_count}: {removed_texts}")
+    if reclassified_count > 0:
+        reclassified_texts = [s.original_text for s in result if s.reason == SpanReason.SELECTIVE_QUOTING]
+        logger.info(f"[SPAN_RECALL_DEBUG] Quote filter reclassified {reclassified_count}: {reclassified_texts}")
 
-    return filtered
+    return result
 
 
 def filter_false_positives(spans: list) -> list:

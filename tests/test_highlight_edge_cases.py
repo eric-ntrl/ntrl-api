@@ -371,36 +371,43 @@ class TestQuoteFiltering:
             replacement_text=None,
         )
 
-    def test_filter_straight_double_quotes(self):
-        """Test filtering spans inside straight double quotes."""
+    def test_reclassify_straight_double_quotes(self):
+        """Test reclassifying spans inside straight double quotes."""
         body = 'The source said "totally into each other" about them.'
         # "totally into each other" is at positions 16-39
         spans = [self._make_span(17, 39, "totally into each other")]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        assert len(filtered) == 0, "Span inside double quotes should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        assert len(result) == 1, "Span inside double quotes should be reclassified, not removed"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
+        assert result[0].action == SpanAction.SOFTENED
+        assert result[0].original_text == "totally into each other"
 
-    def test_filter_straight_single_quotes(self):
-        """Test filtering spans inside straight single quotes."""
+    def test_reclassify_straight_single_quotes(self):
+        """Test reclassifying spans inside straight single quotes."""
         body = "The source said 'totally into each other' about them."
         # 'totally into each other' is at positions 17-39
         spans = [self._make_span(17, 39, "totally into each other")]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        assert len(filtered) == 0, "Span inside single quotes should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        assert len(result) == 1, "Span inside single quotes should be reclassified, not removed"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
+        assert result[0].action == SpanAction.SOFTENED
 
-    def test_filter_curly_double_quotes(self):
-        """Test filtering spans inside curly double quotes."""
+    def test_reclassify_curly_double_quotes(self):
+        """Test reclassifying spans inside curly double quotes."""
         body = 'She described it as "romantic and intimate" to reporters.'
         # Position of "romantic and intimate" inside curly quotes
         start = body.index("romantic")
         end = body.index("intimate") + len("intimate")
         spans = [self._make_span(start, end, "romantic and intimate")]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        assert len(filtered) == 0, "Span inside curly double quotes should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        assert len(result) == 1, "Span inside curly double quotes should be reclassified"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
+        assert result[0].action == SpanAction.SOFTENED
 
-    def test_filter_curly_single_quotes(self):
+    def test_reclassify_curly_single_quotes(self):
         """Test filtering spans inside curly single quotes."""
         body = "He called it 'absolutely devastating' in his speech."
         # Position of "absolutely devastating" inside curly single quotes
@@ -408,8 +415,10 @@ class TestQuoteFiltering:
         end = body.index("devastating") + len("devastating")
         spans = [self._make_span(start, end, "absolutely devastating")]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        assert len(filtered) == 0, "Span inside curly single quotes should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        assert len(result) == 1, "Span inside curly single quotes should be reclassified"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
+        assert result[0].action == SpanAction.SOFTENED
 
     def test_preserve_spans_outside_quotes(self):
         """Test that spans outside quotes are preserved."""
@@ -430,8 +439,10 @@ class TestQuoteFiltering:
             self._make_span(25, 36, "devastating"),
         ]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        assert len(filtered) == 0, "Both spans inside quotes should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        assert len(result) == 2, "Both spans inside quotes should be reclassified"
+        assert all(s.reason == SpanReason.SELECTIVE_QUOTING for s in result)
+        assert all(s.action == SpanAction.SOFTENED for s in result)
 
     def test_partial_overlap_not_filtered(self):
         """Test that spans partially overlapping quotes are preserved."""
@@ -476,9 +487,10 @@ class TestQuoteFiltering:
         end = start + len("romantic")
         spans = [self._make_span(start, end, "romantic")]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        # The span is inside the outer double quotes, so should be filtered
-        assert len(filtered) == 0, "Span in nested quotes should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        # The span is inside the outer double quotes, so should be reclassified
+        assert len(result) == 1, "Span in nested quotes should be reclassified"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
 
     def test_real_world_kylie_example(self):
         """Test with real-world example from Kylie article."""
@@ -487,8 +499,9 @@ class TestQuoteFiltering:
         end = start + len("totally into each other")
         spans = [self._make_span(start, end, "totally into each other")]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        assert len(filtered) == 0, "Quote from Kylie article should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        assert len(result) == 1, "Quote from Kylie article should be reclassified"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
 
     def test_apostrophe_in_contractions_not_quote(self):
         """Test that apostrophes in contractions don't create false quote boundaries."""
@@ -593,9 +606,10 @@ class TestContractionApostropheDetection:
             )
         ]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        # "shocking" is inside actual quotes (not contractions), so should be filtered
-        assert len(filtered) == 0, "Span inside actual quotes should be filtered"
+        result = filter_spans_in_quotes(body, spans)
+        # "shocking" is inside actual quotes (not contractions), so should be reclassified
+        assert len(result) == 1, "Span inside actual quotes should be reclassified"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
 
     def test_contractions_dont_break_quote_detection(self):
         """Test that contractions don't interfere with actual quote detection."""
@@ -620,6 +634,7 @@ class TestContractionApostropheDetection:
             )
         ]
 
-        filtered = filter_spans_in_quotes(body, spans)
-        # "devastating" is inside single quotes (not contractions)
-        assert len(filtered) == 0, "Span inside quotes should be filtered even with contractions nearby"
+        result = filter_spans_in_quotes(body, spans)
+        # "devastating" is inside single quotes (not contractions), so should be reclassified
+        assert len(result) == 1, "Span inside quotes should be reclassified even with contractions nearby"
+        assert result[0].reason == SpanReason.SELECTIVE_QUOTING
