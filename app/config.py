@@ -66,14 +66,14 @@ class Settings(BaseSettings):
 
     # Classification
     CLASSIFICATION_MODEL: str = Field(
-        default="gpt-5-mini",
+        default="gpt-4o-mini",
         description="OpenAI model for article classification",
     )
 
     # Teacher LLM Configuration
     EVAL_MODEL: str = Field(
-        default="claude-sonnet-4-5-20250929",
-        description="Model for evaluation/grading (supports claude-sonnet-4-5-20250929, claude-haiku-4-5, claude-opus-4-5)",
+        default="claude-opus-4-5",
+        description="Model for evaluation/grading (supports claude-opus-4-5, claude-sonnet-4-5-20250929, claude-haiku-4-5)",
     )
     OPTIMIZER_MODEL: str = Field(
         default="gpt-5-mini",
