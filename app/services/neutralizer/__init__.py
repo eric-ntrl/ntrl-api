@@ -1659,6 +1659,70 @@ def build_span_detection_prompt(body: str) -> str:
     return template.format(body=body or "")
 
 
+def _normalize_whitespace(text: str) -> str:
+    """Collapse all whitespace runs to single spaces and strip boundary punctuation."""
+    import re
+
+    return re.sub(r"\s+", " ", text).strip().strip(".,;:!?\"'")
+
+
+def _fuzzy_find_in_body(phrase: str, body: str, start: int = 0) -> tuple[int, int] | None:
+    """
+    Find a fuzzy match for phrase in body using word-token similarity.
+
+    Only activates for phrases >15 chars to avoid false matches on short words.
+    Uses difflib.SequenceMatcher with 0.85 threshold on word tokens.
+
+    Returns (start_pos, end_pos) in body, or None if no match found.
+    """
+    from difflib import SequenceMatcher
+
+    if len(phrase) <= 15:
+        return None
+
+    phrase_words = phrase.lower().split()
+    if len(phrase_words) < 2:
+        return None
+
+    body_lower = body.lower()
+    body_words_with_pos: list[tuple[str, int, int]] = []
+    i = start
+    while i < len(body):
+        if body_lower[i].isalnum():
+            j = i
+            while j < len(body) and (body_lower[j].isalnum() or body_lower[j] == "'"):
+                j += 1
+            body_words_with_pos.append((body_lower[i:j], i, j))
+            i = j
+        else:
+            i += 1
+
+    if not body_words_with_pos:
+        return None
+
+    # Sliding window over body words
+    window_size = len(phrase_words)
+    best_ratio = 0.0
+    best_start = -1
+    best_end = -1
+
+    for wi in range(len(body_words_with_pos) - window_size + 1):
+        window_words = [w[0] for w in body_words_with_pos[wi : wi + window_size]]
+        window_text = " ".join(window_words)
+        phrase_text = " ".join(phrase_words)
+
+        ratio = SequenceMatcher(None, phrase_text, window_text).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_start = body_words_with_pos[wi][1]
+            best_end = body_words_with_pos[wi + window_size - 1][2]
+
+    if best_ratio >= 0.85:
+        return best_start, best_end
+
+    return None
+
+
 def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan]:
     """
     Find character positions for LLM-identified manipulative phrases.
@@ -1666,6 +1730,12 @@ def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan
     This is the position matching step of the hybrid LLM + pattern approach:
     1. LLM identifies phrases with context awareness (no positions)
     2. This function finds exact positions in the original body
+
+    Matching tiers (tried in order):
+    1. Exact match
+    2. Case-insensitive match
+    3. Whitespace-normalized match (collapse whitespace, strip boundary punctuation)
+    4. Word-boundary fuzzy match (phrases >15 chars, difflib ratio >= 0.85)
 
     Args:
         body: The original article body text
@@ -1677,8 +1747,12 @@ def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan
     if not body or not llm_phrases:
         return []
 
+    import re
+
     spans = []
     body_lower = body.lower()
+    # Pre-compute whitespace-normalized body for tier 3
+    body_ws_normalized = _normalize_whitespace(body_lower)
 
     for phrase_data in llm_phrases:
         # Handle case where phrase_data is a string instead of a dict
@@ -1711,30 +1785,59 @@ def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan
         # Parse action to enum
         action = _parse_span_action(action_str)
 
-        # Find all occurrences of the phrase
+        # Find all occurrences of the phrase using tiered matching
         start = 0
         phrase_lower = phrase.lower()
+        found_any = False
 
         while True:
-            # Try exact match first
+            # Tier 1: Exact match
             pos = body.find(phrase, start)
+            matched_text = phrase
+            match_tier = "exact"
 
-            # If not found, try case-insensitive
+            # Tier 2: Case-insensitive
             if pos == -1:
                 pos = body_lower.find(phrase_lower, start)
                 if pos != -1:
-                    # Use the actual text at this position
-                    phrase = body[pos : pos + len(phrase)]
+                    matched_text = body[pos : pos + len(phrase)]
+                    match_tier = "case_insensitive"
+
+            # Tier 3: Whitespace-normalized match
+            if pos == -1:
+                phrase_ws_normalized = _normalize_whitespace(phrase_lower)
+                if phrase_ws_normalized and phrase_ws_normalized != phrase_lower:
+                    # Search in normalized body — but we need the position in the original body
+                    norm_pos = body_ws_normalized.find(phrase_ws_normalized, 0)
+                    if norm_pos != -1:
+                        # Map normalized position back to original body using regex
+                        # Build a regex that matches the phrase with flexible whitespace
+                        escaped_words = [re.escape(w) for w in phrase_ws_normalized.split()]
+                        if escaped_words:
+                            pattern = r"\s+".join(escaped_words)
+                            match = re.search(pattern, body_lower[start:], re.IGNORECASE)
+                            if match:
+                                pos = start + match.start()
+                                matched_text = body[pos : pos + match.end() - match.start()]
+                                match_tier = "whitespace_normalized"
 
             if pos == -1:
                 break
+
+            found_any = True
+            end_pos = pos + len(matched_text)
+
+            if match_tier not in ("exact", "case_insensitive"):
+                logger.info(
+                    f"[SPAN_POSITION_FUZZY] '{phrase[:40]}' → '{matched_text[:40]}' at pos {pos} (tier={match_tier})"
+                )
 
             spans.append(
                 TransparencySpan(
                     field="body",
                     start_char=pos,
-                    end_char=pos + len(phrase),
-                    original_text=body[pos : pos + len(phrase)],
+                    end_char=end_pos,
+                    original_text=body[pos:end_pos],
                     action=action,
                     reason=reason,
                     replacement_text=replacement if action == SpanAction.REPLACED else None,
@@ -1742,6 +1845,27 @@ def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan
             )
 
             start = pos + 1
+
+        # Tier 4: Word-boundary fuzzy match (only if no matches found above)
+        if not found_any:
+            fuzzy_result = _fuzzy_find_in_body(phrase, body)
+            if fuzzy_result:
+                fstart, fend = fuzzy_result
+                matched_text = body[fstart:fend]
+                logger.info(
+                    f"[SPAN_POSITION_FUZZY] '{phrase[:40]}' → '{matched_text[:40]}' at pos {fstart} (tier=fuzzy_word)"
+                )
+                spans.append(
+                    TransparencySpan(
+                        field="body",
+                        start_char=fstart,
+                        end_char=fend,
+                        original_text=matched_text,
+                        action=action,
+                        reason=reason,
+                        replacement_text=replacement if action == SpanAction.REPLACED else None,
+                    )
+                )
 
     # Sort by position and remove overlaps
     spans.sort(key=lambda s: s.start_char)
