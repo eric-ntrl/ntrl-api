@@ -440,6 +440,83 @@ class TestSpanDetectionWithLLM:
         assert find_phrase_positions("some text", []) == []
         assert find_phrase_positions("", [{"phrase": "test", "reason": "clickbait", "action": "remove"}]) == []
 
+    def test_find_phrase_positions_whitespace_normalized(self):
+        """Test whitespace-normalized matching (tier 3)."""
+        # Body has irregular whitespace between words
+        body = "The government launched  a devastating  attack on the opposition."
+
+        llm_phrases = [
+            {"phrase": "devastating attack", "reason": "emotional_trigger", "action": "softened"},
+        ]
+
+        spans = find_phrase_positions(body, llm_phrases)
+
+        assert len(spans) == 1
+        assert "devastating" in spans[0].original_text
+        assert "attack" in spans[0].original_text
+
+    def test_find_phrase_positions_fuzzy_inflection(self):
+        """Test fuzzy word-boundary matching catches inflection differences (tier 4)."""
+        body = "The opposition leader harshly criticized the government's handling of the political crises affecting the region."
+
+        # LLM outputs slightly different inflection
+        llm_phrases = [
+            {
+                "phrase": "harshly criticized the government's handling of the political crisis",
+                "reason": "emotional_trigger",
+                "action": "softened",
+            },
+        ]
+
+        spans = find_phrase_positions(body, llm_phrases)
+
+        # Should find via fuzzy matching (phrase is >15 chars)
+        assert len(spans) == 1
+        assert "criticized" in spans[0].original_text
+        assert "crises" in spans[0].original_text
+
+    def test_find_phrase_positions_fuzzy_short_phrase_no_match(self):
+        """Test that short phrases (<= 15 chars) don't trigger fuzzy matching."""
+        body = "The crisis was devastating for the community."
+
+        # Short phrase with inflection difference — should NOT fuzzy match
+        llm_phrases = [
+            {"phrase": "crises", "reason": "emotional_trigger", "action": "softened"},
+        ]
+
+        spans = find_phrase_positions(body, llm_phrases)
+
+        # "crises" != "crisis" and phrase is too short for fuzzy matching
+        assert len(spans) == 0
+
+    def test_find_phrase_positions_exact_still_preferred(self):
+        """Test that exact matches take priority over fuzzy."""
+        body = "The devastating political crisis shocked the nation."
+
+        llm_phrases = [
+            {"phrase": "devastating political crisis", "reason": "emotional_trigger", "action": "softened"},
+        ]
+
+        spans = find_phrase_positions(body, llm_phrases)
+
+        assert len(spans) == 1
+        assert spans[0].original_text == "devastating political crisis"
+        # Exact match — positions should be precise
+        assert body[spans[0].start_char : spans[0].end_char] == "devastating political crisis"
+
+    def test_find_phrase_positions_boundary_punctuation(self):
+        """Test that boundary punctuation is handled in whitespace-normalized matching."""
+        body = 'He called it a "devastating failure" of leadership.'
+
+        llm_phrases = [
+            {"phrase": '"devastating failure"', "reason": "emotional_trigger", "action": "softened"},
+        ]
+
+        spans = find_phrase_positions(body, llm_phrases)
+
+        # Should find exact match including quotes
+        assert len(spans) == 1
+
 
 class TestMetricsFunctions:
     """Tests for accuracy metric computation functions."""

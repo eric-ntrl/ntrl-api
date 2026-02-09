@@ -64,10 +64,16 @@ class Settings(BaseSettings):
         description="OpenAI model for span detection (supports gpt-5-mini, gpt-5.1, gpt-4o-mini)",
     )
 
+    # Classification
+    CLASSIFICATION_MODEL: str = Field(
+        default="gpt-5-mini",
+        description="OpenAI model for article classification",
+    )
+
     # Teacher LLM Configuration
     EVAL_MODEL: str = Field(
-        default="claude-opus-4-5",
-        description="Model for evaluation/grading (supports claude-sonnet-4-5, claude-haiku-4-5, claude-opus-4-5, gpt-4o)",
+        default="claude-sonnet-4-5-20250929",
+        description="Model for evaluation/grading (supports claude-sonnet-4-5-20250929, claude-haiku-4-5, claude-opus-4-5)",
     )
     OPTIMIZER_MODEL: str = Field(
         default="gpt-5-mini",
@@ -92,7 +98,7 @@ class Settings(BaseSettings):
         description="Model for high-recall first pass (Anthropic)",
     )
     ADVERSARIAL_MODEL: str = Field(
-        default="gpt-4o-mini",
+        default="gpt-5-mini",
         description="Model for adversarial second pass (OpenAI)",
     )
 
@@ -164,7 +170,7 @@ class Settings(BaseSettings):
     # Deprecated models that will be retired or have been retired
     DEPRECATED_MODELS: ClassVar[set[str]] = {"gpt-4o", "gpt-4o-2024-08-06", "gpt-4-turbo"}
 
-    @field_validator("SPAN_DETECTION_MODEL", "OPTIMIZER_MODEL", "OPENAI_MODEL")
+    @field_validator("SPAN_DETECTION_MODEL", "OPTIMIZER_MODEL", "OPENAI_MODEL", "CLASSIFICATION_MODEL")
     @classmethod
     def warn_deprecated_model(cls, v: str) -> str:
         """Log a warning if a deprecated/retiring model is configured."""

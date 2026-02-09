@@ -224,7 +224,7 @@ def _parse_llm_response(content: str) -> dict | None:
 
         # Validate confidence
         confidence = data.get("confidence", 0.5)
-        if not isinstance(confidence, (int, float)):
+        if not isinstance(confidence, int | float):
             confidence = 0.5
         confidence = max(0.0, min(1.0, float(confidence)))
 
@@ -258,7 +258,7 @@ def _classify_openai(
     body_excerpt: str,
     source_slug: str,
     system_prompt: str,
-    model: str = "gpt-4o-mini",
+    model: str = "gpt-5-mini",
 ) -> dict | None:
     """Classify using OpenAI API with JSON mode."""
     api_key = os.getenv("OPENAI_API_KEY")
@@ -271,15 +271,19 @@ def _classify_openai(
         client = OpenAI(api_key=api_key, timeout=10.0)
         user_prompt = _build_user_prompt(title, description, body_excerpt, source_slug)
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
+        create_kwargs: dict = {
+            "model": model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.2,
-            response_format={"type": "json_object"},
-        )
+            "response_format": {"type": "json_object"},
+        }
+        # gpt-5-mini only supports temperature=1
+        if not model.startswith("gpt-5"):
+            create_kwargs["temperature"] = 0.2
+
+        response = client.chat.completions.create(**create_kwargs)
 
         content = response.choices[0].message.content.strip()
         return _parse_llm_response(content)
@@ -351,30 +355,33 @@ class LLMClassifier:
         """
         Classify a single article through the reliability chain.
 
-        1. gpt-4o-mini with full prompt (from DB or fallback)
-        2. gpt-4o-mini with simplified prompt (from DB or fallback)
+        1. Primary OpenAI model with full prompt (from DB or fallback)
+        2. Primary OpenAI model with simplified prompt (from DB or fallback)
         3. gemini-2.0-flash with full prompt
         4. Enhanced keyword classifier (last resort)
         """
+        from app.config import get_settings
+
         desc = description or ""
         excerpt = body_excerpt or ""
         slug = source_slug or ""
+        openai_model = get_settings().CLASSIFICATION_MODEL
 
         # Load prompts from DB (with fallback to hardcoded)
         system_prompt = get_classification_prompt("classification_system_prompt")
         simplified_prompt = get_classification_prompt("classification_simplified_prompt")
 
-        # Attempt 1: gpt-4o-mini, full prompt
-        result = _classify_openai(title, desc, excerpt, slug, system_prompt)
+        # Attempt 1: primary model, full prompt
+        result = _classify_openai(title, desc, excerpt, slug, system_prompt, model=openai_model)
         if result:
-            logger.info(f"[CLASSIFY] Success: OpenAI attempt 1, domain={result['domain']}")
-            return self._make_result(result, model="gpt-4o-mini", method="llm")
+            logger.info(f"[CLASSIFY] Success: OpenAI attempt 1 ({openai_model}), domain={result['domain']}")
+            return self._make_result(result, model=openai_model, method="llm")
 
-        # Attempt 2: gpt-4o-mini, simplified prompt
-        result = _classify_openai(title, desc, excerpt, slug, simplified_prompt)
+        # Attempt 2: primary model, simplified prompt
+        result = _classify_openai(title, desc, excerpt, slug, simplified_prompt, model=openai_model)
         if result:
-            logger.info(f"[CLASSIFY] Success: OpenAI attempt 2 (simplified), domain={result['domain']}")
-            return self._make_result(result, model="gpt-4o-mini", method="llm")
+            logger.info(f"[CLASSIFY] Success: OpenAI attempt 2 simplified ({openai_model}), domain={result['domain']}")
+            return self._make_result(result, model=openai_model, method="llm")
 
         # Attempt 3: gemini-2.0-flash, full prompt
         result = _classify_gemini(title, desc, excerpt, slug, system_prompt)
