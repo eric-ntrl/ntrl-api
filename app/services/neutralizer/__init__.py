@@ -3996,10 +3996,15 @@ async def detect_spans_multi_pass_async(
     else:
         # Use validated (filtered Pass 1) + new from Pass 2
         all_spans = validated_spans + new_spans
+        rejected_count = len(pass1_spans) - len(validated_spans)
         logger.info(
             f"[MULTI_PASS] Pass 2: {len(validated_spans)} validated, {len(new_spans)} new, "
-            f"{len(pass1_spans) - len(validated_spans)} removed as false positives"
+            f"{rejected_count} removed as false positives"
         )
+        if rejected_count > 0:
+            validated_texts = {s.original_text for s in validated_spans}
+            rejected_texts = [s.original_text for s in pass1_spans if s.original_text not in validated_texts]
+            logger.info(f"[SPAN_RECALL_DEBUG] Adversarial rejected: {rejected_texts}")
 
     # Phase 4: Merge all spans (validated + new from adversarial, or pass1 on failure)
     logger.info("[MULTI_PASS] Merging spans")
@@ -4009,13 +4014,19 @@ async def detect_spans_multi_pass_async(
     deduplicated = deduplicate_overlap_spans(merged_spans, overlap_size)
 
     # Phase 5: Apply filters
-    filtered = filter_spans_in_quotes(body, deduplicated)
-    final = filter_false_positives(filtered)
+    after_quotes = filter_spans_in_quotes(body, deduplicated)
+    final = filter_false_positives(after_quotes)
 
+    # Stage-by-stage span count for recall diagnostics
     logger.info(
-        f"[MULTI_PASS] Final: {len(final)} spans "
-        f"(pass1={len(pass1_spans)}, validated={len(validated_spans)}, "
-        f"new={len(new_spans)}, merged={len(merged_spans)}, filtered={len(final)})"
+        f"[SPAN_RECALL_DEBUG] Stage breakdown: "
+        f"pass1={len(pass1_spans)} → "
+        f"adversarial_validated={len(validated_spans)}(-{len(pass1_spans) - len(validated_spans)}) + "
+        f"adversarial_new={len(new_spans)} → "
+        f"merged={len(merged_spans)} → "
+        f"dedup={len(deduplicated)}(-{len(merged_spans) - len(deduplicated)}) → "
+        f"after_quotes={len(after_quotes)}(-{len(deduplicated) - len(after_quotes)}) → "
+        f"after_fp_filter={len(final)}(-{len(after_quotes) - len(final)})"
     )
 
     executor.shutdown(wait=False)
