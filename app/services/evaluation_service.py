@@ -259,6 +259,164 @@ class EvaluationResult:
 # ---------------------------------------------------------------------------
 
 
+def analyze_evaluations(db: Session, limit: int = 5) -> dict:
+    """
+    Aggregate evaluation data across recent runs for data-driven analysis.
+
+    Cross-references teacher feedback with the FALSE_POSITIVE_PHRASES list
+    to identify over-filters and missing FP entries.
+
+    Args:
+        db: Database session
+        limit: Number of recent evaluation runs to analyze
+
+    Returns:
+        Dict matching EvaluationAnalysisResponse schema
+    """
+    from collections import Counter
+
+    from app.services.neutralizer.spans import FALSE_POSITIVE_PATTERNS, FALSE_POSITIVE_PHRASES
+
+    # Get recent completed evaluation runs
+    runs = (
+        db.query(models.EvaluationRun)
+        .filter(models.EvaluationRun.status == "completed")
+        .order_by(models.EvaluationRun.finished_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    if not runs:
+        return {
+            "runs_analyzed": 0,
+            "articles_evaluated": 0,
+            "false_positives": {"total": 0, "top_phrases": [], "would_be_filtered": []},
+            "missed_manipulations": {"total": 0, "by_category": {}, "top_phrases": [], "blocked_by_fp_list": []},
+            "classification": {"accuracy_by_run": [], "confusion_pairs": []},
+        }
+
+    run_ids = [r.id for r in runs]
+
+    # Load all article evaluations for these runs
+    article_evals = (
+        db.query(models.ArticleEvaluation).filter(models.ArticleEvaluation.evaluation_run_id.in_(run_ids)).all()
+    )
+
+    # --- False Positives ---
+    fp_phrase_counter: Counter = Counter()
+    fp_reasons: dict[str, list[str]] = {}
+    all_fp_phrases: list[str] = []
+
+    for ae in article_evals:
+        if not ae.false_positives:
+            continue
+        for fp in ae.false_positives:
+            phrase = fp.get("phrase", "").strip()
+            if not phrase:
+                continue
+            phrase_lower = phrase.lower()
+            fp_phrase_counter[phrase_lower] += 1
+            all_fp_phrases.append(phrase_lower)
+            reason = fp.get("reason_incorrect", "") or fp.get("reason", "")
+            if reason:
+                fp_reasons.setdefault(phrase_lower, []).append(reason)
+
+    # Check which FPs are already in the FALSE_POSITIVE_PHRASES set
+    fp_lower_set = {p.lower() for p in FALSE_POSITIVE_PHRASES}
+    would_be_filtered = sorted(set(p for p in all_fp_phrases if p in fp_lower_set))
+
+    top_fp_phrases = [
+        {
+            "phrase": phrase,
+            "count": count,
+            "sample_reasons": fp_reasons.get(phrase, [])[:3],
+        }
+        for phrase, count in fp_phrase_counter.most_common(20)
+    ]
+
+    # --- Missed Manipulations ---
+    missed_phrase_counter: Counter = Counter()
+    missed_categories: Counter = Counter()
+    missed_phrase_category: dict[str, str] = {}
+    all_missed_phrases: list[str] = []
+
+    for ae in article_evals:
+        if not ae.missed_manipulations:
+            continue
+        for m in ae.missed_manipulations:
+            phrase = m.get("phrase", "").strip()
+            if not phrase:
+                continue
+            phrase_lower = phrase.lower()
+            missed_phrase_counter[phrase_lower] += 1
+            all_missed_phrases.append(phrase_lower)
+            cat = m.get("category", "other")
+            missed_categories[cat] += 1
+            missed_phrase_category[phrase_lower] = cat
+
+    # Check which missed phrases are blocked by the FP list
+    def _matches_fp_list(phrase: str) -> bool:
+        if phrase in fp_lower_set:
+            return True
+        for pattern in FALSE_POSITIVE_PATTERNS:
+            if pattern.search(phrase):
+                return True
+        return False
+
+    blocked_by_fp = sorted(set(p for p in all_missed_phrases if _matches_fp_list(p)))
+
+    top_missed_phrases = [
+        {
+            "phrase": phrase,
+            "count": count,
+            "category": missed_phrase_category.get(phrase, ""),
+        }
+        for phrase, count in missed_phrase_counter.most_common(20)
+    ]
+
+    # --- Classification ---
+    accuracy_by_run = []
+    confusion_counter: Counter = Counter()
+
+    for run in runs:
+        run_evals = [ae for ae in article_evals if ae.evaluation_run_id == run.id]
+        if not run_evals:
+            continue
+        correct = sum(1 for ae in run_evals if ae.classification_correct is True)
+        accuracy_by_run.append(round(correct / len(run_evals), 2) if run_evals else 0.0)
+
+        for ae in run_evals:
+            if ae.classification_correct is False and ae.expected_domain:
+                # Get the assigned domain from the story
+                story = db.query(models.StoryRaw).filter(models.StoryRaw.id == ae.story_raw_id).first()
+                assigned = story.domain if story else "unknown"
+                confusion_counter[(ae.expected_domain, assigned)] += 1
+
+    confusion_pairs = [
+        {"expected": pair[0], "assigned": pair[1], "count": count} for pair, count in confusion_counter.most_common(10)
+    ]
+
+    return {
+        "runs_analyzed": len(runs),
+        "articles_evaluated": len(article_evals),
+        "false_positives": {
+            "total": len(all_fp_phrases),
+            "top_phrases": top_fp_phrases,
+            "would_be_filtered": would_be_filtered,
+        },
+        "missed_manipulations": {
+            "total": len(all_missed_phrases),
+            "by_category": dict(missed_categories),
+            "top_phrases": top_missed_phrases,
+            "blocked_by_fp_list": blocked_by_fp,
+        },
+        "classification": {
+            "accuracy_by_run": accuracy_by_run,
+            "confusion_pairs": confusion_pairs,
+        },
+    }
+
+
 class EvaluationService:
     """
     Orchestrates teacher LLM evaluation of pipeline output quality.

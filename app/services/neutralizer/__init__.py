@@ -2011,111 +2011,22 @@ def filter_spans_in_quotes(body: str, spans: list[TransparencySpan]) -> list[Tra
     return result
 
 
-# Known false positive EXACT phrases that LLMs commonly flag incorrectly
-# Only include multi-word phrases - single words are too likely to have legitimate uses
-FALSE_POSITIVE_PHRASES = {
-    # Medical terms (multi-word)
-    "bowel cancer",
-    "breast cancer",
-    "lung cancer",
-    "skin cancer",
-    "prostate cancer",
-    "colon cancer",
-    "cancer treatment",
-    "cancer diagnosis",
-    "cancer research",
-    "cancer patient",
-    "cancer patients",
-    "cancer tests",
-    # Neutral news verb phrases
-    "tests will",
-    "will be",
-    "according to",
-    "reported that",
-    # Factual descriptors (multi-word)
-    "spot more",
-    "getting worse",
-    "getting better",
-    # Temporal phrases
-    "every year",
-    "each year",
-    "this week",
-    "last week",
-    "this year",
-    "last year",
-    # Data/statistics (multi-word)
-    "highest cost",
-    "lowest cost",
-    "most affected",
-    "least affected",
-    # UI/metadata (multi-word)
-    "minutes ago",
-    "hours ago",
-    "sign up",
-    "read more",
-    "continue reading",
-    "health newsletter",
-    "email address",
-    # Professional service terms (legitimate professions)
-    "crisis management",
-    "reputation management",
-    "crisis manager",
-    "public relations",
-    "media relations",
-    "investor relations",
-    "communications director",
-    "crisis communications",
-    "pr firm",
-    "pr agency",
-    "publicist",
-}
-
-# Patterns that match false positives (case-insensitive partial matches)
-# Be SPECIFIC to avoid filtering legitimate manipulative language
-FALSE_POSITIVE_PATTERNS = [
-    # Don't use broad patterns like "cancer" - too aggressive
-    # Only add very specific false positives here
-]
+# Import FALSE_POSITIVE_PHRASES and filter_false_positives from canonical location (spans.py)
+# to avoid duplication. See spans.py for the full FP list and regex patterns.
+from app.services.neutralizer.spans import (
+    FALSE_POSITIVE_PATTERNS as FALSE_POSITIVE_PATTERNS,
+)
+from app.services.neutralizer.spans import (
+    FALSE_POSITIVE_PHRASES as FALSE_POSITIVE_PHRASES,
+)
+from app.services.neutralizer.spans import (
+    filter_false_positives as _filter_false_positives_from_spans,
+)
 
 
 def filter_false_positives(spans: list[TransparencySpan]) -> list[TransparencySpan]:
-    """
-    Remove known false positive spans that LLMs commonly flag incorrectly.
-
-    This is a safety net for when the LLM doesn't follow the prompt instructions
-    to avoid flagging neutral language like medical terms and factual descriptors.
-    """
-    logger.debug(f"[SPAN_DETECTION] False positive filter input: {len(spans)} spans")
-
-    if not spans:
-        return spans
-
-    filtered = []
-    removed_texts = []
-    for span in spans:
-        text_lower = span.original_text.lower().strip()
-
-        # Check exact matches
-        if text_lower in FALSE_POSITIVE_PHRASES:
-            removed_texts.append(span.original_text)
-            continue
-
-        # Check pattern matches
-        is_false_positive = False
-        for pattern in FALSE_POSITIVE_PATTERNS:
-            if pattern in text_lower:
-                is_false_positive = True
-                removed_texts.append(span.original_text)
-                break
-
-        if not is_false_positive:
-            filtered.append(span)
-
-    filtered_count = len(spans) - len(filtered)
-    if filtered_count > 0:
-        logger.info(f"[SPAN_DETECTION] False positive filter removed {filtered_count}: {removed_texts[:5]}")
-
-    return filtered
+    """Delegate to the canonical filter_false_positives in spans.py."""
+    return _filter_false_positives_from_spans(spans)
 
 
 # -----------------------------------------------------------------------------

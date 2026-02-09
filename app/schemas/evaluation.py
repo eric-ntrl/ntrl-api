@@ -292,3 +292,66 @@ class ScheduledRunEvaluationConfig(BaseModel):
     teacher_model: str | None = Field(None, description="Model to use for evaluation (default: uses EVAL_MODEL config)")
     eval_sample_size: int = Field(30, ge=1, le=50, description="Number of articles to evaluate")
     enable_auto_optimize: bool = Field(False, description="Auto-apply prompt improvements")
+
+
+# -----------------------------------------------------------------------------
+# Evaluation Analysis (cross-run aggregation)
+# -----------------------------------------------------------------------------
+
+
+class PhraseCount(BaseModel):
+    """A phrase with its occurrence count and sample reasons."""
+
+    phrase: str
+    count: int
+    sample_reasons: list[str] = Field(default_factory=list)
+
+
+class MissedPhraseCount(BaseModel):
+    """A missed manipulation phrase with count and category."""
+
+    phrase: str
+    count: int
+    category: str = ""
+
+
+class ConfusionPair(BaseModel):
+    """A classification confusion pair."""
+
+    expected: str
+    assigned: str
+    count: int
+
+
+class FalsePositiveAnalysis(BaseModel):
+    """Aggregated false positive analysis."""
+
+    total: int = 0
+    top_phrases: list[PhraseCount] = Field(default_factory=list)
+    would_be_filtered: list[str] = Field(default_factory=list)
+
+
+class MissedManipulationAnalysis(BaseModel):
+    """Aggregated missed manipulation analysis."""
+
+    total: int = 0
+    by_category: dict[str, int] = Field(default_factory=dict)
+    top_phrases: list[MissedPhraseCount] = Field(default_factory=list)
+    blocked_by_fp_list: list[str] = Field(default_factory=list)
+
+
+class ClassificationAnalysis(BaseModel):
+    """Classification accuracy analysis across runs."""
+
+    accuracy_by_run: list[float] = Field(default_factory=list)
+    confusion_pairs: list[ConfusionPair] = Field(default_factory=list)
+
+
+class EvaluationAnalysisResponse(BaseModel):
+    """Aggregated analysis across multiple evaluation runs."""
+
+    runs_analyzed: int = 0
+    articles_evaluated: int = 0
+    false_positives: FalsePositiveAnalysis = Field(default_factory=FalsePositiveAnalysis)
+    missed_manipulations: MissedManipulationAnalysis = Field(default_factory=MissedManipulationAnalysis)
+    classification: ClassificationAnalysis = Field(default_factory=ClassificationAnalysis)

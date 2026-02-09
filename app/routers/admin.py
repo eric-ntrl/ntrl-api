@@ -1591,6 +1591,7 @@ from app.schemas.evaluation import (
     ArticleEvaluationResult,
     AutoOptimizeConfigRequest,
     AutoOptimizeConfigResponse,
+    EvaluationAnalysisResponse,
     EvaluationRunListResponse,
     EvaluationRunRequest,
     EvaluationRunResponse,
@@ -2004,6 +2005,29 @@ def get_evaluation_run(
         estimated_cost_usd=eval_run.estimated_cost_usd,
         article_evaluations=article_evals,
     )
+
+
+# -----------------------------------------------------------------------------
+# Evaluation analysis endpoint
+# -----------------------------------------------------------------------------
+
+
+@router.get("/evaluation/analysis", response_model=EvaluationAnalysisResponse)
+def get_evaluation_analysis(
+    limit: int = 5,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> EvaluationAnalysisResponse:
+    """
+    Cross-run aggregation of evaluation data for data-driven FP list auditing.
+
+    Analyzes recent evaluation runs and cross-references teacher feedback with
+    the FALSE_POSITIVE_PHRASES list to identify over-filters and missing entries.
+    """
+    from app.services.evaluation_service import analyze_evaluations
+
+    result = analyze_evaluations(db, limit=limit)
+    return EvaluationAnalysisResponse(**result)
 
 
 # -----------------------------------------------------------------------------
