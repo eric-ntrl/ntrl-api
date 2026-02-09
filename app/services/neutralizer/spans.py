@@ -359,7 +359,8 @@ def filter_spans_in_quotes(body: str, spans: list) -> list:
 
     filtered_count = len(spans) - len(filtered)
     if filtered_count > 0:
-        logger.info(f"Filtered out {filtered_count} spans inside quotes")
+        removed_texts = [s.original_text for s in spans if s not in filtered]
+        logger.info(f"[SPAN_RECALL_DEBUG] Quote filter removed {filtered_count}: {removed_texts}")
 
     return filtered
 
@@ -396,7 +397,7 @@ def filter_false_positives(spans: list) -> list:
 
     filtered_count = len(spans) - len(filtered)
     if filtered_count > 0:
-        logger.info(f"[SPAN_DETECTION] False positive filter removed {filtered_count}: {removed_texts[:5]}")
+        logger.info(f"[SPAN_RECALL_DEBUG] FP filter removed {filtered_count}: {removed_texts}")
 
     return filtered
 
