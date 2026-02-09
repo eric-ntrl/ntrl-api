@@ -12,8 +12,8 @@ from app.services.neutralizer.spans import _parse_span_reason
 class TestSpanReasonMapping:
     """Tests for _parse_span_reason function."""
 
-    def test_7_canonical_categories_are_mapped(self):
-        """The 7 canonical categories should map to their corresponding enum values."""
+    def test_8_canonical_categories_are_mapped(self):
+        """The 8 canonical categories should map to their corresponding enum values."""
         canonical_mappings = {
             "clickbait": SpanReason.CLICKBAIT,
             "urgency_inflation": SpanReason.URGENCY_INFLATION,
@@ -22,6 +22,7 @@ class TestSpanReasonMapping:
             "agenda_signaling": SpanReason.AGENDA_SIGNALING,
             "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
             "editorial_voice": SpanReason.EDITORIAL_VOICE,
+            "selective_quoting": SpanReason.SELECTIVE_QUOTING,
         }
 
         for category, expected_reason in canonical_mappings.items():
@@ -117,6 +118,9 @@ class TestSpanReasonMapping:
             "hype": SpanReason.SELLING,
             "selling_hype": SpanReason.SELLING,
             "framing": SpanReason.RHETORICAL_FRAMING,
+            "selective_quote": SpanReason.SELECTIVE_QUOTING,
+            "scare_quotes": SpanReason.SELECTIVE_QUOTING,
+            "cherry_picked_quote": SpanReason.SELECTIVE_QUOTING,
         }
 
         for alias, expected in aliases.items():
@@ -148,7 +152,7 @@ class TestSpanCategoryDiversity:
     """Tests to ensure span detection produces diverse categories."""
 
     def test_mapping_produces_diverse_outputs(self):
-        """The mapping should be able to produce all 7 SpanReason values."""
+        """The mapping should be able to produce all 8 SpanReason values."""
         # Sample inputs that should produce each SpanReason
         inputs_by_category = {
             SpanReason.CLICKBAIT: "clickbait",
@@ -158,6 +162,7 @@ class TestSpanCategoryDiversity:
             SpanReason.AGENDA_SIGNALING: "agenda_signaling",
             SpanReason.RHETORICAL_FRAMING: "rhetorical_framing",
             SpanReason.EDITORIAL_VOICE: "editorial_voice",
+            SpanReason.SELECTIVE_QUOTING: "selective_quoting",
         }
 
         produced_reasons = set()
@@ -166,6 +171,6 @@ class TestSpanCategoryDiversity:
             produced_reasons.add(result)
             assert result == expected_reason
 
-        # Verify all 7 reasons can be produced
-        assert len(produced_reasons) == 7
+        # Verify all 8 reasons can be produced
+        assert len(produced_reasons) == 8
         assert produced_reasons == set(SpanReason)

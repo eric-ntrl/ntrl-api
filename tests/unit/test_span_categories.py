@@ -1,7 +1,7 @@
 """
 Regression tests for manipulation category coverage in span detection prompts.
 
-Ensures that all 13 manipulation categories are present in:
+Ensures that all 14 manipulation categories are present in:
 - MANIPULATION_CATEGORIES (shared constant)
 - HIGH_RECALL_USER_PROMPT (Pass 1)
 - ADVERSARIAL_USER_PROMPT (Pass 2)
@@ -37,17 +37,18 @@ EXPECTED_CATEGORIES = {
     "LOADED IDIOMS": ["came under fire", "in the crosshairs", "sent shockwaves"],
     "ENTERTAINMENT HYPE": ["romantic escape", "luxury yacht", "A-list couple"],
     "EDITORIAL VOICE": ["we're glad", "naturally", "of course"],
+    "SELECTIVE QUOTING": ["cherry-picked", "scare quotes"],
 }
 
 
 class TestManipulationCategoriesConstant:
-    """MANIPULATION_CATEGORIES shared constant contains all 13 categories."""
+    """MANIPULATION_CATEGORIES shared constant contains all 14 categories."""
 
     @pytest.mark.parametrize("category", EXPECTED_CATEGORIES.keys())
     def test_category_present_in_shared_constant(self, category: str):
         assert category in MANIPULATION_CATEGORIES, (
             f"Category '{category}' missing from MANIPULATION_CATEGORIES constant. "
-            f"All 13 categories must be present to prevent detection gaps."
+            f"All 14 categories must be present to prevent detection gaps."
         )
 
     @pytest.mark.parametrize(
@@ -183,14 +184,14 @@ class TestArticleRegressionFixtures:
         lower = MANIPULATION_CATEGORIES.lower()
         assert "far-left" in lower
 
-    def test_quoted_text_not_in_detection_categories(self):
+    def test_selective_quoting_in_prompts(self):
         """
-        Quoted text like 'armed thug kidnappers' should NOT be flagged.
-
-        This is verified by the prompt instructions (NEVER FLAG QUOTED TEXT),
-        not by the category list. We just confirm the exclusion language exists
-        in the prompts.
+        Selective quoting is now a detection category. Verify the prompts
+        include selective_quoting as a valid reason and mention direct quotes
+        in the context of neutral attribution only.
         """
+        assert "selective_quoting" in HIGH_RECALL_USER_PROMPT.lower()
+        assert "selective_quoting" in ADVERSARIAL_USER_PROMPT.lower()
         assert "direct quotes" in HIGH_RECALL_USER_PROMPT.lower()
         assert "direct quotes" in ADVERSARIAL_USER_PROMPT.lower()
 

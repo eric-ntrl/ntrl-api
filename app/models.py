@@ -145,6 +145,7 @@ class SpanReason(str, Enum):
     AGENDA_SIGNALING = "agenda_signaling"
     RHETORICAL_FRAMING = "rhetorical_framing"
     EDITORIAL_VOICE = "editorial_voice"  # First-person opinion markers in news
+    SELECTIVE_QUOTING = "selective_quoting"  # Cherry-picked or scare quotes
 
 
 class PipelineStage(str, Enum):

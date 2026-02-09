@@ -69,7 +69,7 @@ curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
 
 ## QC Gate
 
-Runs between NEUTRALIZE and BRIEF ASSEMBLE. Articles must pass **all 18 checks** to appear in the brief. Failed articles are excluded with structured reason codes.
+Runs between NEUTRALIZE and BRIEF ASSEMBLE. Articles must pass **all 18 checks** to appear in the brief. Failed articles are excluded with structured reason codes. Span detection uses **14 manipulation categories** and **8 SpanReason values** (including `selective_quoting` for cherry-picked/scare quotes).
 
 **Implementation**: `app/services/quality_gate.py`
 

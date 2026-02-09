@@ -1805,11 +1805,11 @@ def is_contraction_apostrophe(body: str, pos: int) -> bool:
 
 def filter_spans_in_quotes(body: str, spans: list[TransparencySpan]) -> list[TransparencySpan]:
     """
-    Remove spans that fall inside quotation marks.
+    Reclassify spans inside quotation marks as selective_quoting.
 
-    This is a post-filter to catch any manipulative language that the LLM
-    flagged inside quoted speech. Quotes preserve attribution - readers
-    can judge the speaker's words themselves.
+    Instead of removing spans in quotes (which killed recall), reclassifies them
+    with reason=SELECTIVE_QUOTING and action=SOFTENED. This preserves the span
+    for recall while giving users insight into editorial quote selection.
 
     Handles multiple quote types:
     - Straight double quotes: "..."
@@ -1860,18 +1860,31 @@ def filter_spans_in_quotes(body: str, spans: list[TransparencySpan]) -> list[Tra
     if not quote_ranges:
         return spans
 
-    # Filter out spans inside quotes
-    filtered = []
+    # Reclassify spans inside quotes as selective_quoting
+    result = []
+    reclassified_count = 0
     for span in spans:
         inside_quote = any(start <= span.start_char and span.end_char <= end for start, end in quote_ranges)
-        if not inside_quote:
-            filtered.append(span)
+        if inside_quote:
+            reclassified = TransparencySpan(
+                field=span.field,
+                start_char=span.start_char,
+                end_char=span.end_char,
+                original_text=span.original_text,
+                action=SpanAction.SOFTENED,
+                reason=SpanReason.SELECTIVE_QUOTING,
+                replacement_text=span.replacement_text,
+            )
+            result.append(reclassified)
+            reclassified_count += 1
+        else:
+            result.append(span)
 
-    filtered_count = len(spans) - len(filtered)
-    if filtered_count > 0:
-        logger.info(f"Filtered out {filtered_count} spans inside quotes")
+    if reclassified_count > 0:
+        reclassified_texts = [s.original_text for s in result if s.reason == SpanReason.SELECTIVE_QUOTING]
+        logger.info(f"[SPAN_RECALL_DEBUG] Quote filter reclassified {reclassified_count}: {reclassified_texts}")
 
-    return filtered
+    return result
 
 
 # Known false positive EXACT phrases that LLMs commonly flag incorrectly
@@ -3522,6 +3535,7 @@ MANIPULATION_CATEGORIES = """
 11. LOADED IDIOMS: "came under fire", "in the crosshairs", "in hot water", "sent shockwaves", "on the warpath"
 12. ENTERTAINMENT HYPE: "romantic escape", "showed off figure", "luxury yacht", "A-list couple", "celebrity hotspot"
 13. EDITORIAL VOICE: "we're glad", "naturally", "of course", "Border Czar", "lunatic", "absurd"
+14. SELECTIVE QUOTING: Cherry-picked quotes, scare quotes ("so-called 'expert'"), inflammatory quote fragments chosen over neutral alternatives
 """
 
 # -----------------------------------------------------------------------------
@@ -3537,7 +3551,7 @@ HIGH_RECALL_USER_PROMPT = (
 DO NOT flag:
 - Standard attribution verbs used neutrally: said, stated, noted, reported, explained, described, added, wrote, according to
 - Factual descriptions of events, even if dramatic (e.g., "the building collapsed", "three people died")
-- Phrases inside direct quotes (the speaker's language, not the article's editorial voice)
+- Full direct quotes used neutrally to attribute speech (e.g., He said "we will review the policy")
 - Technical, legal, medical, or domain-specific terminology
 - Common journalism phrasing: "breaking news", "developing story", "sources say"
 
@@ -3553,14 +3567,15 @@ ARTICLE BODY:
 Return JSON format:
 {{"phrases": [{{"phrase": "EXACT text", "reason": "CATEGORY", "action": "remove|replace", "replacement": "text or null"}}]}}
 
-IMPORTANT - Use ONLY these 7 reason values:
+IMPORTANT - Use ONLY these 8 reason values:
 - clickbait
 - urgency_inflation
 - emotional_trigger
 - selling
 - agenda_signaling
 - rhetorical_framing
-- editorial_voice"""
+- editorial_voice
+- selective_quoting"""
 )
 
 
@@ -3688,7 +3703,7 @@ You have TWO jobs:
 JOB 1 — VALIDATE: Review each phrase detected above. Remove any that are FALSE POSITIVES:
 - Standard attribution verbs used neutrally (said, stated, noted, reported, according to)
 - Factual descriptions of events, even if dramatic
-- Phrases inside direct quotes (the speaker's language, not the article's editorial voice)
+- Full direct quotes used neutrally to attribute speech (e.g., He said "we will review the policy")
 - Technical, legal, or domain-specific terminology
 - Common journalism phrasing that is neutral in context
 
@@ -3704,7 +3719,7 @@ Return JSON with TWO arrays:
 "keep" = confirmed manipulative phrases from the first pass (exclude false positives).
 "new" = additional manipulative phrases the first pass missed.
 
-IMPORTANT - Use ONLY these 7 reason values:
+IMPORTANT - Use ONLY these 8 reason values:
 - clickbait
 - urgency_inflation
 - emotional_trigger
@@ -3712,6 +3727,7 @@ IMPORTANT - Use ONLY these 7 reason values:
 - agenda_signaling
 - rhetorical_framing
 - editorial_voice
+- selective_quoting
 
 If all first-pass phrases are valid and nothing was missed: {{"keep": [<all first pass phrases>], "new": []}}"""
 )
@@ -4014,10 +4030,11 @@ async def detect_spans_multi_pass_async(
     deduplicated = deduplicate_overlap_spans(merged_spans, overlap_size)
 
     # Phase 5: Apply filters
-    after_quotes = filter_spans_in_quotes(body, deduplicated)
-    final = filter_false_positives(after_quotes)
+    after_quote_reclassify = filter_spans_in_quotes(body, deduplicated)
+    final = filter_false_positives(after_quote_reclassify)
 
     # Stage-by-stage span count for recall diagnostics
+    quote_reclassified = sum(1 for s in after_quote_reclassify if s.reason == SpanReason.SELECTIVE_QUOTING)
     logger.info(
         f"[SPAN_RECALL_DEBUG] Stage breakdown: "
         f"pass1={len(pass1_spans)} → "
@@ -4025,8 +4042,8 @@ async def detect_spans_multi_pass_async(
         f"adversarial_new={len(new_spans)} → "
         f"merged={len(merged_spans)} → "
         f"dedup={len(deduplicated)}(-{len(merged_spans) - len(deduplicated)}) → "
-        f"after_quotes={len(after_quotes)}(-{len(deduplicated) - len(after_quotes)}) → "
-        f"after_fp_filter={len(final)}(-{len(after_quotes) - len(final)})"
+        f"after_quote_reclassify={len(after_quote_reclassify)}(reclassified={quote_reclassified}) → "
+        f"after_fp_filter={len(final)}(-{len(after_quote_reclassify) - len(final)})"
     )
 
     executor.shutdown(wait=False)
