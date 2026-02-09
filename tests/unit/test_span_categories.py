@@ -196,6 +196,40 @@ class TestArticleRegressionFixtures:
         assert "direct quotes" in ADVERSARIAL_USER_PROMPT.lower()
 
 
+class TestEvalPromptCategories:
+    """SPAN_EVAL_PROMPT must include all 8 SpanReason categories."""
+
+    def test_eval_prompt_contains_all_span_reasons(self):
+        from app.services.evaluation_service import SPAN_EVAL_PROMPT
+
+        expected_categories = [
+            "emotional_trigger",
+            "urgency_inflation",
+            "clickbait",
+            "selling",
+            "agenda_signaling",
+            "rhetorical_framing",
+            "editorial_voice",
+            "selective_quoting",
+        ]
+        lower = SPAN_EVAL_PROMPT.lower()
+        for cat in expected_categories:
+            assert cat in lower, (
+                f"Category '{cat}' missing from SPAN_EVAL_PROMPT. "
+                f"The teacher eval must recognize all 8 SpanReason values "
+                f"to avoid systematic precision/recall errors."
+            )
+
+    def test_eval_prompt_no_longer_blanket_preserves_quotes(self):
+        """Eval prompt should not say 'direct quotes should be preserved' unconditionally."""
+        from app.services.evaluation_service import SPAN_EVAL_PROMPT
+
+        assert "direct quotes should be preserved" not in SPAN_EVAL_PROMPT, (
+            "SPAN_EVAL_PROMPT still contains blanket quote preservation rule. "
+            "This causes the teacher to mark selective_quoting spans as false positives."
+        )
+
+
 class TestSynthesisPromptCoverage:
     """DEFAULT_SYNTHESIS_DETAIL_FULL_PROMPT includes agenda signaling section."""
 

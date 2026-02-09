@@ -1,11 +1,18 @@
 """
 Tests for span reason mapping to ensure all LLM-returned categories
 are properly mapped to valid SpanReason enum values.
+
+Tests cover BOTH copies of _parse_span_reason:
+- spans.py (used by find_phrase_positions in spans.py)
+- __init__.py (used by find_phrase_positions in __init__.py)
 """
 
 import logging
 
 from app.models import SpanReason
+from app.services.neutralizer import (
+    _parse_span_reason as _parse_span_reason_init,
+)
 from app.services.neutralizer.spans import _parse_span_reason
 
 
@@ -174,3 +181,70 @@ class TestSpanCategoryDiversity:
         # Verify all 8 reasons can be produced
         assert len(produced_reasons) == 8
         assert produced_reasons == set(SpanReason)
+
+
+class TestInitPyParseSpanReason:
+    """Tests for the __init__.py copy of _parse_span_reason.
+
+    Both __init__.py and spans.py have their own _parse_span_reason.
+    This class verifies the __init__.py version stays in sync, especially
+    for selective_quoting which was previously missing from __init__.py.
+    """
+
+    def test_selective_quoting_canonical(self):
+        """selective_quoting must map correctly in __init__.py version."""
+        assert _parse_span_reason_init("selective_quoting") == SpanReason.SELECTIVE_QUOTING
+
+    def test_selective_quoting_aliases(self):
+        """selective_quoting aliases must work in __init__.py version."""
+        aliases = {
+            "selective_quote": SpanReason.SELECTIVE_QUOTING,
+            "scare_quotes": SpanReason.SELECTIVE_QUOTING,
+            "cherry_picked_quote": SpanReason.SELECTIVE_QUOTING,
+        }
+        for alias, expected in aliases.items():
+            result = _parse_span_reason_init(alias)
+            assert result == expected, f"__init__.py: alias '{alias}' should map to {expected}"
+
+    def test_all_8_canonical_categories(self):
+        """All 8 canonical categories must be present in __init__.py version."""
+        canonical = {
+            "clickbait": SpanReason.CLICKBAIT,
+            "urgency_inflation": SpanReason.URGENCY_INFLATION,
+            "emotional_trigger": SpanReason.EMOTIONAL_TRIGGER,
+            "selling": SpanReason.SELLING,
+            "agenda_signaling": SpanReason.AGENDA_SIGNALING,
+            "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
+            "editorial_voice": SpanReason.EDITORIAL_VOICE,
+            "selective_quoting": SpanReason.SELECTIVE_QUOTING,
+        }
+        for category, expected in canonical.items():
+            result = _parse_span_reason_init(category)
+            assert result == expected, f"__init__.py: '{category}' should map to {expected}"
+
+    def test_both_copies_agree(self):
+        """Both copies of _parse_span_reason must produce identical results."""
+        test_inputs = [
+            "clickbait",
+            "urgency_inflation",
+            "emotional_trigger",
+            "selling",
+            "agenda_signaling",
+            "rhetorical_framing",
+            "editorial_voice",
+            "selective_quoting",
+            "selective_quote",
+            "scare_quotes",
+            "cherry_picked_quote",
+            "loaded_verbs",
+            "emotional",
+            "urgency",
+            "hype",
+            "framing",
+        ]
+        for input_str in test_inputs:
+            spans_result = _parse_span_reason(input_str)
+            init_result = _parse_span_reason_init(input_str)
+            assert spans_result == init_result, (
+                f"Mismatch for '{input_str}': spans.py={spans_result}, __init__.py={init_result}"
+            )

@@ -135,7 +135,7 @@ Given an original article and the detected manipulation spans, evaluate precisio
 
 A CORRECT SPAN must:
 1. Be genuinely manipulative (emotional trigger, urgency inflation, clickbait, editorial voice, etc.)
-2. NOT be inside quoted speech (direct quotes should be preserved)
+2. NOT be a full direct quote used neutrally for attribution (e.g., He said "we will review the policy"). However, cherry-picked inflammatory quote fragments, scare quotes ("so-called 'expert'"), or selectively chosen quotes that frame a narrative ARE valid manipulative spans categorized as "selective_quoting".
 3. NOT be a false positive (professional terms, medical terminology, etc.)
 
 CONTENT-TYPE CALIBRATION:
@@ -145,6 +145,8 @@ When evaluating span detection quality, consider the article's genre:
 - Sports reporting uses more vivid language ("brilliant performance", "dominant display") than hard news
 - Entertainment/culture reviews use evaluative language ("masterful", "riveting") as critical vocabulary
 - Promotional content (competitions, giveaways) should flag promotional framing but not product descriptions
+- Quote selection itself is an editorial technique — choosing the most inflammatory or dramatic quote when
+  more measured alternatives exist is a framing decision. Flag these as "selective_quoting".
 Adjust your precision/recall estimates accordingly — a "false positive" in hard news
 may be a correct detection in tabloid celebrity coverage, and vice versa.
 
@@ -169,7 +171,7 @@ Respond with JSON:
     {"phrase": "...", "reason_incorrect": "..."}
   ],
   "missed_manipulations": [
-    {"phrase": "...", "reason_should_flag": "...", "category": "emotional_trigger|urgency|clickbait|editorial_voice|other", "location": "title|body|both"}
+    {"phrase": "...", "reason_should_flag": "...", "category": "emotional_trigger|urgency_inflation|clickbait|selling|agenda_signaling|rhetorical_framing|editorial_voice|selective_quoting", "location": "title|body|both"}
   ],
   "title_body_inconsistencies": [
     {"phrase": "...", "found_in": "title|body|both", "flagged_in": "title|body|neither", "issue": "..."}
