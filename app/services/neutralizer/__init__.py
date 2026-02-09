@@ -1150,7 +1150,7 @@ You have two roles:
 1. VALIDATE first-pass detections — remove false positives (neutral journalism flagged incorrectly)
 2. FIND phrases the first pass missed — catch subtle manipulation that slipped through
 
-Prioritize PRECISION: only keep/add phrases that are genuinely manipulative, not standard journalism."""
+Balance precision with recall: keep phrases that are genuinely manipulative. Only reject CLEAR false positives — standard attribution verbs, purely factual descriptions, technical terminology. When in doubt, KEEP the detection rather than rejecting it."""
 
 DEFAULT_SPAN_DETECTION_PROMPT = """You are a precision-focused media analyst. Your job is to identify manipulative language in news articles while balancing precision with recall.
 
@@ -3094,12 +3094,12 @@ def _parse_span_action(action: str) -> SpanAction:
 def _parse_span_reason(reason: str) -> SpanReason:
     """Parse reason string to SpanReason enum.
 
-    Maps both the 7 canonical categories AND defensive aliases for
+    Maps both the 8 canonical categories AND defensive aliases for
     any category names that might appear in LLM output or DB prompts.
     """
     reason_lower = reason.lower().strip()  # Strip whitespace to handle LLM formatting variations
     mapping = {
-        # 7 canonical categories
+        # 8 canonical categories
         "clickbait": SpanReason.CLICKBAIT,
         "urgency_inflation": SpanReason.URGENCY_INFLATION,
         "emotional_trigger": SpanReason.EMOTIONAL_TRIGGER,
@@ -3107,7 +3107,11 @@ def _parse_span_reason(reason: str) -> SpanReason:
         "agenda_signaling": SpanReason.AGENDA_SIGNALING,
         "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
         "editorial_voice": SpanReason.EDITORIAL_VOICE,
+        "selective_quoting": SpanReason.SELECTIVE_QUOTING,
         # Defensive aliases (prompt categories that might appear)
+        "selective_quote": SpanReason.SELECTIVE_QUOTING,
+        "scare_quotes": SpanReason.SELECTIVE_QUOTING,
+        "cherry_picked_quote": SpanReason.SELECTIVE_QUOTING,
         "loaded_verbs": SpanReason.RHETORICAL_FRAMING,
         "loaded_idioms": SpanReason.RHETORICAL_FRAMING,
         "loaded_personal_descriptors": SpanReason.EMOTIONAL_TRIGGER,
@@ -3701,11 +3705,10 @@ FIRST PASS DETECTED THESE PHRASES:
 You have TWO jobs:
 
 JOB 1 — VALIDATE: Review each phrase detected above. Remove any that are FALSE POSITIVES:
-- Standard attribution verbs used neutrally (said, stated, noted, reported, according to)
-- Factual descriptions of events, even if dramatic
+- Standard attribution verbs used WITHOUT emotional loading (said, stated, noted, reported, according to)
+- Purely factual descriptions with NO emotional coloring (numbers, dates, names, locations)
 - Full direct quotes used neutrally to attribute speech (e.g., He said "we will review the policy")
-- Technical, legal, or domain-specific terminology
-- Common journalism phrasing that is neutral in context
+- Technical, legal, or domain-specific terminology used in its standard sense
 
 JOB 2 — FIND MISSED: Look for manipulative phrases the first pass missed across ALL categories:
 """
