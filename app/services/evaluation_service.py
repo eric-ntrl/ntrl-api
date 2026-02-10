@@ -149,6 +149,22 @@ A CORRECT SPAN must:
 2. NOT be a full direct quote used neutrally for attribution (e.g., He said "we will review the policy"). However, cherry-picked inflammatory quote fragments, scare quotes ("so-called 'expert'"), or selectively chosen quotes that frame a narrative ARE valid manipulative spans categorized as "selective_quoting".
 3. NOT be a false positive (professional terms, medical terminology, etc.)
 
+MANIPULATION CATEGORIES (8 canonical + recognized aliases):
+- emotional_trigger: Emotional language designed to provoke reactions (shocking, devastating, heartbreaking)
+- urgency_inflation: False urgency or BREAKING/JUST IN when not warranted
+- clickbait: "You won't believe", "Here's what happened next"
+- selling: Promotional framing, hype language, sports/entertainment hyperbole
+- agenda_signaling: Loaded labels (radical left, extremist), partisan framing
+- rhetorical_framing: Loaded verbs (slammed, blasted), false equivalence, manufactured consensus, horse race framing, corporate anthropomorphism
+- editorial_voice: First-person opinion (we believe, as it should), value judgments presented as fact
+- selective_quoting: Cherry-picked inflammatory quotes, scare quotes, quote fragments chosen to frame narrative. Action is SOFTENED (not REMOVED). This is a valid detection — do NOT count as false positive.
+
+ALIASES (map to canonical categories above):
+- false_equivalence → rhetorical_framing
+- manufactured_consensus → rhetorical_framing
+- horse_race_framing → framing_bias / rhetorical_framing
+- corporate_anthropomorphism → rhetorical_framing
+
 CONTENT-TYPE CALIBRATION:
 When evaluating span detection quality, consider the article's genre:
 - Travel/lifestyle articles may legitimately use descriptive superlatives ("stunning views", "breathtaking scenery")
@@ -783,7 +799,7 @@ class EvaluationService:
             class_result = self._evaluate_classification(
                 original_title=story_raw.original_title,
                 original_description=story_raw.original_description,
-                original_body=original_body[:3000] if original_body else "",
+                original_body=original_body[:8000] if original_body else "",
                 assigned_domain=story_raw.domain,
                 assigned_feed_category=story_raw.feed_category,
             )
@@ -804,7 +820,7 @@ class EvaluationService:
         try:
             neut_result = self._evaluate_neutralization(
                 original_title=story_raw.original_title,
-                original_body=original_body[:5000] if original_body else "",
+                original_body=original_body,
                 feed_title=story_neutralized.feed_title,
                 feed_summary=story_neutralized.feed_summary,
                 detail_brief=story_neutralized.detail_brief or "",
@@ -827,7 +843,7 @@ class EvaluationService:
         try:
             span_result = self._evaluate_spans(
                 original_title=story_raw.original_title,
-                original_body=original_body[:5000] if original_body else "",
+                original_body=original_body,
                 detected_spans=spans,
                 feed_category=story_raw.feed_category,
             )
@@ -850,17 +866,19 @@ class EvaluationService:
         return eval_data
 
     def _get_body(self, story_raw: models.StoryRaw) -> str:
-        """Get article body from storage."""
+        """Get article body from storage, with content cleaning applied."""
         if not story_raw.raw_content_uri or not story_raw.raw_content_available:
             return ""
 
         try:
             from app.storage.factory import get_storage_provider
+            from app.utils.content_cleaner import clean_article_body
 
             storage = get_storage_provider()
             result = storage.download(story_raw.raw_content_uri)
             if result and result.exists:
-                return result.content.decode("utf-8", errors="replace")
+                raw = result.content.decode("utf-8", errors="replace")
+                return clean_article_body(raw)
         except Exception as e:
             logger.warning(f"[EVAL] Failed to get body for {story_raw.id}: {e}")
 
@@ -878,7 +896,7 @@ class EvaluationService:
         user_prompt = f"""ARTICLE:
 Title: {original_title}
 Description: {original_description or "(none)"}
-Body excerpt: {original_body[:2000]}
+Body excerpt: {original_body[:4000]}
 
 ASSIGNED CLASSIFICATION:
 - Domain: {assigned_domain or "(unassigned)"}
@@ -905,8 +923,8 @@ Body: {original_body}
 NEUTRALIZED OUTPUTS:
 Feed Title: {feed_title}
 Feed Summary: {feed_summary}
-Detail Brief: {detail_brief[:1500] if detail_brief else "(none)"}
-Detail Full (first 2000 chars): {detail_full[:2000] if detail_full else "(none)"}
+Detail Brief: {detail_brief[:4000] if detail_brief else "(none)"}
+Detail Full: {detail_full[:8000] if detail_full else "(none)"}
 
 Evaluate the neutralization quality."""
 
@@ -956,7 +974,7 @@ Evaluate the span detection quality (precision and recall)."""
         try:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=api_key, timeout=60.0)
+            client = anthropic.Anthropic(api_key=api_key, timeout=90.0)
 
             response = client.messages.create(
                 model=self.teacher_model,

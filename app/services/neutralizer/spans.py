@@ -240,6 +240,12 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
         "sports_event_hype": SpanReason.SELLING,
         "entertainment_celebrity_hype": SpanReason.SELLING,
         "agenda_framing": SpanReason.AGENDA_SIGNALING,
+        # Manipulation technique aliases (from journalism review)
+        "false_equivalence": SpanReason.RHETORICAL_FRAMING,
+        "manufactured_consensus": SpanReason.RHETORICAL_FRAMING,
+        "horse_race_framing": SpanReason.RHETORICAL_FRAMING,
+        "framing_bias": SpanReason.RHETORICAL_FRAMING,
+        "corporate_anthropomorphism": SpanReason.RHETORICAL_FRAMING,
         # Old/alternative names that might exist in prompts
         "emotional_manipulation": SpanReason.EMOTIONAL_TRIGGER,
         "emotional": SpanReason.EMOTIONAL_TRIGGER,

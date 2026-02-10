@@ -19,6 +19,7 @@ Fallback to hardcoded prompts if DB lookup fails.
 import json
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -435,9 +436,12 @@ class LLMClassifier:
     def _prefetch_bodies(self, stories: list, storage) -> dict[str, str]:
         """Pre-fetch article bodies from S3 in parallel using a thread pool.
 
-        Returns a dict mapping story ID (str) to body excerpt (first 2000 chars).
+        Returns a dict mapping story ID (str) to cleaned body excerpt (first 2000 chars).
         Stories without content URIs or failed downloads map to empty string.
+        Content cleaning removes UI artifacts before classification.
         """
+        from app.utils.content_cleaner import clean_article_body
+
         body_map: dict[str, str] = {}
         fetchable = [s for s in stories if s.raw_content_uri and s.raw_content_available]
 
@@ -448,7 +452,9 @@ class LLMClassifier:
             try:
                 storage_obj = storage.download(uri)
                 if storage_obj:
-                    return (story_id, storage_obj.content.decode("utf-8", errors="replace")[:2000])
+                    raw = storage_obj.content.decode("utf-8", errors="replace")
+                    cleaned = clean_article_body(raw)
+                    return (story_id, cleaned[:2000])
             except Exception as e:
                 logger.warning(f"[CLASSIFY] Failed to fetch body for {story_id}: {e}")
             return (story_id, "")
@@ -462,17 +468,37 @@ class LLMClassifier:
         logger.info(f"[CLASSIFY] Pre-fetched {len(body_map)} bodies from storage")
         return body_map
 
-    def classify_pending(self, db: Session, limit: int = 25) -> ClassifyRunResult:
+    def _classify_safe(
+        self,
+        title: str,
+        description: str | None = None,
+        body_excerpt: str | None = None,
+        source_slug: str | None = None,
+    ) -> ClassificationResult | Exception:
+        """Thread-safe classify wrapper that catches exceptions."""
+        try:
+            return self.classify(
+                title=title,
+                description=description,
+                body_excerpt=body_excerpt,
+                source_slug=source_slug,
+            )
+        except Exception as e:
+            return e
+
+    def classify_pending(self, db: Session, limit: int = 25, max_workers: int = 5) -> ClassifyRunResult:
         """
         Classify stories where classified_at IS NULL.
 
         Pre-fetches article bodies from S3 in parallel, then runs
-        the classification reliability chain serially.
+        LLM classification in parallel using ThreadPoolExecutor.
+        DB writes happen sequentially on the main thread.
         """
         from app import models
         from app.storage.factory import get_storage_provider
 
         run_result = ClassifyRunResult()
+        start_time = time.monotonic()
 
         # Find unclassified stories
         stories = (
@@ -502,67 +528,95 @@ class LLMClassifier:
             body_map = self._prefetch_bodies(stories, storage)
 
         run_result.total = len(stories)
-        logger.info(f"[CLASSIFY] Classifying {len(stories)} pending stories")
+        logger.info(f"[CLASSIFY] Classifying {len(stories)} pending stories ({max_workers} workers)")
 
+        # Pre-warm prompt cache on main thread (avoids thread DB sessions)
+        get_classification_prompt("classification_system_prompt")
+        get_classification_prompt("classification_simplified_prompt")
+
+        # 1. Extract data from ORM objects (main thread — no ORM in threads)
+        classify_inputs = []
         for story in stories:
-            try:
-                body_excerpt = body_map.get(str(story.id), "")
+            classify_inputs.append(
+                {
+                    "story_id": str(story.id),
+                    "title": story.original_title,
+                    "description": story.original_description,
+                    "body_excerpt": body_map.get(str(story.id), ""),
+                    "source_slug": story.source.slug if story.source else "",
+                }
+            )
 
-                # Get source slug
-                source_slug = ""
-                if story.source:
-                    source_slug = story.source.slug
+        # 2. Parallel LLM calls — NO DB, NO ORM objects
+        results: dict[str, ClassificationResult | Exception] = {}
+        failed_count = 0
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._classify_safe,
+                    title=ci["title"],
+                    description=ci["description"],
+                    body_excerpt=ci["body_excerpt"],
+                    source_slug=ci["source_slug"],
+                ): ci["story_id"]
+                for ci in classify_inputs
+            }
+            for future in as_completed(futures):
+                sid = futures[future]
+                result = future.result()
+                if isinstance(result, Exception):
+                    failed_count += 1
+                results[sid] = result
 
-                # Classify
-                result = self.classify(
-                    title=story.original_title,
-                    description=story.original_description,
-                    body_excerpt=body_excerpt,
-                    source_slug=source_slug,
-                )
-
-                # Update story with classification results
-                story.domain = result.domain
-                story.feed_category = result.feed_category
-                story.classification_tags = result.tags
-                story.classification_confidence = result.confidence
-                story.classification_model = result.model
-                story.classification_method = result.method
-                story.classified_at = datetime.now(UTC)
-
-                run_result.success += 1
-                if result.method == "llm":
-                    run_result.llm += 1
-                else:
-                    run_result.keyword_fallback += 1
-
-            except Exception as e:
-                logger.error(f"[CLASSIFY] Failed to classify story {story.id}: {e}")
+        # 3. Sequential DB writes (main thread)
+        story_map = {str(s.id): s for s in stories}
+        for sid, result in results.items():
+            if isinstance(result, Exception):
+                logger.error(f"[CLASSIFY] Failed to classify story {sid}: {result}")
                 run_result.failed += 1
-                run_result.errors.append(f"{story.id}: {str(e)}")
+                run_result.errors.append(f"{sid}: {str(result)}")
+                continue
+
+            story = story_map[sid]
+            story.domain = result.domain
+            story.feed_category = result.feed_category
+            story.classification_tags = result.tags
+            story.classification_confidence = result.confidence
+            story.classification_model = result.model
+            story.classification_method = result.method
+            story.classified_at = datetime.now(UTC)
+
+            run_result.success += 1
+            if result.method == "llm":
+                run_result.llm += 1
+            else:
+                run_result.keyword_fallback += 1
 
         db.commit()
 
+        elapsed = time.monotonic() - start_time
         logger.info(
-            f"[CLASSIFY] Complete: total={run_result.total}, "
+            f"[CLASSIFY_PARALLEL] Completed {run_result.total} articles in {elapsed:.1f}s "
+            f"({max_workers} workers, {run_result.failed} failures) — "
             f"success={run_result.success}, llm={run_result.llm}, "
-            f"keyword_fallback={run_result.keyword_fallback}, "
-            f"failed={run_result.failed}"
+            f"keyword_fallback={run_result.keyword_fallback}"
         )
 
         return run_result
 
-    def reclassify_all(self, db: Session, limit: int = 200) -> ClassifyRunResult:
+    def reclassify_all(self, db: Session, limit: int = 200, max_workers: int = 5) -> ClassifyRunResult:
         """
         Force reclassify all stories (for migration or prompt changes).
 
         Same as classify_pending but ignores classified_at filter.
-        Pre-fetches article bodies from S3 in parallel.
+        Pre-fetches article bodies from S3 in parallel, then runs
+        LLM classification in parallel using ThreadPoolExecutor.
         """
         from app import models
         from app.storage.factory import get_storage_provider
 
         run_result = ClassifyRunResult()
+        start_time = time.monotonic()
 
         stories = (
             db.query(models.StoryRaw)
@@ -589,49 +643,74 @@ class LLMClassifier:
             body_map = self._prefetch_bodies(stories, storage)
 
         run_result.total = len(stories)
-        logger.info(f"[CLASSIFY] Reclassifying {len(stories)} stories")
+        logger.info(f"[CLASSIFY] Reclassifying {len(stories)} stories ({max_workers} workers)")
 
+        # Pre-warm prompt cache on main thread
+        get_classification_prompt("classification_system_prompt")
+        get_classification_prompt("classification_simplified_prompt")
+
+        # 1. Extract data from ORM objects (main thread)
+        classify_inputs = []
         for story in stories:
-            try:
-                body_excerpt = body_map.get(str(story.id), "")
+            classify_inputs.append(
+                {
+                    "story_id": str(story.id),
+                    "title": story.original_title,
+                    "description": story.original_description,
+                    "body_excerpt": body_map.get(str(story.id), ""),
+                    "source_slug": story.source.slug if story.source else "",
+                }
+            )
 
-                source_slug = ""
-                if story.source:
-                    source_slug = story.source.slug
+        # 2. Parallel LLM calls — NO DB, NO ORM objects
+        results: dict[str, ClassificationResult | Exception] = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(
+                    self._classify_safe,
+                    title=ci["title"],
+                    description=ci["description"],
+                    body_excerpt=ci["body_excerpt"],
+                    source_slug=ci["source_slug"],
+                ): ci["story_id"]
+                for ci in classify_inputs
+            }
+            for future in as_completed(futures):
+                sid = futures[future]
+                results[sid] = future.result()
 
-                result = self.classify(
-                    title=story.original_title,
-                    description=story.original_description,
-                    body_excerpt=body_excerpt,
-                    source_slug=source_slug,
-                )
-
-                story.domain = result.domain
-                story.feed_category = result.feed_category
-                story.classification_tags = result.tags
-                story.classification_confidence = result.confidence
-                story.classification_model = result.model
-                story.classification_method = result.method
-                story.classified_at = datetime.now(UTC)
-
-                run_result.success += 1
-                if result.method == "llm":
-                    run_result.llm += 1
-                else:
-                    run_result.keyword_fallback += 1
-
-            except Exception as e:
-                logger.error(f"[CLASSIFY] Failed to reclassify story {story.id}: {e}")
+        # 3. Sequential DB writes (main thread)
+        story_map = {str(s.id): s for s in stories}
+        for sid, result in results.items():
+            if isinstance(result, Exception):
+                logger.error(f"[CLASSIFY] Failed to reclassify story {sid}: {result}")
                 run_result.failed += 1
-                run_result.errors.append(f"{story.id}: {str(e)}")
+                run_result.errors.append(f"{sid}: {str(result)}")
+                continue
+
+            story = story_map[sid]
+            story.domain = result.domain
+            story.feed_category = result.feed_category
+            story.classification_tags = result.tags
+            story.classification_confidence = result.confidence
+            story.classification_model = result.model
+            story.classification_method = result.method
+            story.classified_at = datetime.now(UTC)
+
+            run_result.success += 1
+            if result.method == "llm":
+                run_result.llm += 1
+            else:
+                run_result.keyword_fallback += 1
 
         db.commit()
 
+        elapsed = time.monotonic() - start_time
         logger.info(
-            f"[CLASSIFY] Reclassify complete: total={run_result.total}, "
+            f"[CLASSIFY_PARALLEL] Reclassify completed {run_result.total} articles in {elapsed:.1f}s "
+            f"({max_workers} workers, {run_result.failed} failures) — "
             f"success={run_result.success}, llm={run_result.llm}, "
-            f"keyword_fallback={run_result.keyword_fallback}, "
-            f"failed={run_result.failed}"
+            f"keyword_fallback={run_result.keyword_fallback}"
         )
 
         return run_result

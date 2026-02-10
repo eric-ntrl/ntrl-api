@@ -149,6 +149,12 @@ class Settings(BaseSettings):
         description="Enable email notifications after evaluations",
     )
 
+    # Content Cleaning
+    CONTENT_CLEANING_ENABLED: bool = Field(
+        default=True,
+        description="Enable content cleaning (UI artifact removal) before neutralization/classification",
+    )
+
     # News API Sources (additive to RSS)
     PERIGON_API_KEY: str | None = Field(
         default=None,

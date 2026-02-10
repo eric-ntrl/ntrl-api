@@ -3155,6 +3155,12 @@ def _parse_span_reason(reason: str) -> SpanReason:
         "entertainment_celebrity_hype": SpanReason.SELLING,
         "agenda_framing": SpanReason.AGENDA_SIGNALING,
         "publisher_cruft": SpanReason.SELLING,
+        # Manipulation technique aliases (from journalism review)
+        "false_equivalence": SpanReason.RHETORICAL_FRAMING,
+        "manufactured_consensus": SpanReason.RHETORICAL_FRAMING,
+        "horse_race_framing": SpanReason.RHETORICAL_FRAMING,
+        "framing_bias": SpanReason.RHETORICAL_FRAMING,
+        "corporate_anthropomorphism": SpanReason.RHETORICAL_FRAMING,
         # Old/alternative names
         "emotional_manipulation": SpanReason.EMOTIONAL_TRIGGER,
         "emotional": SpanReason.EMOTIONAL_TRIGGER,
@@ -6494,14 +6500,20 @@ class NeutralizerService:
         from app.services.auditor import Auditor, AuditVerdict
 
         try:
+            from app.utils.content_cleaner import clean_article_body
+
             auditor = Auditor()
             audit_result = None
             transparency_spans: list[TransparencySpan] = []
 
+            # Clean body for LLM generation (detail_full, detail_brief, feed_outputs).
+            # Span detection uses the ORIGINAL body for position integrity.
+            cleaned_body = clean_article_body(body) if body else body
+
             # Run the 3-call pipeline with retry loop for audit
             for attempt in range(MAX_RETRY_ATTEMPTS + 1):
                 # Call 1: Filter & Track - produces detail_full and spans
-                # Pass title and feed_category for content-type-aware detection
+                # Uses ORIGINAL body so spans reference correct positions
                 if body:
                     detail_full_result = self.provider._neutralize_detail_full(
                         body,
@@ -6527,14 +6539,14 @@ class NeutralizerService:
                     detail_full_result = DetailFullResult(detail_full="", spans=[])
                     transparency_spans = []
 
-                # Call 2: Synthesize - produces detail_brief
-                if body:
-                    detail_brief = self.provider._neutralize_detail_brief(body)
+                # Call 2: Synthesize - produces detail_brief (uses cleaned body)
+                if cleaned_body:
+                    detail_brief = self.provider._neutralize_detail_brief(cleaned_body)
                 else:
                     detail_brief = ""
 
                 # Call 3: Compress - produces feed_title, feed_summary, detail_title
-                feed_outputs = self.provider._neutralize_feed_outputs(body or "", detail_brief)
+                feed_outputs = self.provider._neutralize_feed_outputs(cleaned_body or "", detail_brief)
 
                 # Determine if content was manipulative (has transparency spans)
                 has_manipulative_content = len(transparency_spans) > 0
