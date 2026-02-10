@@ -21,6 +21,10 @@ engine = create_engine(
     DATABASE_URL,
     future=True,
     echo=False,  # set True if you want to see SQL in terminal
+    pool_size=10,
+    max_overflow=5,
+    pool_pre_ping=True,
+    pool_recycle=1800,
 )
 
 SessionLocal = sessionmaker(
