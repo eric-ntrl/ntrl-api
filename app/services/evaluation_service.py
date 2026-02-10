@@ -11,7 +11,10 @@ The evaluation results drive prompt improvements and rollback decisions.
 import json
 import logging
 import os
+import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -213,6 +216,23 @@ Respond with JSON:
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class EvalInput:
+    """Pre-extracted data for evaluating a single article (no ORM references)."""
+
+    story_raw_id: str
+    original_title: str
+    original_description: str | None
+    body: str
+    spans: list[dict]
+    domain: str | None
+    feed_category: str | None
+    feed_title: str
+    feed_summary: str
+    detail_brief: str
+    detail_full: str
 
 
 @dataclass
@@ -462,6 +482,7 @@ class EvaluationService:
         self.teacher_model = teacher_model or get_settings().EVAL_MODEL
         self._total_input_tokens = 0
         self._total_output_tokens = 0
+        self._token_lock = threading.Lock()
 
     def run_evaluation(
         self,
@@ -515,17 +536,71 @@ class EvaluationService:
 
             logger.info(f"[EVAL] Selected {len(sample)} articles for evaluation")
 
-            # Evaluate each article
-            article_evals: list[ArticleEvaluationData] = []
+            # 1. Pre-fetch ALL data on main thread (extract from ORM)
+            eval_inputs: list[EvalInput] = []
             for story_raw, story_neutralized in sample:
-                eval_data = self._evaluate_article(db, story_raw, story_neutralized)
-                article_evals.append(eval_data)
+                body = self._get_body(story_raw)
+                spans = [
+                    {
+                        "phrase": span.original_text,
+                        "field": span.field,
+                        "reason": span.reason,
+                        "action": span.action,
+                    }
+                    for span in story_neutralized.spans
+                ]
+                eval_inputs.append(
+                    EvalInput(
+                        story_raw_id=str(story_raw.id),
+                        original_title=story_raw.original_title,
+                        original_description=story_raw.original_description,
+                        body=body,
+                        spans=spans,
+                        domain=story_raw.domain,
+                        feed_category=story_raw.feed_category,
+                        feed_title=story_neutralized.feed_title,
+                        feed_summary=story_neutralized.feed_summary,
+                        detail_brief=story_neutralized.detail_brief or "",
+                        detail_full=story_neutralized.detail_full or "",
+                    )
+                )
 
-                # Store in database
+            logger.info(f"[EVAL] Pre-fetched data for {len(eval_inputs)} articles")
+
+            # 2. Parallel evaluation — NO DB, NO ORM objects
+            # Use 3 article-level workers (conservative for Anthropic rate limits)
+            eval_start = time.monotonic()
+            token_lock = threading.Lock()
+            article_evals: list[ArticleEvaluationData] = []
+
+            def _evaluate_safe(ei: EvalInput) -> ArticleEvaluationData:
+                return self._evaluate_article_from_input(ei, token_lock)
+
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = {executor.submit(_evaluate_safe, ei): ei.story_raw_id for ei in eval_inputs}
+                for future in as_completed(futures):
+                    sid = futures[future]
+                    try:
+                        eval_data = future.result()
+                        article_evals.append(eval_data)
+                    except Exception as e:
+                        logger.error(f"[EVAL] Evaluation failed for {sid}: {e}")
+                        article_evals.append(
+                            ArticleEvaluationData(
+                                story_raw_id=sid,
+                                original_title="",
+                            )
+                        )
+
+            eval_elapsed = time.monotonic() - eval_start
+            logger.info(f"[EVAL_PARALLEL] Completed {len(article_evals)} articles in {eval_elapsed:.1f}s (3 workers)")
+
+            # 3. Sequential DB writes (main thread)
+            for eval_data in article_evals:
                 article_eval = models.ArticleEvaluation(
                     id=uuid.uuid4(),
                     evaluation_run_id=eval_run.id,
-                    story_raw_id=story_raw.id,
+                    story_raw_id=uuid.UUID(eval_data.story_raw_id),
                     classification_correct=eval_data.classification_correct,
                     expected_domain=eval_data.expected_domain,
                     expected_feed_category=eval_data.expected_feed_category,
@@ -768,41 +843,75 @@ class EvaluationService:
 
         return sample[:sample_size]
 
-    def _evaluate_article(
+    def _evaluate_article_from_input(
         self,
-        db: Session,
-        story_raw: models.StoryRaw,
-        story_neutralized: models.StoryNeutralized,
+        ei: EvalInput,
+        token_lock: threading.Lock,
     ) -> ArticleEvaluationData:
-        """Evaluate a single article using the teacher LLM."""
+        """Evaluate a single article using pre-extracted data (thread-safe, no DB)."""
         eval_data = ArticleEvaluationData(
-            story_raw_id=str(story_raw.id),
-            original_title=story_raw.original_title,
+            story_raw_id=ei.story_raw_id,
+            original_title=ei.original_title,
         )
 
-        # Get original body from storage
-        original_body = self._get_body(story_raw)
+        # Run all 3 eval calls concurrently within this article
+        class_result = None
+        neut_result = None
+        span_result = None
 
-        # Get spans (include field for title-body consistency checking)
-        spans = [
-            {
-                "phrase": span.original_text,
-                "field": span.field,
-                "reason": span.reason,
-                "action": span.action,
-            }
-            for span in story_neutralized.spans
-        ]
-
-        # 1. Evaluate classification
-        try:
-            class_result = self._evaluate_classification(
-                original_title=story_raw.original_title,
-                original_description=story_raw.original_description,
-                original_body=original_body[:8000] if original_body else "",
-                assigned_domain=story_raw.domain,
-                assigned_feed_category=story_raw.feed_category,
+        def _eval_classification():
+            return self._evaluate_classification(
+                original_title=ei.original_title,
+                original_description=ei.original_description,
+                original_body=ei.body[:8000] if ei.body else "",
+                assigned_domain=ei.domain,
+                assigned_feed_category=ei.feed_category,
             )
+
+        def _eval_neutralization():
+            return self._evaluate_neutralization(
+                original_title=ei.original_title,
+                original_body=ei.body,
+                feed_title=ei.feed_title,
+                feed_summary=ei.feed_summary,
+                detail_brief=ei.detail_brief,
+                detail_full=ei.detail_full,
+            )
+
+        def _eval_spans():
+            return self._evaluate_spans(
+                original_title=ei.original_title,
+                original_body=ei.body,
+                detected_spans=ei.spans,
+                feed_category=ei.feed_category,
+            )
+
+        # Run the 3 eval calls concurrently within this article
+        with ThreadPoolExecutor(max_workers=3) as inner_executor:
+            class_future = inner_executor.submit(_eval_classification)
+            neut_future = inner_executor.submit(_eval_neutralization)
+            span_future = inner_executor.submit(_eval_spans)
+
+            try:
+                class_result = class_future.result()
+            except Exception as e:
+                logger.error(f"[EVAL] Classification eval failed for {ei.story_raw_id}: {e}")
+                eval_data.classification_feedback = f"ERROR: {str(e)}"
+
+            try:
+                neut_result = neut_future.result()
+            except Exception as e:
+                logger.error(f"[EVAL] Neutralization eval failed for {ei.story_raw_id}: {e}")
+                eval_data.neutralization_feedback = f"ERROR: {str(e)}"
+
+            try:
+                span_result = span_future.result()
+            except Exception as e:
+                logger.error(f"[EVAL] Span eval failed for {ei.story_raw_id}: {e}")
+                eval_data.span_feedback = f"ERROR: {str(e)}"
+
+        # Process classification result
+        if class_result:
             eval_data.classification_correct = class_result.get("domain_correct", False) and class_result.get(
                 "feed_category_correct", False
             )
@@ -810,22 +919,9 @@ class EvaluationService:
             eval_data.expected_feed_category = class_result.get("expected_feed_category")
             eval_data.classification_feedback = class_result.get("reasoning")
             eval_data.classification_prompt_suggestion = class_result.get("prompt_improvement_suggestion")
-        except Exception as e:
-            import traceback
 
-            logger.error(f"[EVAL] Classification eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
-            eval_data.classification_feedback = f"ERROR: {str(e)}"
-
-        # 2. Evaluate neutralization
-        try:
-            neut_result = self._evaluate_neutralization(
-                original_title=story_raw.original_title,
-                original_body=original_body,
-                feed_title=story_neutralized.feed_title,
-                feed_summary=story_neutralized.feed_summary,
-                detail_brief=story_neutralized.detail_brief or "",
-                detail_full=story_neutralized.detail_full or "",
-            )
+        # Process neutralization result
+        if neut_result:
             eval_data.neutralization_score = neut_result.get("overall_score")
             eval_data.meaning_preservation_score = neut_result.get("meaning_preservation_score")
             eval_data.neutrality_score = neut_result.get("neutrality_score")
@@ -833,35 +929,18 @@ class EvaluationService:
             eval_data.rule_violations = neut_result.get("rule_violations", [])
             eval_data.neutralization_feedback = neut_result.get("reasoning")
             eval_data.neutralization_prompt_suggestion = neut_result.get("prompt_improvement_suggestion")
-        except Exception as e:
-            import traceback
 
-            logger.error(f"[EVAL] Neutralization eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
-            eval_data.neutralization_feedback = f"ERROR: {str(e)}"
-
-        # 3. Evaluate spans
-        try:
-            span_result = self._evaluate_spans(
-                original_title=story_raw.original_title,
-                original_body=original_body,
-                detected_spans=spans,
-                feed_category=story_raw.feed_category,
-            )
+        # Process span result
+        if span_result:
             eval_data.span_precision = span_result.get("estimated_precision")
             eval_data.span_recall = span_result.get("estimated_recall")
             eval_data.missed_manipulations = span_result.get("missed_manipulations", [])
             eval_data.false_positives = span_result.get("false_positives", [])
             eval_data.span_feedback = span_result.get("reasoning")
             eval_data.span_prompt_suggestion = span_result.get("prompt_improvement_suggestion")
-            # Title-body consistency metrics
             eval_data.title_spans_count = span_result.get("title_spans_count")
             eval_data.body_spans_count = span_result.get("body_spans_count")
             eval_data.title_body_inconsistencies = span_result.get("title_body_inconsistencies", [])
-        except Exception as e:
-            import traceback
-
-            logger.error(f"[EVAL] Span eval failed for {story_raw.id}: {e}\n{traceback.format_exc()}")
-            eval_data.span_feedback = f"ERROR: {str(e)}"
 
         return eval_data
 
@@ -983,10 +1062,11 @@ Evaluate the span detection quality (precision and recall)."""
                 messages=[{"role": "user", "content": user_prompt}],
             )
 
-            # Track tokens
+            # Track tokens (thread-safe)
             if response.usage:
-                self._total_input_tokens += response.usage.input_tokens
-                self._total_output_tokens += response.usage.output_tokens
+                with self._token_lock:
+                    self._total_input_tokens += response.usage.input_tokens
+                    self._total_output_tokens += response.usage.output_tokens
 
             content = response.content[0].text.strip()
 
@@ -1025,10 +1105,11 @@ Evaluate the span detection quality (precision and recall)."""
                 response_format={"type": "json_object"},
             )
 
-            # Track tokens
+            # Track tokens (thread-safe)
             if response.usage:
-                self._total_input_tokens += response.usage.prompt_tokens
-                self._total_output_tokens += response.usage.completion_tokens
+                with self._token_lock:
+                    self._total_input_tokens += response.usage.prompt_tokens
+                    self._total_output_tokens += response.usage.completion_tokens
 
             content = response.choices[0].message.content.strip()
             return json.loads(content)

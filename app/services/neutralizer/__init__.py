@@ -1275,8 +1275,37 @@ These are more nuanced patterns. Flag ONLY when used by the journalist (not in q
     FLAG: "shockwaves", "sent shockwaves" (emotional impact language)
     FLAG: "whirlwind romance", "whirlwind" (romanticized drama)
     FLAG: "completely horrified", "utterly horrified" (amplified emotional states)
+    FLAG: "it remains to be seen" (speculation framed as analysis)
+    FLAG: "only time will tell" (empty editorial filler)
+    FLAG: "make no mistake" (authoritative opinion assertion)
+    FLAG: "the fact of the matter is" (opinion dressed as fact)
+    FLAG: "one thing is clear" (editorial certainty injection)
     NOTE: These indicate editorial content masquerading as news
     ACTION: Flag with reason "editorial_voice"
+
+15. HORSE RACE FRAMING - Reducing policy/governance to competition
+    FLAG: "winning the narrative", "battle for hearts and minds"
+    FLAG: "political theater", "political circus" (trivializing governance)
+    FLAG: "gaining momentum", "losing ground" (when describing policy debates as races)
+    FLAG: "the optics of", "bad optics" (prioritizing perception over substance)
+    FLAG: "political calculus" (reducing decisions to strategy games)
+    NOTE: Turns governance into spectator sport, distracts from substance
+    ACTION: Flag with reason "rhetorical_framing"
+
+16. CORPORATE ANTHROPOMORPHISM - Giving human qualities to organizations
+    FLAG: "the company believes", "the company feels" (companies don't have feelings)
+    FLAG: "Apple thinks", "Google wants" (attributing thoughts to entities)
+    FLAG: "the market fears", "Wall Street worries" (markets don't have emotions)
+    FLAG: "the industry hopes" (industries don't hope)
+    NOTE: Replace with specific spokesperson attribution or factual language
+    ACTION: Flag with reason "rhetorical_framing"
+
+17. FALSE EQUIVALENCE - Presenting unequal positions as balanced
+    FLAG: "both sides say" (when one side is expert consensus)
+    FLAG: "the debate continues" (when there is scientific consensus)
+    FLAG: "some experts disagree" (vague, implies equal disagreement)
+    NOTE: Flag when journalist creates artificial balance, not when reporting actual dispute
+    ACTION: Flag with reason "rhetorical_framing"
 
 ═══════════════════════════════════════════════════════════════════════════════
 EXCLUSIONS - DO NOT FLAG THESE
@@ -1465,6 +1494,43 @@ Output: {{"phrases": [
 ]}}
 
 Why: These phrases inject romantic/emotional framing that isn't factual reporting. "Sun-drenched romantic escape" editorializes a vacation. "Looked more in love than ever" is subjective speculation. "Beloved" and "intimate" are emotional descriptors that manipulate reader perception.
+
+Example 10 - Horse race framing in politics (FLAG these):
+Input: "As the political theater around the spending bill intensifies, the president appears to be losing ground in the battle for hearts and minds. The optics of his latest move suggest a risky political calculus."
+
+Output: {{"phrases": [
+  {{"phrase": "political theater", "reason": "rhetorical_framing", "action": "replace", "replacement": "debate"}},
+  {{"phrase": "losing ground", "reason": "rhetorical_framing", "action": "replace", "replacement": "facing opposition"}},
+  {{"phrase": "battle for hearts and minds", "reason": "rhetorical_framing", "action": "replace", "replacement": "public support"}},
+  {{"phrase": "The optics of", "reason": "editorial_voice", "action": "remove", "replacement": null}},
+  {{"phrase": "political calculus", "reason": "rhetorical_framing", "action": "replace", "replacement": "strategy"}}
+]}}
+
+Why: Horse race framing reduces policy to competition. "Political theater" trivializes governance. "Losing ground" and "battle for hearts and minds" make policy debate sound like a war. "Optics" prioritizes appearance over substance.
+
+Example 11 - Corporate anthropomorphism (FLAG these):
+Input: "Apple believes its new chip will dominate the market, while the industry hopes for more competition. Wall Street fears the move could hurt smaller rivals."
+
+Output: {{"phrases": [
+  {{"phrase": "Apple believes", "reason": "rhetorical_framing", "action": "replace", "replacement": "Apple's executives said"}},
+  {{"phrase": "the industry hopes", "reason": "rhetorical_framing", "action": "replace", "replacement": "industry analysts said they expect"}},
+  {{"phrase": "Wall Street fears", "reason": "rhetorical_framing", "action": "replace", "replacement": "some analysts said"}}
+]}}
+
+Why: Companies and markets don't have thoughts or feelings. This language obscures who actually holds these views and makes corporate interests sound like natural sentiment.
+
+Example 12 - Subtle editorial voice (FLAG these):
+Input: "Make no mistake, the new regulations will reshape the landscape. One thing is clear: the era of easy profits is over. It remains to be seen whether smaller firms can adapt."
+
+Output: {{"phrases": [
+  {{"phrase": "Make no mistake", "reason": "editorial_voice", "action": "remove", "replacement": null}},
+  {{"phrase": "reshape the landscape", "reason": "rhetorical_framing", "action": "replace", "replacement": "affect the sector"}},
+  {{"phrase": "One thing is clear", "reason": "editorial_voice", "action": "remove", "replacement": null}},
+  {{"phrase": "the era of easy profits is over", "reason": "editorial_voice", "action": "replace", "replacement": "profit margins may narrow"}},
+  {{"phrase": "It remains to be seen", "reason": "editorial_voice", "action": "remove", "replacement": null}}
+]}}
+
+Why: "Make no mistake" and "one thing is clear" are editorial certainty injections — the journalist asserting authority rather than reporting facts. "Remains to be seen" is empty filler pretending to be analysis. "Reshape the landscape" is a cliched metaphor inflating significance.
 
 ═══════════════════════════════════════════════════════════════════════════════
 FALSE POSITIVE EXAMPLES - WHAT NOT TO FLAG
@@ -2014,6 +2080,9 @@ def filter_spans_in_quotes(body: str, spans: list[TransparencySpan]) -> list[Tra
 # Import FALSE_POSITIVE_PHRASES and filter_false_positives from canonical location (spans.py)
 # to avoid duplication. See spans.py for the full FP list and regex patterns.
 from app.services.neutralizer.spans import (
+    CATEGORY_FALSE_POSITIVES as CATEGORY_FALSE_POSITIVES,
+)
+from app.services.neutralizer.spans import (
     FALSE_POSITIVE_PATTERNS as FALSE_POSITIVE_PATTERNS,
 )
 from app.services.neutralizer.spans import (
@@ -2024,9 +2093,9 @@ from app.services.neutralizer.spans import (
 )
 
 
-def filter_false_positives(spans: list[TransparencySpan]) -> list[TransparencySpan]:
+def filter_false_positives(spans: list[TransparencySpan], feed_category: str | None = None) -> list[TransparencySpan]:
     """Delegate to the canonical filter_false_positives in spans.py."""
-    return _filter_false_positives_from_spans(spans)
+    return _filter_false_positives_from_spans(spans, feed_category=feed_category)
 
 
 # -----------------------------------------------------------------------------
@@ -3579,8 +3648,11 @@ MANIPULATION_CATEGORIES = """
 10. HYPERBOLIC ADJECTIVES: punishing, brutal, incredible, extraordinary, "of the century"
 11. LOADED IDIOMS: "came under fire", "in the crosshairs", "in hot water", "sent shockwaves", "on the warpath"
 12. ENTERTAINMENT HYPE: "romantic escape", "showed off figure", "luxury yacht", "A-list couple", "celebrity hotspot"
-13. EDITORIAL VOICE: "we're glad", "naturally", "of course", "Border Czar", "lunatic", "absurd"
+13. EDITORIAL VOICE: "we're glad", "naturally", "of course", "Border Czar", "lunatic", "absurd", "make no mistake", "one thing is clear", "it remains to be seen", "only time will tell"
 14. SELECTIVE QUOTING: Cherry-picked quotes, scare quotes ("so-called 'expert'"), inflammatory quote fragments chosen over neutral alternatives
+15. HORSE RACE FRAMING: "winning the narrative", "political theater", "losing ground", "bad optics", "political calculus", "battle for hearts and minds"
+16. CORPORATE ANTHROPOMORPHISM: "Apple believes", "Wall Street fears", "the market worries", "the industry hopes" (attribute to specific people instead)
+17. FALSE EQUIVALENCE: "both sides say" (when one side is expert consensus), "the debate continues" (when there is consensus), "some experts disagree" (vague artificial balance)
 """
 
 # -----------------------------------------------------------------------------
@@ -4075,7 +4147,7 @@ async def detect_spans_multi_pass_async(
 
     # Phase 5: Apply filters
     after_quote_reclassify = filter_spans_in_quotes(body, deduplicated)
-    final = filter_false_positives(after_quote_reclassify)
+    final = filter_false_positives(after_quote_reclassify, feed_category=feed_category)
 
     # Stage-by-stage span count for recall diagnostics
     quote_reclassified = sum(1 for s in after_quote_reclassify if s.reason == SpanReason.SELECTIVE_QUOTING)

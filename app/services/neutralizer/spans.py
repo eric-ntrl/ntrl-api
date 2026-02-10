@@ -199,6 +199,81 @@ FALSE_POSITIVE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^(updated|published|posted)\s+(on|at)\b", re.IGNORECASE),
 ]
 
+# Category-specific false positives: phrases that are only FPs in certain feed_categories.
+# Key = feed_category (lowercase), Value = set of lowercase phrases.
+# These supplement (not replace) the global FALSE_POSITIVE_PHRASES.
+CATEGORY_FALSE_POSITIVES: dict[str, set[str]] = {
+    "sports_competition": {
+        "powerhouse",
+        "juggernaut",
+        "dominant force",
+        "dynasty",
+        "unstoppable",
+        "on fire",
+        "red hot",
+        "ice cold",
+        "clutch performance",
+        "monster game",
+        "breakout performance",
+        "breakout star",
+        "must-win",
+        "do-or-die",
+        "high-stakes",
+        "nail-biter",
+        "showdown",
+        "blockbuster matchup",
+        "blockbuster trade",
+        "game-changer",
+        "dream team",
+    },
+    "media_information": {
+        "breaking news",
+        "exclusive",
+        "bombshell",
+        "breaking",
+        "just in",
+        "developing story",
+        "must-read",
+        "must-see",
+    },
+    "business_industry": {
+        "market leader",
+        "industry leader",
+        "game-changer",
+        "disruptive",
+        "disruptor",
+        "unicorn",
+        "powerhouse",
+        "bullish",
+        "bearish",
+        "rally",
+        "soaring",
+        "plummeting",
+        "skyrocketing",
+    },
+    "technology": {
+        "game-changer",
+        "revolutionary",
+        "groundbreaking",
+        "cutting-edge",
+        "next-generation",
+        "killer app",
+        "killer feature",
+        "must-have",
+    },
+    "entertainment_culture": {
+        "must-see",
+        "must-watch",
+        "binge-worthy",
+        "blockbuster",
+        "box office smash",
+        "critically acclaimed",
+        "fan favorite",
+        "cult classic",
+        "instant classic",
+    },
+}
+
 
 def _parse_span_action(action_str: str) -> SpanAction:
     """Parse a span action string to SpanAction enum."""
@@ -436,22 +511,37 @@ def filter_spans_in_quotes(body: str, spans: list) -> list:
     return result
 
 
-def filter_false_positives(spans: list) -> list:
+def filter_false_positives(spans: list, feed_category: str | None = None) -> list:
     """
     Remove known false positive spans that LLMs commonly flag incorrectly.
+
+    Args:
+        spans: List of TransparencySpan objects to filter.
+        feed_category: Optional article feed category. When provided,
+            category-specific FP phrases are also checked.
     """
     logger.debug(f"[SPAN_DETECTION] False positive filter input: {len(spans)} spans")
 
     if not spans:
         return spans
 
+    # Build the effective FP set: global + category-specific
+    category_fps = set()
+    if feed_category:
+        category_fps = CATEGORY_FALSE_POSITIVES.get(feed_category.lower(), set())
+
     filtered = []
     removed_texts = []
     for span in spans:
         text_lower = span.original_text.lower().strip()
 
-        # Check exact matches
+        # Check exact matches (global)
         if text_lower in FALSE_POSITIVE_PHRASES:
+            removed_texts.append(span.original_text)
+            continue
+
+        # Check category-specific exact matches
+        if category_fps and text_lower in category_fps:
             removed_texts.append(span.original_text)
             continue
 
