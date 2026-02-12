@@ -12,6 +12,7 @@ Target latency: ~800ms total (generators run in parallel)
 """
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 
@@ -29,6 +30,8 @@ from .types import (
     ValidationResult,
 )
 from .validator import RedLineValidator, get_validator
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -141,20 +144,20 @@ class NTRLFixer:
                 detail_full_task, detail_brief_task, feed_outputs_task, return_exceptions=True
             )
         except Exception as e:
-            print(f"Generator error: {e}")
+            logger.error("Generator error: %s", e)
             return self._fallback_result(body, title)
 
         # Handle any individual failures
         if isinstance(detail_full, Exception):
-            print(f"detail_full failed: {detail_full}")
+            logger.error("detail_full failed: %s", detail_full)
             detail_full = DetailFullResult(text=body, changes=[])
 
         if isinstance(detail_brief, Exception):
-            print(f"detail_brief failed: {detail_brief}")
+            logger.error("detail_brief failed: %s", detail_brief)
             detail_brief = DetailBriefResult(text="", key_facts=[], word_count=0)
 
         if isinstance(feed_outputs, Exception):
-            print(f"feed_outputs failed: {feed_outputs}")
+            logger.error("feed_outputs failed: %s", feed_outputs)
             feed_outputs = FeedOutputsResult(feed_title=title, feed_summary="")
 
         # Validate detail_full against original
@@ -193,7 +196,7 @@ class NTRLFixer:
         - Lower temperature
         - Stricter preservation rules
         """
-        print(f"Validation failed ({original_validation.failures}), retrying...")
+        logger.warning("Validation failed (%s), retrying...", original_validation.failures)
 
         for _attempt in range(self.config.max_retries):
             # Use mock generator for conservative fallback

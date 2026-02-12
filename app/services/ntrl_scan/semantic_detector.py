@@ -15,6 +15,7 @@ These patterns are too context-dependent for regex or simple NLP.
 """
 
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -30,6 +31,8 @@ from .types import (
     ScanResult,
     SpanAction,
 )
+
+logger = logging.getLogger(__name__)
 
 # Detection prompt for the LLM
 DETECTION_PROMPT = """Analyze this text for manipulation patterns that require semantic understanding.
@@ -189,7 +192,7 @@ class SemanticDetector:
                 detections = []
         except Exception as e:
             # Log error but don't fail - return empty result
-            print(f"Semantic detector error: {e}")
+            logger.error("Semantic detector error: %s", e)
             detections = []
 
         scan_duration_ms = (time.perf_counter() - start_time) * 1000
@@ -341,7 +344,7 @@ class SemanticDetector:
                 detections.append(detection)
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
-            print(f"Failed to parse LLM response: {e}")
+            logger.error("Failed to parse LLM response: %s", e)
 
         return detections
 

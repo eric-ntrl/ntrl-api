@@ -12,6 +12,7 @@ Target latency: ~400ms total (dominated by semantic detector)
 """
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 
@@ -25,6 +26,8 @@ from .types import (
     MergedScanResult,
     ScanResult,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -153,7 +156,7 @@ class NTRLScanner:
 
         for name, result in zip(task_names, results):
             if isinstance(result, Exception):
-                print(f"Detector {name} failed: {result}")
+                logger.error("Detector %s failed: %s", name, result)
                 detector_durations[name] = 0.0
             elif isinstance(result, ScanResult):
                 all_spans.extend(result.spans)

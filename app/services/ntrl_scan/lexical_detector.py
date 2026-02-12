@@ -12,6 +12,7 @@ Key features:
 - Taxonomy-bound: All patterns map to canonical type IDs
 """
 
+import logging
 import re
 import time
 from functools import lru_cache
@@ -28,6 +29,8 @@ from .types import (
     ScanResult,
     SpanAction,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LexicalDetector:
@@ -68,7 +71,7 @@ class LexicalDetector:
                     )
                 except re.error as e:
                     # Log but don't fail on bad patterns
-                    print(f"Warning: Invalid pattern for {type_id}: {pattern} - {e}")
+                    logger.warning("Invalid pattern for %s: %s - %s", type_id, pattern, e)
 
             if compiled:
                 self._compiled_patterns[type_id] = compiled
