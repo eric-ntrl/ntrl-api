@@ -17,14 +17,22 @@ if DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 # SQLAlchemy engine & session factory
+# Pool config only applies to PostgreSQL (SQLite uses SingletonThreadPool
+# which doesn't support pool_size/max_overflow)
+_pool_kwargs = {}
+if DATABASE_URL.startswith("postgresql"):
+    _pool_kwargs = {
+        "pool_size": 10,
+        "max_overflow": 5,
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+    }
+
 engine = create_engine(
     DATABASE_URL,
     future=True,
     echo=False,  # set True if you want to see SQL in terminal
-    pool_size=10,
-    max_overflow=5,
-    pool_pre_ping=True,
-    pool_recycle=1800,
+    **_pool_kwargs,
 )
 
 SessionLocal = sessionmaker(
