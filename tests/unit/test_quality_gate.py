@@ -48,6 +48,8 @@ def _make_story_raw(
     body_is_truncated=False,
     source_type="rss",
     raw_content_size=5000,
+    url_status=None,
+    url_http_status=None,
 ) -> MagicMock:
     """Create a mock StoryRaw object."""
     raw = MagicMock()
@@ -63,6 +65,8 @@ def _make_story_raw(
     raw.body_is_truncated = body_is_truncated
     raw.source_type = source_type
     raw.raw_content_size = raw_content_size
+    raw.url_status = url_status
+    raw.url_http_status = url_http_status
     return raw
 
 
@@ -576,6 +580,73 @@ class TestNotDuplicate:
         assert "duplicate" in result.reason
 
 
+class TestUrlReachable:
+    """Tests for check #19: url_reachable."""
+
+    def test_pass_not_yet_checked(self):
+        """url_status=None means not yet validated — should pass."""
+        raw = _make_story_raw(url_status=None)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_pass_reachable(self):
+        raw = _make_story_raw(url_status="reachable", url_http_status=200)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_pass_redirect(self):
+        raw = _make_story_raw(url_status="redirect", url_http_status=301)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_pass_timeout(self):
+        """Timeouts are temporary — should pass."""
+        raw = _make_story_raw(url_status="timeout")
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_fail_unreachable_404(self):
+        raw = _make_story_raw(url_status="unreachable", url_http_status=404)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+        assert "404" in result.reason
+
+    def test_fail_unreachable_410(self):
+        raw = _make_story_raw(url_status="unreachable", url_http_status=410)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+        assert "410" in result.reason
+
+    def test_fail_unreachable_403(self):
+        raw = _make_story_raw(url_status="unreachable", url_http_status=403)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+        assert "403" in result.reason
+
+    def test_pass_unreachable_500(self):
+        """Server errors are temporary — should pass through."""
+        raw = _make_story_raw(url_status="unreachable", url_http_status=500)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_pass_unreachable_no_http_status(self):
+        """Network error (no HTTP status) — should pass through."""
+        raw = _make_story_raw(url_status="unreachable", url_http_status=None)
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_fail_details_include_url_preview(self):
+        raw = _make_story_raw(
+            url_status="unreachable",
+            url_http_status=404,
+            original_url="https://example.com/very-long-article-url",
+        )
+        result = _service()._check_url_reachable(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+        assert result.details["url_preview"] == "https://example.com/very-long-article-url"
+        assert result.details["http_status"] == 404
+
+
 # ---------------------------------------------------------------------------
 # D. View Completeness checks
 # ---------------------------------------------------------------------------
@@ -720,7 +791,7 @@ class TestCheckArticle:
         )
         assert result.status == QCStatus.PASSED
         assert len(result.failures) == 0
-        assert len(result.checks) == 18  # All 18 checks ran
+        assert len(result.checks) == 19  # All 19 checks ran
 
     def test_single_failure(self):
         """An article with one failing check should fail overall."""
