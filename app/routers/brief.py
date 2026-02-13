@@ -127,6 +127,7 @@ def get_brief(
                     source_url=item.original_url,
                     published_at=item.published_at,
                     has_manipulative_content=item.has_manipulative_content,
+                    publisher_url=item.source_homepage_url,
                     position=item.position,
                     # Detail fields from story_neutralized (for article view)
                     detail_title=neutralized.detail_title if neutralized else None,

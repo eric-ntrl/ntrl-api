@@ -20,6 +20,7 @@ class BriefStory(BaseModel):
     source_url: str = Field(..., description="Original source URL")
     published_at: datetime = Field(..., description="Publish time")
     has_manipulative_content: bool = Field(..., description="Whether content was modified")
+    publisher_url: str | None = Field(None, description="Publisher homepage URL")
     position: int = Field(..., description="Position within section")
 
     # Detail fields (for article view - eliminates N+1 calls)

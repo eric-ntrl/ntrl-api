@@ -2650,6 +2650,25 @@ def get_source_health(
     )
     qc_map = {r.source_type: (int(r.qc_passed or 0), int(r.qc_failed or 0)) for r in qc_rows}
 
+    # URL reachability stats
+    url_rows = (
+        db.query(
+            models.StoryRaw.source_type,
+            func.sum(case((models.StoryRaw.url_status.in_(["reachable", "redirect"]), 1), else_=0)).label(
+                "url_reachable"
+            ),
+            func.sum(case((models.StoryRaw.url_status == "unreachable", 1), else_=0)).label("url_unreachable"),
+            func.sum(case((models.StoryRaw.url_status.is_(None), 1), else_=0)).label("url_not_checked"),
+        )
+        .filter(*base_filter)
+        .group_by(models.StoryRaw.source_type)
+        .all()
+    )
+    url_map = {
+        r.source_type: (int(r.url_reachable or 0), int(r.url_unreachable or 0), int(r.url_not_checked or 0))
+        for r in url_rows
+    }
+
     # Build response
     source_types = []
     total_articles = 0
@@ -2663,6 +2682,8 @@ def get_source_health(
         not_truncated = int(row.not_truncated or 0)
         qc_passed, qc_failed = qc_map.get(row.source_type, (0, 0))
         qc_total = qc_passed + qc_failed
+        url_reachable, url_unreachable, url_not_checked = url_map.get(row.source_type, (0, 0, 0))
+        url_checked = url_reachable + url_unreachable
 
         source_types.append(
             SourceTypeHealth(
@@ -2678,6 +2699,10 @@ def get_source_health(
                 qc_passed=qc_passed,
                 qc_failed=qc_failed,
                 qc_pass_rate=round(qc_passed / qc_total * 100, 1) if qc_total > 0 else 0.0,
+                url_reachable=url_reachable,
+                url_unreachable=url_unreachable,
+                url_not_checked=url_not_checked,
+                url_reachable_rate=round(url_reachable / url_checked * 100, 1) if url_checked > 0 else 0.0,
                 newest_article=row.newest,
                 oldest_article=row.oldest,
             )
@@ -2696,6 +2721,8 @@ def get_source_health(
             alerts.append(f"{st.source_type}: low QC pass rate ({st.qc_pass_rate}%)")
         if st.avg_body_size and st.avg_body_size < 1000:
             alerts.append(f"{st.source_type}: low avg body size ({st.avg_body_size:.0f} bytes)")
+        if st.url_reachable_rate < 90 and (st.url_reachable + st.url_unreachable) > 5:
+            alerts.append(f"{st.source_type}: low URL reachability ({st.url_reachable_rate}%)")
 
     return SourceHealthResponse(
         window_hours=hours,

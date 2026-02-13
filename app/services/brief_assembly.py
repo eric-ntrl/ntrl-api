@@ -279,6 +279,7 @@ class BriefAssemblyService:
                         original_url=story_raw.original_url,
                         published_at=story_raw.published_at,
                         has_manipulative_content=neutralized.has_manipulative_content,
+                        source_homepage_url=source.homepage_url,
                     )
                     db.add(item)
 

@@ -219,6 +219,12 @@ class QualityGateService:
         self._register(
             "not_duplicate", QCCategory.PIPELINE_INTEGRITY, "Article is not a duplicate", self._check_not_duplicate
         )
+        self._register(
+            "url_reachable",
+            QCCategory.PIPELINE_INTEGRITY,
+            "Original article URL is reachable",
+            self._check_url_reachable,
+        )
 
         # D. View Completeness
         self._register(
@@ -864,6 +870,68 @@ class QualityGateService:
             )
         return QCCheckResult(
             check="not_duplicate",
+            passed=True,
+            category=QCCategory.PIPELINE_INTEGRITY.value,
+        )
+
+    @staticmethod
+    def _check_url_reachable(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: models.Source | None,
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Check if the original article URL is reachable.
+
+        Soft failure for missing data (not yet validated) and timeouts.
+        Hard failure for definitively broken URLs (404, 410, 403).
+        """
+        url_status = getattr(raw, "url_status", None)
+
+        # Not yet validated — pass through (don't block articles)
+        if url_status is None:
+            return QCCheckResult(
+                check="url_reachable",
+                passed=True,
+                category=QCCategory.PIPELINE_INTEGRITY.value,
+            )
+
+        # Reachable or redirected — pass
+        if url_status in ("reachable", "redirect"):
+            return QCCheckResult(
+                check="url_reachable",
+                passed=True,
+                category=QCCategory.PIPELINE_INTEGRITY.value,
+            )
+
+        # Timeout — temporary issue, pass through
+        if url_status == "timeout":
+            return QCCheckResult(
+                check="url_reachable",
+                passed=True,
+                category=QCCategory.PIPELINE_INTEGRITY.value,
+            )
+
+        # Unreachable — check HTTP status for definitive failures
+        http_status = getattr(raw, "url_http_status", None)
+        definitively_broken = {404, 410, 403}
+
+        if url_status == "unreachable" and http_status in definitively_broken:
+            return QCCheckResult(
+                check="url_reachable",
+                passed=False,
+                category=QCCategory.PIPELINE_INTEGRITY.value,
+                reason=f"Original URL returned HTTP {http_status}",
+                details={
+                    "url_status": url_status,
+                    "http_status": http_status,
+                    "url_preview": (raw.original_url or "")[:100],
+                },
+            )
+
+        # Other unreachable statuses (network error, 5xx) — pass through
+        return QCCheckResult(
+            check="url_reachable",
             passed=True,
             category=QCCategory.PIPELINE_INTEGRITY.value,
         )

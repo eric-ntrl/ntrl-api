@@ -250,6 +250,7 @@ class Source(Base):
     rss_url = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     default_section = Column(String(32), nullable=True)  # Hint for classification
+    homepage_url = Column(Text, nullable=True)  # Publisher homepage (e.g., "https://apnews.com")
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -349,6 +350,12 @@ class StoryRaw(Base):
 
     # Content completeness flag (True when API truncated body and scraping failed)
     body_is_truncated = Column(Boolean, default=False, server_default="false", nullable=False)
+
+    # URL validation (populated during ingestion, checked by QC gate)
+    url_status = Column(String(16), nullable=True)  # "reachable", "unreachable", "timeout", "redirect"
+    url_checked_at = Column(DateTime, nullable=True)
+    url_http_status = Column(Integer, nullable=True)  # HTTP status code (200, 301, 404, etc.)
+    url_final_location = Column(Text, nullable=True)  # Final URL after redirects
 
     # Relationships
     source = relationship("Source", back_populates="stories")
@@ -733,6 +740,7 @@ class DailyBriefItem(Base):
     original_url = Column(Text, nullable=False)
     published_at = Column(DateTime, nullable=False)
     has_manipulative_content = Column(Boolean, default=False, nullable=False)
+    source_homepage_url = Column(Text, nullable=True)  # Publisher homepage for "Visit Publisher" link
 
     # Relationships
     brief = relationship("DailyBrief", back_populates="items")
