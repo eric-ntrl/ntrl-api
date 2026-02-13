@@ -617,6 +617,7 @@ class IngestionService:
         source_type: SourceType,
         publisher_name: str,
         cache: dict[str, models.Source],
+        publisher_domain: str | None = None,
     ) -> models.Source:
         """Get or create a Source record for a specific publisher.
 
@@ -624,9 +625,21 @@ class IngestionService:
         """
         slug = self._slugify_publisher(publisher_name, source_type)
 
+        # Build homepage URL from domain
+        homepage_url = None
+        if publisher_domain:
+            if publisher_domain.startswith("http"):
+                homepage_url = publisher_domain
+            else:
+                homepage_url = f"https://{publisher_domain}"
+
         # Check local cache first
         if slug in cache:
-            return cache[slug]
+            source = cache[slug]
+            # Backfill homepage_url on existing sources missing it
+            if homepage_url and not source.homepage_url:
+                source.homepage_url = homepage_url
+            return source
 
         # Check database
         source = db.query(models.Source).filter(models.Source.slug == slug).first()
@@ -637,9 +650,13 @@ class IngestionService:
                 rss_url=f"https://{source_type.value}-api.internal/{slug}",
                 is_active=False,
                 default_section=None,
+                homepage_url=homepage_url,
             )
             db.add(source)
             db.flush()
+        elif homepage_url and not source.homepage_url:
+            # Backfill homepage_url on existing sources missing it
+            source.homepage_url = homepage_url
 
         cache[slug] = source
         return source
@@ -906,6 +923,7 @@ class IngestionService:
                         source_type,
                         publisher_name.strip(),
                         publisher_source_cache,
+                        publisher_domain=article.get("source_domain"),
                     )
                 else:
                     article_source = api_source
