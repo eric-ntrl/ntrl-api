@@ -30,84 +30,98 @@ SOURCES = [
         "slug": "ap",
         "rss_url": "https://rsshub.app/apnews/topics/apf-topnews",
         "default_section": "world",
+        "homepage_url": "https://apnews.com",
     },
     {
         "name": "AP - U.S. News",
         "slug": "ap-us",
         "rss_url": "https://rsshub.app/apnews/topics/apf-usnews",
         "default_section": "us",
+        "homepage_url": "https://apnews.com",
     },
     {
         "name": "AP - World News",
         "slug": "ap-world",
         "rss_url": "https://rsshub.app/apnews/topics/apf-WorldNews",
         "default_section": "world",
+        "homepage_url": "https://apnews.com",
     },
     {
         "name": "AP - Business",
         "slug": "ap-business",
         "rss_url": "https://rsshub.app/apnews/topics/apf-business",
         "default_section": "business",
+        "homepage_url": "https://apnews.com",
     },
     {
         "name": "AP - Technology",
         "slug": "ap-technology",
         "rss_url": "https://rsshub.app/apnews/topics/apf-technology",
         "default_section": "technology",
+        "homepage_url": "https://apnews.com",
     },
     {
         "name": "Reuters - World",
         "slug": "reuters-world",
         "rss_url": "https://www.reutersagency.com/feed/?best-topics=world&post_type=best",
         "default_section": "world",
+        "homepage_url": "https://www.reuters.com",
     },
     {
         "name": "Reuters - Business",
         "slug": "reuters-business",
         "rss_url": "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best",
         "default_section": "business",
+        "homepage_url": "https://www.reuters.com",
     },
     {
         "name": "NPR News",
         "slug": "npr",
         "rss_url": "https://feeds.npr.org/1001/rss.xml",
         "default_section": "us",
+        "homepage_url": "https://www.npr.org",
     },
     {
         "name": "BBC World",
         "slug": "bbc-world",
         "rss_url": "http://feeds.bbci.co.uk/news/world/rss.xml",
         "default_section": "world",
+        "homepage_url": "https://www.bbc.com/news",
     },
     {
         "name": "BBC Technology",
         "slug": "bbc-technology",
         "rss_url": "http://feeds.bbci.co.uk/news/technology/rss.xml",
         "default_section": "technology",
+        "homepage_url": "https://www.bbc.com/news",
     },
     {
         "name": "PBS NewsHour",
         "slug": "pbs",
         "rss_url": "https://www.pbs.org/newshour/feeds/rss/headlines",
         "default_section": "us",
+        "homepage_url": "https://www.pbs.org/newshour",
     },
     {
         "name": "Al Jazeera English",
         "slug": "aljazeera",
         "rss_url": "https://www.aljazeera.com/xml/rss/all.xml",
         "default_section": "world",
+        "homepage_url": "https://www.aljazeera.com",
     },
     {
         "name": "The Guardian - World",
         "slug": "guardian-world",
         "rss_url": "https://www.theguardian.com/world/rss",
         "default_section": "world",
+        "homepage_url": "https://www.theguardian.com/world",
     },
     {
         "name": "The Guardian - US",
         "slug": "guardian-us",
         "rss_url": "https://www.theguardian.com/us-news/rss",
         "default_section": "us",
+        "homepage_url": "https://www.theguardian.com/us-news",
     },
 ]
 
@@ -121,7 +135,12 @@ def seed_sources(db: Session) -> None:
         existing = db.query(models.Source).filter(models.Source.slug == source_data["slug"]).first()
 
         if existing:
-            print(f"  Source '{source_data['slug']}' already exists, skipping.")
+            # Update homepage_url on existing sources
+            if source_data.get("homepage_url") and existing.homepage_url != source_data["homepage_url"]:
+                existing.homepage_url = source_data["homepage_url"]
+                print(f"  Updated homepage_url for '{source_data['slug']}': {source_data['homepage_url']}")
+            else:
+                print(f"  Source '{source_data['slug']}' already exists, skipping.")
             continue
 
         source = models.Source(
@@ -131,6 +150,7 @@ def seed_sources(db: Session) -> None:
             rss_url=source_data["rss_url"],
             is_active=True,
             default_section=source_data.get("default_section"),
+            homepage_url=source_data.get("homepage_url"),
             created_at=datetime.utcnow(),
         )
         db.add(source)
