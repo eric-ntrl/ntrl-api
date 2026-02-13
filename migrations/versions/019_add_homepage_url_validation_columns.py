@@ -4,7 +4,7 @@ Source.homepage_url: publisher homepage for "Visit Publisher" link.
 StoryRaw URL validation: track reachability of original_url during ingestion.
 DailyBriefItem.source_homepage_url: denormalized for fast reads.
 
-Revision ID: 019_add_homepage_url_validation_columns
+Revision ID: 019_add_homepage_url_cols
 Revises: 018_add_body_truncated_flag
 Create Date: 2026-02-13
 """
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "019_add_homepage_url_validation_columns"
+revision: str = "019_add_homepage_url_cols"
 down_revision: str | Sequence[str] | None = "018_add_body_truncated_flag"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
