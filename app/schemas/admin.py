@@ -179,6 +179,10 @@ class SourceTypeHealth(BaseModel):
     qc_passed: int = 0
     qc_failed: int = 0
     qc_pass_rate: float = Field(0.0, description="Percentage of neutralized articles passing QC")
+    url_reachable: int = Field(0, description="URLs confirmed reachable")
+    url_unreachable: int = Field(0, description="URLs confirmed unreachable (404/410/403)")
+    url_not_checked: int = Field(0, description="URLs not yet validated")
+    url_reachable_rate: float = Field(0.0, description="Percentage of checked URLs that are reachable")
     newest_article: datetime | None = None
     oldest_article: datetime | None = None
 
