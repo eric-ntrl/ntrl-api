@@ -41,6 +41,8 @@ from app.schemas.admin import (
     NeutralizeRunRequest,
     NeutralizeRunResponse,
     NeutralizeStoryResult,
+    SourceHealthResponse,
+    SourceTypeHealth,
 )
 from app.schemas.grading import GradeRequest, GradeResponse, RuleResult
 from app.services.brief_assembly import BriefAssemblyService
@@ -2568,4 +2570,139 @@ def list_jobs(
         ],
         total=len(jobs),
         running_count=PipelineJobManager.get_running_job_count(),
+    )
+
+
+# -----------------------------------------------------------------------------
+# Source Health
+# -----------------------------------------------------------------------------
+
+
+@router.get("/admin/sources/health", response_model=SourceHealthResponse)
+def get_source_health(
+    source_type: str | None = None,
+    hours: int = 24,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> SourceHealthResponse:
+    """
+    Get ingestion health metrics broken down by source type.
+
+    Shows truncation rates, body sizes, and QC pass rates for each
+    source type (rss, perigon, newsdata) over the specified time window.
+
+    Use this to verify Perigon article quality, monitor RSS scraping
+    success, or diagnose ingestion issues.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import case, func
+
+    from app import models
+
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+
+    # Build base query filtered by time window
+    base_filter = [
+        models.StoryRaw.ingested_at >= cutoff,
+        models.StoryRaw.deleted_at.is_(None),
+    ]
+    if source_type:
+        base_filter.append(models.StoryRaw.source_type == source_type)
+
+    # Aggregate metrics per source_type
+    rows = (
+        db.query(
+            models.StoryRaw.source_type,
+            func.count(models.StoryRaw.id).label("total"),
+            func.sum(case((models.StoryRaw.raw_content_available.is_(True), 1), else_=0)).label("body_available"),
+            func.sum(case((models.StoryRaw.body_is_truncated.is_(True), 1), else_=0)).label("truncated"),
+            func.sum(case((models.StoryRaw.body_is_truncated.is_(False), 1), else_=0)).label("not_truncated"),
+            func.avg(models.StoryRaw.raw_content_size).label("avg_size"),
+            func.min(models.StoryRaw.raw_content_size).label("min_size"),
+            func.max(models.StoryRaw.raw_content_size).label("max_size"),
+            func.max(models.StoryRaw.ingested_at).label("newest"),
+            func.min(models.StoryRaw.ingested_at).label("oldest"),
+        )
+        .filter(*base_filter)
+        .group_by(models.StoryRaw.source_type)
+        .all()
+    )
+
+    # QC stats: join with StoryNeutralized for qc_status
+    qc_rows = (
+        db.query(
+            models.StoryRaw.source_type,
+            func.sum(case((models.StoryNeutralized.qc_status == "passed", 1), else_=0)).label("qc_passed"),
+            func.sum(case((models.StoryNeutralized.qc_status == "failed", 1), else_=0)).label("qc_failed"),
+        )
+        .join(
+            models.StoryNeutralized,
+            models.StoryRaw.id == models.StoryNeutralized.story_raw_id,
+        )
+        .filter(
+            models.StoryRaw.ingested_at >= cutoff,
+            models.StoryRaw.deleted_at.is_(None),
+            models.StoryNeutralized.is_current.is_(True),
+        )
+        .group_by(models.StoryRaw.source_type)
+        .all()
+    )
+    qc_map = {r.source_type: (int(r.qc_passed or 0), int(r.qc_failed or 0)) for r in qc_rows}
+
+    # Build response
+    source_types = []
+    total_articles = 0
+    total_truncated = 0
+    total_qc_passed = 0
+    total_qc_total = 0
+
+    for row in rows:
+        total = int(row.total or 0)
+        truncated = int(row.truncated or 0)
+        not_truncated = int(row.not_truncated or 0)
+        qc_passed, qc_failed = qc_map.get(row.source_type, (0, 0))
+        qc_total = qc_passed + qc_failed
+
+        source_types.append(
+            SourceTypeHealth(
+                source_type=row.source_type or "unknown",
+                total_ingested=total,
+                body_available=int(row.body_available or 0),
+                body_truncated=truncated,
+                body_not_truncated=not_truncated,
+                truncation_rate=round(truncated / total * 100, 1) if total > 0 else 0.0,
+                avg_body_size=round(float(row.avg_size), 0) if row.avg_size else None,
+                min_body_size=int(row.min_size) if row.min_size else None,
+                max_body_size=int(row.max_size) if row.max_size else None,
+                qc_passed=qc_passed,
+                qc_failed=qc_failed,
+                qc_pass_rate=round(qc_passed / qc_total * 100, 1) if qc_total > 0 else 0.0,
+                newest_article=row.newest,
+                oldest_article=row.oldest,
+            )
+        )
+        total_articles += total
+        total_truncated += truncated
+        total_qc_passed += qc_passed
+        total_qc_total += qc_total
+
+    # Generate alerts
+    alerts = []
+    for st in source_types:
+        if st.truncation_rate > 20:
+            alerts.append(f"{st.source_type}: high truncation rate ({st.truncation_rate}%)")
+        if st.qc_pass_rate < 80 and (st.qc_passed + st.qc_failed) > 0:
+            alerts.append(f"{st.source_type}: low QC pass rate ({st.qc_pass_rate}%)")
+        if st.avg_body_size and st.avg_body_size < 1000:
+            alerts.append(f"{st.source_type}: low avg body size ({st.avg_body_size:.0f} bytes)")
+
+    return SourceHealthResponse(
+        window_hours=hours,
+        generated_at=datetime.utcnow(),
+        source_types=sorted(source_types, key=lambda s: s.total_ingested, reverse=True),
+        total_articles=total_articles,
+        overall_truncation_rate=round(total_truncated / total_articles * 100, 1) if total_articles > 0 else 0.0,
+        overall_qc_pass_rate=round(total_qc_passed / total_qc_total * 100, 1) if total_qc_total > 0 else 0.0,
+        alerts=alerts,
     )

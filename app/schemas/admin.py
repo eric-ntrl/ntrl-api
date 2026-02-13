@@ -157,3 +157,39 @@ class BriefRunResponse(BaseModel):
 
     # Errors
     error: str | None = None
+
+
+# -----------------------------------------------------------------------------
+# Source Health
+# -----------------------------------------------------------------------------
+
+
+class SourceTypeHealth(BaseModel):
+    """Health metrics for a single source type (rss, perigon, newsdata)."""
+
+    source_type: str
+    total_ingested: int = 0
+    body_available: int = 0
+    body_truncated: int = 0
+    body_not_truncated: int = 0
+    truncation_rate: float = Field(0.0, description="Percentage of articles with body_is_truncated=True")
+    avg_body_size: float | None = Field(None, description="Average raw_content_size in bytes")
+    min_body_size: int | None = None
+    max_body_size: int | None = None
+    qc_passed: int = 0
+    qc_failed: int = 0
+    qc_pass_rate: float = Field(0.0, description="Percentage of neutralized articles passing QC")
+    newest_article: datetime | None = None
+    oldest_article: datetime | None = None
+
+
+class SourceHealthResponse(BaseModel):
+    """Health report across all source types."""
+
+    window_hours: int = Field(..., description="Time window analyzed")
+    generated_at: datetime
+    source_types: list[SourceTypeHealth] = Field(default_factory=list)
+    total_articles: int = 0
+    overall_truncation_rate: float = 0.0
+    overall_qc_pass_rate: float = 0.0
+    alerts: list[str] = Field(default_factory=list)
