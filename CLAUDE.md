@@ -156,6 +156,23 @@ pipenv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 Editing hardcoded prompts and seeing tests pass (mock provider) does NOT mean production uses the new prompt. The DB row takes precedence. Always `PUT /v1/prompts/{name}` after code changes.
 
+## Source Health Monitoring
+
+`GET /v1/admin/sources/health` — per-source-type ingestion quality metrics.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `hours` | 24 | Time window to analyze (1-168) |
+| `source_type` | all | Filter: `rss`, `perigon`, or `newsdata` |
+
+Returns truncation rates, body sizes, QC pass rates, and auto-generated alerts per source type. Example:
+```bash
+curl "https://api-staging-7b4d.up.railway.app/v1/admin/sources/health?hours=12&source_type=perigon" \
+  -H "X-API-Key: staging-key-123"
+```
+
+Alerts trigger when: truncation >20%, QC pass rate <80%, or avg body size <1KB.
+
 ## Key Gotchas
 
 - **Spans**: Always reference `original_body`, not `detail_full`
