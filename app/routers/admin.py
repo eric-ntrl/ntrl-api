@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -2733,3 +2733,32 @@ def get_source_health(
         overall_qc_pass_rate=round(total_qc_passed / total_qc_total * 100, 1) if total_qc_total > 0 else 0.0,
         alerts=alerts,
     )
+
+
+# -----------------------------------------------------------------------------
+# URL Validation (batch job)
+# -----------------------------------------------------------------------------
+
+
+@router.post("/admin/validate-urls")
+def run_url_validation(
+    limit: int = Query(200, ge=1, le=1000, description="Max URLs to validate per batch"),
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> dict:
+    """
+    Validate article URLs in batch. Checks unchecked URLs first (newest first).
+
+    Designed to be called by a cron job or after pipeline runs. Results are
+    stored on StoryRaw and used by the QC gate's url_reachable check.
+    """
+    from app.services.url_validator import validate_batch
+
+    stats = validate_batch(db, limit=limit)
+
+    admin_logger.info(
+        f"[URL-VALIDATE] Batch complete: {stats['total']} checked, "
+        f"{stats['reachable']} reachable, {stats['unreachable']} unreachable"
+    )
+
+    return stats

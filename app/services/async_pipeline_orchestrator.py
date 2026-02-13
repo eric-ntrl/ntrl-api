@@ -155,10 +155,15 @@ class AsyncPipelineOrchestrator:
                 return self._build_cancelled_result()
             await self._run_brief_assembly()
 
+            # Stage 5b: URL Validation (non-blocking, runs after brief)
+            if await self._check_cancelled():
+                return self._build_cancelled_result()
+            await self._run_url_validation()
+
             # Create the pipeline run summary
             summary = self._create_summary()
 
-            # Stage 5: Evaluation (optional)
+            # Stage 6: Evaluation (optional)
             if self.config.get("enable_evaluation", False):
                 if await self._check_cancelled():
                     return self._build_cancelled_result()
@@ -506,6 +511,47 @@ class AsyncPipelineOrchestrator:
             )
             self.errors.append({"stage": stage_name, "message": str(e)})
             logger.exception(f"Brief assembly stage failed: {e}")
+
+    async def _run_url_validation(self) -> None:
+        """Run URL validation batch on recently ingested articles."""
+        from app.services.url_validator import validate_batch
+
+        stage_name = "url_validation"
+        PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
+
+        started_at = datetime.utcnow()
+
+        try:
+            with log_stage(stage_name, self.trace_id):
+                loop = asyncio.get_event_loop()
+                stats = await loop.run_in_executor(None, lambda: validate_batch(self.db, limit=200))
+
+                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                self.metrics.record_stage_timing(stage_name, duration_ms)
+
+                self.stage_results[stage_name] = StageResult(
+                    stage=stage_name,
+                    status="completed",
+                    duration_ms=duration_ms,
+                    metrics=stats,
+                    errors=[],
+                )
+
+                PipelineJobManager.update_job_stage(
+                    self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
+                )
+
+        except Exception as e:
+            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            self.stage_results[stage_name] = StageResult(
+                stage=stage_name,
+                status="failed",
+                duration_ms=duration_ms,
+                errors=[str(e)],
+            )
+            # URL validation failures are non-critical — don't add to self.errors
+            # so they don't affect overall pipeline status
+            logger.warning(f"URL validation stage failed (non-critical): {e}")
 
     async def _run_evaluation(self, summary_id: str) -> None:
         """Run the evaluation stage."""
