@@ -10,14 +10,14 @@ Neutral news backend: removes manipulative language, creates calm news briefs.
 | Admin Key | `staging-key-123` (header: `X-API-Key`) |
 | Dev Server | `pipenv run uvicorn app.main:app --reload --port 8000` |
 | Tests | `pipenv run pytest tests/` |
-| Unit Tests | `pipenv run pytest tests/unit/` (435 tests) |
+| Unit Tests | `pipenv run pytest tests/unit/` (439 tests) |
 | E2E Tests | `pipenv run pytest tests/e2e/` (13 tests) |
 | Migrations | `pipenv run alembic upgrade head` |
 
 ## Pipeline Overview
 
 ```
-INGEST → CLASSIFY → NEUTRALIZE → QC GATE → BRIEF ASSEMBLE [→ EVALUATE → OPTIMIZE]
+INGEST → CLASSIFY → NEUTRALIZE → QC GATE → BRIEF ASSEMBLE → URL VALIDATE [→ EVALUATE → OPTIMIZE]
 ```
 
 **Core principle**: Original article body is the single source of truth. All outputs derive from `original_body`.
