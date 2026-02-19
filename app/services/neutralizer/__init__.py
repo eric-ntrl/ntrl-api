@@ -560,6 +560,10 @@ A3: Factual scope and quantifiers must be preserved (all/some/many/few)
 A4: Compound factual terms are atomic (e.g., "domestic abuse", "sex work" - do not alter)
 A5: Epistemic certainty must be preserved exactly (alleged, confirmed, suspected, etc.)
 A6: Causal facts are not motives (report cause without inferring intent)
+A7: Proper nouns (company names, people, organizations, places) are factual identifiers
+    - NEVER replace with generic terms ("a company", "the official", "the organization")
+    - "ARKO Petroleum" must stay "ARKO Petroleum", not "a company"
+    - Context does NOT make names promotional — an IPO article's subject is a fact, not an ad
 
 B. NEUTRALITY ENFORCEMENT
 ──────────────────────────────────────────
@@ -1089,6 +1093,10 @@ PRESERVE EXACTLY
 - Original paragraph structure (same number of paragraphs)
 - All direct quotes with their attribution
 - All facts, names, dates, numbers, places, statistics
+- Proper nouns exactly as written (company names, people, organizations):
+  ✗ NEVER: "ARKO Petroleum" → "a company" / "the company"
+  ✗ NEVER: "Goldman Sachs" → "the bank" / "the firm"
+  ✓ ALWAYS: Keep the exact name from the source
 - Real tension and conflict (news, not manipulation)
 - Epistemic markers (alleged, suspected, reportedly)
 
@@ -2375,6 +2383,10 @@ You MUST preserve these elements EXACTLY as they appear in the original:
 3. FACTUAL DETAILS - Names, numbers, dates, statistics, places
    - Copy these EXACTLY from the original
    - Do NOT round, estimate, or paraphrase numbers
+   - Proper nouns are FACTS, not promotional content:
+     ✗ NEVER replace "ARKO Petroleum" with "a company" or "the company"
+     ✗ NEVER replace "Janet Yellen" with "an official" or "the Secretary"
+     ✓ ALWAYS use the exact name from the source
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: NO NEW FACTS
@@ -2581,6 +2593,9 @@ CONTENT RULES:
 - Factual, neutral, descriptive
 - Lead with the core fact or subject
 - Use present tense for ongoing events, past for completed
+- PRESERVE proper nouns: company names, people, organizations are FACTS, not promotion
+  ✗ WRONG: "Shares of Company Open at $17.75" (anonymized subject)
+  ✓ RIGHT: "ARKO Petroleum Shares Open at $17.75 After IPO" (preserves subject)
 - PRESERVE epistemic markers: "expected to", "plans to", "set to" → must appear in title if in source
 - NO emotional language, urgency, clickbait, questions, or teasers
 - NO colons introducing clauses (e.g., "Breaking: X happens")
