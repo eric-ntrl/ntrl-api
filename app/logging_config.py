@@ -432,8 +432,11 @@ LLM_COSTS = {
     ("openai", "gpt-5-mini"): {"input": 0.25, "output": 2.00},
     ("openai", "gpt-5.1"): {"input": 1.25, "output": 10.00},
     # Anthropic
-    ("anthropic", "claude-3-5-sonnet-20241022"): {"input": 3.00, "output": 15.00},
-    ("anthropic", "claude-3-haiku-20240307"): {"input": 0.25, "output": 1.25},
+    ("anthropic", "claude-sonnet-4-6"): {"input": 3.00, "output": 15.00},
+    ("anthropic", "claude-opus-4-6"): {"input": 5.00, "output": 25.00},
+    ("anthropic", "claude-sonnet-4-5"): {"input": 3.00, "output": 15.00},
+    ("anthropic", "claude-haiku-4-5"): {"input": 1.00, "output": 5.00},
+    ("anthropic", "claude-opus-4-5"): {"input": 5.00, "output": 25.00},
     # Google
     ("google", "gemini-2.0-flash"): {"input": 0.075, "output": 0.30},
     ("google", "gemini-1.5-flash"): {"input": 0.075, "output": 0.30},

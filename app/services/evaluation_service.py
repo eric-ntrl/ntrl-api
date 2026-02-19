@@ -30,9 +30,12 @@ logger = logging.getLogger(__name__)
 # Cost tracking
 # ---------------------------------------------------------------------------
 
-# Model pricing (per 1M tokens) - Updated Jan 2026
+# Model pricing (per 1M tokens) - Updated Feb 2026
 MODEL_PRICING = {
-    # Claude 4.5 series (current)
+    # Claude 4.6 series
+    "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-opus-4-6": {"input": 5.00, "output": 25.00},
+    # Claude 4.5 series
     "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     "claude-opus-4-5": {"input": 5.00, "output": 25.00},

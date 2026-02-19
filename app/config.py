@@ -72,8 +72,8 @@ class Settings(BaseSettings):
 
     # Teacher LLM Configuration
     EVAL_MODEL: str = Field(
-        default="claude-opus-4-5",
-        description="Model for evaluation/grading (supports claude-opus-4-5, claude-sonnet-4-5-20250929, claude-haiku-4-5)",
+        default="claude-sonnet-4-6",
+        description="Model for evaluation/grading (supports claude-sonnet-4-6, claude-opus-4-5, claude-haiku-4-5)",
     )
     OPTIMIZER_MODEL: str = Field(
         default="gpt-5-mini",
