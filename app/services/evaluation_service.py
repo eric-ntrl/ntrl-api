@@ -40,6 +40,7 @@ MODEL_PRICING = {
     "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
     "claude-opus-4-5": {"input": 5.00, "output": 25.00},
     # OpenAI
+    "gpt-5-nano": {"input": 0.05, "output": 0.40},
     "gpt-5-mini": {"input": 0.25, "output": 2.00},
     "gpt-5.1": {"input": 1.25, "output": 10.00},
     "gpt-4o": {"input": 2.50, "output": 10.00},

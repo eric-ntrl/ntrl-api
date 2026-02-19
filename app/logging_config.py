@@ -429,6 +429,7 @@ LLM_COSTS = {
     # OpenAI
     ("openai", "gpt-4o"): {"input": 2.50, "output": 10.00},
     ("openai", "gpt-4o-mini"): {"input": 0.15, "output": 0.60},
+    ("openai", "gpt-5-nano"): {"input": 0.05, "output": 0.40},
     ("openai", "gpt-5-mini"): {"input": 0.25, "output": 2.00},
     ("openai", "gpt-5.1"): {"input": 1.25, "output": 10.00},
     # Anthropic
