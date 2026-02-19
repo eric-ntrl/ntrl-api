@@ -294,7 +294,7 @@ def debug_span_pipeline(
     from app.config import get_settings
 
     settings = get_settings()
-    span_detection_model = settings.SPAN_DETECTION_MODEL  # Should be gpt-4o by default
+    span_detection_model = settings.SPAN_DETECTION_MODEL
 
     # Call detect_spans_via_llm_openai directly with BODY ONLY
     body_only_spans = detect_spans_via_llm_openai(body, api_key, span_detection_model)

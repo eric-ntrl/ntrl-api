@@ -47,6 +47,6 @@ curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
 | Ingest | ~20s | Parallel RSS fetches |
 | Classify | ~2.5 min | LLM classification |
 | Neutralize | ~5.5 min | LLM neutralization |
-| QC Gate | <1s | 18 checks per article |
+| QC Gate | <1s | 19 checks per article |
 | Brief | ~125ms | Assembly |
 | **Total** | **~8.5 min** | vs 9-14 min sequential |

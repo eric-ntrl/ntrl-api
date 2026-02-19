@@ -4456,7 +4456,7 @@ def _detect_spans_with_config(
             return spans if spans is not None else []
 
     # Single mode - use detect_spans_with_mode which handles title combination
-    # For OpenAI, use SPAN_DETECTION_MODEL (gpt-4o by default) for better recall
+    # For OpenAI, use SPAN_DETECTION_MODEL for better recall
     span_model = settings.SPAN_DETECTION_MODEL if provider_type == "openai" else provider_model
     logger.info(f"[SPAN_DETECTION] Using single mode with {provider_type}, model={span_model}")
 
@@ -5192,7 +5192,7 @@ class OpenAINeutralizerProvider(NeutralizerProvider):
             system_prompt = get_article_system_prompt()
             user_prompt = build_synthesis_detail_full_prompt(body)
 
-            # Allow model override for detail_full (e.g., gpt-4o for better quality)
+            # Allow model override for detail_full via DETAIL_FULL_MODEL
             from app.config import get_settings
 
             detail_full_model = get_settings().DETAIL_FULL_MODEL or self._model

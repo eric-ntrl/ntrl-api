@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     )
     DETAIL_FULL_MODEL: str = Field(
         default="",
-        description="Override model for detail_full neutralization (e.g., gpt-4o). Empty = use OPENAI_MODEL.",
+        description="Override model for detail_full neutralization (e.g., gpt-5-mini). Empty = use OPENAI_MODEL.",
     )
     SPAN_DETECTION_MODEL: str = Field(
         default="gpt-5-mini",
