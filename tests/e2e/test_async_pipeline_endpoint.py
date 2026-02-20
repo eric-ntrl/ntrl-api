@@ -6,7 +6,7 @@ Tests the full async pipeline flow from API request to job completion.
 
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -43,7 +43,7 @@ class TestAsyncPipelineEndpoints:
         job.trace_id = str(uuid.uuid4())
         job.status = PipelineJobStatus.PENDING.value
         job.current_stage = None
-        job.created_at = datetime.utcnow()
+        job.created_at = datetime.now(UTC)
         job.started_at = None
         job.finished_at = None
         job.stage_progress = {}
@@ -278,8 +278,8 @@ class TestJobStatusResponse:
             mock_job.trace_id = str(uuid.uuid4())
             mock_job.status = "running"
             mock_job.current_stage = "neutralize"
-            mock_job.created_at = datetime.utcnow()
-            mock_job.started_at = datetime.utcnow()
+            mock_job.created_at = datetime.now(UTC)
+            mock_job.started_at = datetime.now(UTC)
             mock_job.finished_at = None
             mock_job.stage_progress = {
                 "ingest": {"status": "completed", "total": 50},
@@ -311,9 +311,9 @@ class TestJobStatusResponse:
             mock_job.trace_id = str(uuid.uuid4())
             mock_job.status = "completed"
             mock_job.current_stage = None
-            mock_job.created_at = datetime.utcnow()
-            mock_job.started_at = datetime.utcnow()
-            mock_job.finished_at = datetime.utcnow()
+            mock_job.created_at = datetime.now(UTC)
+            mock_job.started_at = datetime.now(UTC)
+            mock_job.finished_at = datetime.now(UTC)
             mock_job.stage_progress = {
                 "ingest": {"status": "completed"},
                 "classify": {"status": "completed"},
@@ -344,9 +344,9 @@ class TestJobStatusResponse:
             mock_job.trace_id = str(uuid.uuid4())
             mock_job.status = "failed"
             mock_job.current_stage = "neutralize"
-            mock_job.created_at = datetime.utcnow()
-            mock_job.started_at = datetime.utcnow()
-            mock_job.finished_at = datetime.utcnow()
+            mock_job.created_at = datetime.now(UTC)
+            mock_job.started_at = datetime.now(UTC)
+            mock_job.finished_at = datetime.now(UTC)
             mock_job.stage_progress = {
                 "ingest": {"status": "completed"},
                 "classify": {"status": "completed"},

@@ -9,7 +9,7 @@ Supports:
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import boto3
 from botocore.config import Config
@@ -130,7 +130,7 @@ class S3StorageProvider(StorageProvider):
         }
 
         if expires_days:
-            expires_at = datetime.utcnow() + timedelta(days=expires_days)
+            expires_at = datetime.now(UTC) + timedelta(days=expires_days)
             extra_args["Expires"] = expires_at
 
         try:
@@ -150,7 +150,7 @@ class S3StorageProvider(StorageProvider):
                 content_encoding=ContentEncoding.GZIP,
                 size_bytes=compressed_size,
                 original_size_bytes=original_size,
-                uploaded_at=datetime.utcnow(),
+                uploaded_at=datetime.now(UTC),
                 expires_at=expires_at,
                 custom_metadata=s3_metadata,
             )
@@ -181,7 +181,7 @@ class S3StorageProvider(StorageProvider):
                 content_encoding=ContentEncoding.GZIP,
                 size_bytes=len(compressed),
                 original_size_bytes=int(s3_metadata.get("original-size", len(content))),
-                uploaded_at=response.get("LastModified", datetime.utcnow()),
+                uploaded_at=response.get("LastModified", datetime.now(UTC)),
                 expires_at=response.get("Expires"),
                 custom_metadata=s3_metadata,
             )
@@ -238,7 +238,7 @@ class S3StorageProvider(StorageProvider):
                 content_encoding=ContentEncoding.GZIP,
                 size_bytes=response.get("ContentLength", 0),
                 original_size_bytes=int(s3_metadata.get("original-size", 0)),
-                uploaded_at=response.get("LastModified", datetime.utcnow()),
+                uploaded_at=response.get("LastModified", datetime.now(UTC)),
                 expires_at=response.get("Expires"),
                 custom_metadata=s3_metadata,
             )
@@ -259,7 +259,7 @@ class S3StorageProvider(StorageProvider):
 
         Returns list of keys that may be candidates for deletion.
         """
-        cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
         expired_keys = []
 
         try:

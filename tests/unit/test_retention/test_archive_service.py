@@ -2,7 +2,7 @@
 """Unit tests for archive service."""
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 
@@ -53,7 +53,7 @@ class TestFindArchivableStories:
         mock_query = mock_db.query.return_value
         mock_query.filter.return_value.order_by.return_value.limit.return_value.all.return_value = []
 
-        custom_cutoff = datetime.utcnow() - timedelta(days=3)
+        custom_cutoff = datetime.now(UTC) - timedelta(days=3)
 
         with patch("app.services.retention.archive_service.get_active_policy") as mock_get:
             mock_get.return_value = mock_policy

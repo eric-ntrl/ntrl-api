@@ -16,7 +16,7 @@ import logging
 import socket
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
@@ -209,7 +209,7 @@ def validate_and_store(
     result = validate_url(story_raw.original_url)
 
     story_raw.url_status = result.status
-    story_raw.url_checked_at = datetime.utcnow()
+    story_raw.url_checked_at = datetime.now(UTC)
     story_raw.url_http_status = result.http_code
     story_raw.url_final_location = result.final_url
 

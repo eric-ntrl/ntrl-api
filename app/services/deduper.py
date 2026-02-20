@@ -10,7 +10,7 @@ Dedupe rules:
 
 import hashlib
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -76,7 +76,7 @@ class Deduper:
         """
         url_hash = self.hash_url(url)
         title_hash = self.hash_title(title)
-        cutoff = datetime.utcnow() - timedelta(hours=lookback_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=lookback_hours)
 
         # Check 1: Exact URL match
         existing = db.query(models.StoryRaw).filter(models.StoryRaw.url_hash == url_hash).first()

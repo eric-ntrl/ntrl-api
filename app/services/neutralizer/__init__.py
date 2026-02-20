@@ -21,7 +21,7 @@ import re
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, or_
@@ -2844,7 +2844,7 @@ def get_active_model() -> str:
     global _active_model_cache, _prompt_cache_time
 
     # Check if cache is stale
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     if _prompt_cache_time is None or (now - _prompt_cache_time).total_seconds() > PROMPT_CACHE_TTL_SECONDS:
         _active_model_cache = None
         _prompt_cache_time = now
@@ -6186,7 +6186,7 @@ class NeutralizerService:
         metadata: dict | None = None,
     ) -> models.PipelineLog:
         """Create a pipeline log entry."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         duration_ms = None
         if started_at:
             duration_ms = int((now - started_at).total_seconds() * 1000)
@@ -6228,7 +6228,7 @@ class NeutralizerService:
         Returns:
             The neutralized story record, or None if skipped/failed
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         # Check if already neutralized
         existing = (
@@ -6303,7 +6303,7 @@ class NeutralizerService:
                             prompt_version="v3",
                             neutralization_status=detail_full_result.status,
                             failure_reason=detail_full_result.failure_reason,
-                            created_at=datetime.utcnow(),
+                            created_at=datetime.now(UTC),
                         )
                         db.add(failed_neutralized)
                         db.flush()
@@ -6447,7 +6447,7 @@ class NeutralizerService:
                 prompt_version="v3",  # Updated for 3-call pipeline
                 neutralization_status="success",
                 failure_reason=None,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
             db.add(neutralized)
             db.flush()
@@ -6694,7 +6694,7 @@ class NeutralizerService:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         # Get stories to process
         if story_ids:
@@ -6782,7 +6782,7 @@ class NeutralizerService:
         }
 
         if not stories:
-            result["finished_at"] = datetime.utcnow()
+            result["finished_at"] = datetime.now(UTC)
             result["duration_ms"] = int((result["finished_at"] - started_at).total_seconds() * 1000)
             return result
 
@@ -6891,7 +6891,7 @@ class NeutralizerService:
                     has_manipulative_content=neutralization.has_manipulative_content,
                     model_name=self.provider.model_name,
                     prompt_version="v3",  # Updated for 3-call pipeline
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
                 )
                 db.add(neutralized)
                 db.flush()  # Flush to get neutralized.id for span FK
@@ -6963,7 +6963,7 @@ class NeutralizerService:
 
         db.commit()
 
-        finished_at = datetime.utcnow()
+        finished_at = datetime.now(UTC)
         result["finished_at"] = finished_at
         result["duration_ms"] = int((finished_at - started_at).total_seconds() * 1000)
 

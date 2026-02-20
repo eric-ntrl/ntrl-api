@@ -19,7 +19,7 @@ import logging
 import os
 import ssl
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -150,7 +150,7 @@ class IngestionService:
         retry_count: int = 0,
     ) -> models.PipelineLog:
         """Create a pipeline log entry with enhanced observability."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         duration_ms = None
         if started_at:
             duration_ms = int((now - started_at).total_seconds() * 1000)
@@ -283,7 +283,7 @@ class IngestionService:
             except (TypeError, ValueError):
                 pass
         if not published:
-            published = datetime.utcnow()
+            published = datetime.now(UTC)
 
         # Flag articles with insufficient bodies for early filtering
         # This prevents wasted LLM neutralization on short RSS excerpts
@@ -319,7 +319,7 @@ class IngestionService:
         Returns:
             Dict with ingested count, skipped count, body download stats, errors
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
         result = {
             "source_slug": source.slug,
             "source_name": source.name,
@@ -336,7 +336,7 @@ class IngestionService:
             entries = feed.entries[:max_items]
 
             for entry in entries:
-                entry_started_at = datetime.utcnow()
+                entry_started_at = datetime.now(UTC)
                 entry_url = entry.get("link") or entry.get("id") or ""
 
                 try:
@@ -391,7 +391,7 @@ class IngestionService:
                         url_hash=self.deduper.hash_url(normalized["url"]),
                         title_hash=self.deduper.hash_title(normalized["title"]),
                         published_at=normalized["published_at"],
-                        ingested_at=datetime.utcnow(),
+                        ingested_at=datetime.now(UTC),
                         section=section.value,
                         is_duplicate=False,
                         feed_entry_id=normalized["raw_entry"].get("id"),
@@ -474,7 +474,7 @@ class IngestionService:
         Returns:
             Dict with overall results, per-source breakdown, and body download metrics
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         # Generate trace_id if not provided
         if trace_id is None:
@@ -565,7 +565,7 @@ class IngestionService:
                 logger.error(f"NewsData.io ingestion failed: {e}")
                 result["errors"].append(f"NewsData.io: {e}")
 
-        finished_at = datetime.utcnow()
+        finished_at = datetime.now(UTC)
         result["finished_at"] = finished_at
         result["duration_ms"] = int((finished_at - started_at).total_seconds() * 1000)
 
@@ -682,7 +682,7 @@ class IngestionService:
         """
         from app.services.api_fetchers.perigon_fetcher import PerigonFetcher
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
         result = {
             "source_slug": "perigon",
             "source_name": "Perigon News API",
@@ -697,7 +697,7 @@ class IngestionService:
         try:
             async with PerigonFetcher(api_key) as fetcher:
                 # Fetch articles from last 24 hours
-                from_date = datetime.utcnow() - timedelta(hours=24)
+                from_date = datetime.now(UTC) - timedelta(hours=24)
                 articles = await fetcher.fetch_articles(
                     language="en",
                     max_results=max_items,
@@ -751,7 +751,7 @@ class IngestionService:
         """
         from app.services.api_fetchers.newsdata_fetcher import NewsDataFetcher
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
         result = {
             "source_slug": "newsdata",
             "source_name": "NewsData.io",
@@ -832,7 +832,7 @@ class IngestionService:
         publisher_source_cache: dict[str, models.Source] = {}
 
         for article in articles:
-            entry_started_at = datetime.utcnow()
+            entry_started_at = datetime.now(UTC)
             entry_url = article.get("url", "")
 
             try:
@@ -907,7 +907,7 @@ class IngestionService:
                 storage_meta = self._upload_body_to_storage(
                     story_id=str(story_id),
                     body=body,
-                    published_at=article.get("published_at", datetime.utcnow()),
+                    published_at=article.get("published_at", datetime.now(UTC)),
                 )
 
                 # Truncate author to fit varchar(255)
@@ -938,8 +938,8 @@ class IngestionService:
                     original_author=author,
                     url_hash=self.deduper.hash_url(entry_url),
                     title_hash=self.deduper.hash_title(article.get("title", "")),
-                    published_at=article.get("published_at", datetime.utcnow()),
-                    ingested_at=datetime.utcnow(),
+                    published_at=article.get("published_at", datetime.now(UTC)),
+                    ingested_at=datetime.now(UTC),
                     section=section.value,
                     is_duplicate=False,
                     feed_entry_id=article.get("api_article_id"),

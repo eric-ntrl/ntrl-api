@@ -2,7 +2,7 @@
 """Unit tests for purge service."""
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 
@@ -35,7 +35,7 @@ class TestSoftDeleteStory:
         from app.services.retention.purge_service import soft_delete_story
 
         mock_story = MagicMock(spec=StoryRaw)
-        mock_story.deleted_at = datetime.utcnow()
+        mock_story.deleted_at = datetime.now(UTC)
 
         mock_db = MagicMock()
 
@@ -70,7 +70,7 @@ class TestSoftDeleteStory:
         mock_story.id = uuid.uuid4()
         mock_story.deleted_at = None
         mock_story.legal_hold = False
-        mock_story.preserve_until = datetime.utcnow() + timedelta(days=30)
+        mock_story.preserve_until = datetime.now(UTC) + timedelta(days=30)
 
         mock_db = MagicMock()
 
@@ -170,7 +170,7 @@ class TestPurgeExpiredContent:
         mock_story = MagicMock(spec=StoryRaw)
         mock_story.id = uuid.uuid4()
         mock_story.preserve_until = None
-        mock_story.deleted_at = datetime.utcnow() - timedelta(hours=48)  # Past grace period
+        mock_story.deleted_at = datetime.now(UTC) - timedelta(hours=48)  # Past grace period
 
         mock_db = MagicMock()
         # First query for soft delete, second for hard delete

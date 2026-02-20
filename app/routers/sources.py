@@ -8,7 +8,7 @@ DELETE /v1/sources/{slug}    - Remove a source
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -115,7 +115,7 @@ def create_source(
         rss_url=request.rss_url,
         default_section=request.default_section,
         is_active=request.is_active,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
     db.add(source)
     db.commit()

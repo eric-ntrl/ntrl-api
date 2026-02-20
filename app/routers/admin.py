@@ -14,7 +14,7 @@ GET  /v1/status - Get system status, config, and pipeline health metrics
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -471,7 +471,7 @@ def run_classify(
     """
     from app.services.llm_classifier import LLMClassifier
 
-    started_at = datetime.utcnow()
+    started_at = datetime.now(UTC)
     classifier = LLMClassifier()
 
     try:
@@ -480,7 +480,7 @@ def run_classify(
         else:
             result = classifier.classify_pending(db, limit=request.limit)
 
-        finished_at = datetime.utcnow()
+        finished_at = datetime.now(UTC)
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
         status = "completed"
@@ -502,7 +502,7 @@ def run_classify(
             errors=result.errors,
         )
     except Exception as e:
-        finished_at = datetime.utcnow()
+        finished_at = datetime.now(UTC)
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
         return ClassifyRunResponse(
             status="failed",
@@ -639,7 +639,7 @@ def run_pipeline(
     This is a convenience endpoint that runs all three stages in sequence.
     Useful for cron jobs or manual refreshes.
     """
-    started_at = datetime.utcnow()
+    started_at = datetime.now(UTC)
     stages = []
     errors = []
 
@@ -670,10 +670,10 @@ def run_pipeline(
     try:
         from app.services.llm_classifier import LLMClassifier
 
-        classify_started = datetime.utcnow()
+        classify_started = datetime.now(UTC)
         classifier = LLMClassifier()
         classify_result = classifier.classify_pending(db, limit=request.classify_limit)
-        classify_finished = datetime.utcnow()
+        classify_finished = datetime.now(UTC)
         classify_duration = int((classify_finished - classify_started).total_seconds() * 1000)
         stages.append(
             PipelineStageResult(
@@ -743,7 +743,7 @@ def run_pipeline(
         stages.append(PipelineStageResult(stage="brief", status="failed", duration_ms=0, details={"error": str(e)}))
         errors.append(f"Brief failed: {e}")
 
-    finished_at = datetime.utcnow()
+    finished_at = datetime.now(UTC)
     total_duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
     # Determine overall status
@@ -857,7 +857,7 @@ def run_scheduled_pipeline(
     from app import models
     from app.services.alerts import check_alerts
 
-    started_at = datetime.utcnow()
+    started_at = datetime.now(UTC)
     trace_id = str(uuid_module.uuid4())
 
     # Initialize counters
@@ -941,7 +941,7 @@ def run_scheduled_pipeline(
     # so stale articles are excluded from the UI without explicit deactivation.
     # If retention-based cleanup is needed later, implement as a separate periodic job.
 
-    finished_at = datetime.utcnow()
+    finished_at = datetime.now(UTC)
     duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
     # Determine overall status
@@ -1264,7 +1264,7 @@ def update_prompt(
         prompt.content = request.content
         prompt.version = new_version
         prompt.current_version_id = version_entry.id
-        prompt.updated_at = datetime.utcnow()
+        prompt.updated_at = datetime.now(UTC)
     else:
         # Deactivate other prompts with same name (only one active per name)
         db.query(models.Prompt).filter(models.Prompt.name == name, models.Prompt.is_active == True).update(
@@ -1278,8 +1278,8 @@ def update_prompt(
             content=request.content,
             version=1,
             is_active=True,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
         db.add(prompt)
 
@@ -1327,7 +1327,7 @@ def activate_prompt(
 
     # Activate this prompt
     prompt.is_active = True
-    prompt.updated_at = datetime.utcnow()
+    prompt.updated_at = datetime.now(UTC)
 
     db.commit()
     db.refresh(prompt)
@@ -1401,7 +1401,7 @@ def test_prompts(
 
     logger = logging.getLogger(__name__)
 
-    started_at = datetime.utcnow()
+    started_at = datetime.now(UTC)
 
     # If custom prompts provided, temporarily update cache
     original_cache = _prompt_cache.copy()
@@ -1449,7 +1449,7 @@ def test_prompts(
                 logger.error(f"Failed to neutralize story {story.id}: {e}")
                 continue
 
-        finished_at = datetime.utcnow()
+        finished_at = datetime.now(UTC)
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
         # Get current prompt version
@@ -1504,7 +1504,7 @@ def reset_all_data(
     from app import models
     from app.storage.factory import get_storage_provider
 
-    started_at = datetime.utcnow()
+    started_at = datetime.now(UTC)
 
     # Safety check - refuse to run in production
     env = os.getenv("ENVIRONMENT", "").lower()
@@ -1552,7 +1552,7 @@ def reset_all_data(
     except Exception as e:
         warning = f"Storage cleanup failed: {str(e)}"
 
-    finished_at = datetime.utcnow()
+    finished_at = datetime.now(UTC)
     duration_ms = int((finished_at - started_at).total_seconds() * 1000)
 
     return ResetResponse(
@@ -1798,7 +1798,7 @@ def run_evaluation(
         teacher_model=eval_model,
         sample_size=result.sample_size,
         status=result.status,
-        started_at=eval_run.started_at if eval_run else datetime.utcnow(),
+        started_at=eval_run.started_at if eval_run else datetime.now(UTC),
         finished_at=eval_run.finished_at if eval_run else None,
         duration_ms=eval_run.duration_ms if eval_run else None,
         classification_accuracy=result.classification_accuracy,
@@ -2088,7 +2088,7 @@ def rollback_prompt(
         previous_version=result.from_version,
         new_version=result.to_version,
         rollback_reason=result.reason,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
         error=result.error,
     )
 
@@ -2121,7 +2121,7 @@ def configure_auto_optimize(
         prompt.min_score_threshold = request.min_score_threshold
     if request.rollback_threshold is not None:
         prompt.rollback_threshold = request.rollback_threshold
-    prompt.updated_at = datetime.utcnow()
+    prompt.updated_at = datetime.now(UTC)
 
     db.commit()
     db.refresh(prompt)
@@ -2581,7 +2581,7 @@ def get_source_health(
 
     from app import models
 
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
     # Build base query filtered by time window
     base_filter = [
@@ -2707,7 +2707,7 @@ def get_source_health(
 
     return SourceHealthResponse(
         window_hours=hours,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(UTC),
         source_types=sorted(source_types, key=lambda s: s.total_ingested, reverse=True),
         total_articles=total_articles,
         overall_truncation_rate=round(total_truncated / total_articles * 100, 1) if total_articles > 0 else 0.0,

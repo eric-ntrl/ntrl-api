@@ -6,7 +6,7 @@ Tests article normalization, category mapping, error handling,
 and API response processing.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -72,7 +72,7 @@ class TestPerigonFetcher:
 
     def test_normalize_article_success(self, fetcher, sample_article):
         """Test successful article normalization."""
-        start_time = datetime.utcnow().timestamp()
+        start_time = datetime.now(UTC).timestamp()
         result = fetcher._normalize_article(sample_article, start_time)
 
         assert result is not None
@@ -96,13 +96,13 @@ class TestPerigonFetcher:
     def test_normalize_article_missing_url(self, fetcher):
         """Test normalization returns None for missing URL."""
         article = {"title": "Test", "content": "Body"}
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is None
 
     def test_normalize_article_missing_title(self, fetcher):
         """Test normalization returns None for missing title."""
         article = {"url": "https://example.com", "content": "Body"}
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is None
 
     def test_normalize_article_no_body(self, fetcher):
@@ -112,7 +112,7 @@ class TestPerigonFetcher:
             "title": "Test Article",
             "pubDate": "2024-01-15T12:00:00Z",
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
 
         assert result is not None
         assert result["body"] == ""
@@ -127,7 +127,7 @@ class TestPerigonFetcher:
             "pubDate": "2024-01-15T12:00:00Z",
             "categories": ["Tech", "Science"],
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
 
         assert result is not None
         assert "Tech" in result["categories"]
@@ -140,9 +140,9 @@ class TestPerigonFetcher:
             "title": "Test",
             "pubDate": "invalid-date",
         }
-        before = datetime.utcnow()
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
-        after = datetime.utcnow()
+        before = datetime.now(UTC)
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
+        after = datetime.now(UTC)
 
         assert result is not None
         assert before <= result["published_at"] <= after
@@ -270,7 +270,7 @@ class TestPerigonSourceNameFallback:
             "pubDate": "2024-01-15T12:00:00Z",
             "source": {"name": None, "domain": "reuters.com"},
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is not None
         assert result["source_name"] == "reuters.com"
 
@@ -283,7 +283,7 @@ class TestPerigonSourceNameFallback:
             "pubDate": "2024-01-15T12:00:00Z",
             "source": {"name": None, "domain": "www.nytimes.com"},
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is not None
         assert result["source_name"] == "nytimes.com"
 
@@ -296,7 +296,7 @@ class TestPerigonSourceNameFallback:
             "pubDate": "2024-01-15T12:00:00Z",
             "source": {},
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is not None
         assert result["source_name"] == "apnews.com"
 
@@ -309,7 +309,7 @@ class TestPerigonSourceNameFallback:
             "pubDate": "2024-01-15T12:00:00Z",
             "source": {"name": "Reuters", "domain": "reuters.com"},
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is not None
         assert result["source_name"] == "Reuters"
 
@@ -355,7 +355,7 @@ class TestPerigonTruncationDetection:
             "pubDate": "2024-01-15T12:00:00Z",
             "source": {"name": "Example News", "domain": "example.com"},
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is not None
         assert result["body_downloaded"] is False
         assert result["extraction_failure_reason"] == "truncated_content"
@@ -385,7 +385,7 @@ class TestPerigonMarkerPreservation:
             "pubDate": "2024-01-15T12:00:00Z",
             "source": {"name": "Example News", "domain": "example.com"},
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is not None
         # Markers should be preserved in the body
         assert "...[1811 symbols]" in result["body"]

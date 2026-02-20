@@ -8,7 +8,7 @@ Covers:
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from app.models import FeedCategory
@@ -28,7 +28,7 @@ def _make_story_raw(source_id=None, feed_category="world"):
     raw = MagicMock()
     raw.id = uuid.uuid4()
     raw.source_id = source_id or uuid.uuid4()
-    raw.published_at = datetime.utcnow() - timedelta(hours=1)
+    raw.published_at = datetime.now(UTC) - timedelta(hours=1)
     raw.original_url = "https://example.com/article"
     raw.is_duplicate = False
     raw.feed_category = feed_category

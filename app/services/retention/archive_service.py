@@ -12,7 +12,7 @@ Handles:
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -71,9 +71,9 @@ def find_archivable_stories(
         return []
 
     if cutoff_date is None:
-        cutoff_date = datetime.utcnow() - timedelta(days=policy.active_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=policy.active_days)
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     return (
         db.query(StoryRaw)
@@ -120,7 +120,7 @@ def _log_lifecycle_event(
     event = ContentLifecycleEvent(
         story_raw_id=story_id,
         event_type=event_type.value,
-        event_timestamp=datetime.utcnow(),
+        event_timestamp=datetime.now(UTC),
         initiated_by=initiated_by,
         idempotency_key=idempotency_key,
         event_metadata=event_metadata,
@@ -154,7 +154,7 @@ def archive_story(
     Returns:
         True if successful, False otherwise
     """
-    idempotency_key = f"archive:{story.id}:{datetime.utcnow().strftime('%Y%m%d')}"
+    idempotency_key = f"archive:{story.id}:{datetime.now(UTC).strftime('%Y%m%d')}"
 
     try:
         # Check idempotency
@@ -198,11 +198,11 @@ def archive_story(
                 return False
 
         # Step 3: Update story record
-        story.archived_at = datetime.utcnow()
+        story.archived_at = datetime.now(UTC)
         story.archive_status = ArchiveStatus.ARCHIVED.value
         story.archive_reference = archive_ref
         story.raw_content_available = False
-        story.raw_content_expired_at = datetime.utcnow()
+        story.raw_content_expired_at = datetime.now(UTC)
         db.add(story)
 
         # Step 4: Log lifecycle event
@@ -324,9 +324,9 @@ def find_stories_for_deletion(
         return []
 
     if cutoff_date is None:
-        cutoff_date = datetime.utcnow() - timedelta(days=policy.compliance_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=policy.compliance_days)
 
-    grace_period = datetime.utcnow() - timedelta(hours=24)
+    grace_period = datetime.now(UTC) - timedelta(hours=24)
 
     return (
         db.query(StoryRaw)
@@ -361,7 +361,7 @@ def get_retention_stats(db: Session) -> dict:
     if not policy:
         return {"error": "No active retention policy"}
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     active_cutoff = now - timedelta(days=policy.active_days)
     compliance_cutoff = now - timedelta(days=policy.compliance_days)
 

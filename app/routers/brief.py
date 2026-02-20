@@ -5,7 +5,7 @@ Daily brief endpoints.
 GET /v1/brief - Get the current daily brief
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -90,7 +90,7 @@ def get_brief(
     # Calculate time cutoff if hours parameter provided
     time_cutoff = None
     if hours:
-        time_cutoff = datetime.utcnow() - timedelta(hours=hours)
+        time_cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
     # Build sections
     sections: list[BriefSection] = []

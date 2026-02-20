@@ -13,7 +13,7 @@ Tables:
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from sqlalchemy import (
@@ -378,10 +378,10 @@ class StoryRaw(Base):
         """
         if self.deleted_at:
             return "deleted"
-        if self.legal_hold or (self.preserve_until and self.preserve_until > datetime.utcnow()):
+        if self.legal_hold or (self.preserve_until and self.preserve_until > datetime.now(UTC)):
             return "preserved"
 
-        age_days = (datetime.utcnow() - self.ingested_at).days
+        age_days = (datetime.now(UTC) - self.ingested_at).days
 
         # Default retention windows (can be overridden by RetentionPolicy)
         active_days = 7

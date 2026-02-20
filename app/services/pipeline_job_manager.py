@@ -8,7 +8,7 @@ cancellation, and cleanup of stale jobs.
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -62,7 +62,7 @@ class PipelineJobManager:
             trace_id=trace_id,
             config=config,
             status=PipelineJobStatus.PENDING.value,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
         )
         db.add(job)
         db.commit()
@@ -113,7 +113,7 @@ class PipelineJobManager:
                 return
 
             job.status = PipelineJobStatus.RUNNING.value
-            job.started_at = datetime.utcnow()
+            job.started_at = datetime.now(UTC)
             db.commit()
 
             logger.info(
@@ -128,7 +128,7 @@ class PipelineJobManager:
             job = db.query(PipelineJob).filter(PipelineJob.id == job_id).first()
             if job:
                 job.status = result.get("status", PipelineJobStatus.COMPLETED.value)
-                job.finished_at = datetime.utcnow()
+                job.finished_at = datetime.now(UTC)
                 job.stage_progress = result.get("stage_progress", {})
                 job.pipeline_run_summary_id = result.get("summary_id")
                 if result.get("errors"):
@@ -150,7 +150,7 @@ class PipelineJobManager:
             job = db.query(PipelineJob).filter(PipelineJob.id == job_id).first()
             if job:
                 job.status = PipelineJobStatus.CANCELLED.value
-                job.finished_at = datetime.utcnow()
+                job.finished_at = datetime.now(UTC)
                 job.errors = [{"message": "Job was cancelled", "stage": job.current_stage}]
                 db.commit()
 
@@ -166,7 +166,7 @@ class PipelineJobManager:
             job = db.query(PipelineJob).filter(PipelineJob.id == job_id).first()
             if job:
                 job.status = PipelineJobStatus.FAILED.value
-                job.finished_at = datetime.utcnow()
+                job.finished_at = datetime.now(UTC)
                 job.errors = [{"message": str(e), "stage": job.current_stage}]
                 db.commit()
 
@@ -265,7 +265,7 @@ class PipelineJobManager:
         Returns:
             Number of jobs cleaned up
         """
-        cutoff = datetime.utcnow() - timedelta(hours=stale_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=stale_hours)
 
         stale_jobs = (
             db.query(PipelineJob)
@@ -284,7 +284,7 @@ class PipelineJobManager:
         count = 0
         for job in stale_jobs:
             job.status = PipelineJobStatus.FAILED.value
-            job.finished_at = datetime.utcnow()
+            job.finished_at = datetime.now(UTC)
             job.errors = [{"message": "Job timed out or was orphaned", "stage": job.current_stage}]
             count += 1
 

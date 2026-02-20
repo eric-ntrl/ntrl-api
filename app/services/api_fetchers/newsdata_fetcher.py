@@ -10,7 +10,7 @@ API Documentation: https://newsdata.io/documentation
 
 import logging
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -261,9 +261,9 @@ class NewsDataFetcher(BaseFetcher):
                     # Try ISO format
                     published_at = datetime.fromisoformat(pub_date_str.replace("Z", "+00:00"))
                 except (ValueError, TypeError):
-                    published_at = datetime.utcnow()
+                    published_at = datetime.now(UTC)
         else:
-            published_at = datetime.utcnow()
+            published_at = datetime.now(UTC)
 
         # Extract source info
         source_name = article.get("source_name")
