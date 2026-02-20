@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Rate limiting: minimum seconds between requests to the same domain
 _DOMAIN_RATE_LIMIT_S = 0.5
+_MAX_DOMAIN_ENTRIES = 1000
 _last_request_by_domain: dict[str, float] = {}
 
 
@@ -58,6 +59,10 @@ def _rate_limit(domain: str) -> None:
     if elapsed < _DOMAIN_RATE_LIMIT_S:
         time.sleep(_DOMAIN_RATE_LIMIT_S - elapsed)
     _last_request_by_domain[domain] = time.monotonic()
+    if len(_last_request_by_domain) > _MAX_DOMAIN_ENTRIES:
+        sorted_domains = sorted(_last_request_by_domain, key=_last_request_by_domain.get)
+        for d in sorted_domains[: len(sorted_domains) // 2]:
+            del _last_request_by_domain[d]
 
 
 def validate_url(url: str, timeout: float = 5.0) -> URLValidationResult:
