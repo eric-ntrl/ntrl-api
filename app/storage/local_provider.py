@@ -56,12 +56,18 @@ class LocalStorageProvider(StorageProvider):
         return "local"
 
     def _get_path(self, key: str) -> Path:
-        """Get filesystem path for key."""
-        return self._base_path / key
+        """Get filesystem path for key, with path traversal protection."""
+        resolved = (self._base_path / key).resolve()
+        if not resolved.is_relative_to(self._base_path.resolve()):
+            raise ValueError("Path traversal detected")
+        return resolved
 
     def _get_metadata_path(self, key: str) -> Path:
-        """Get metadata file path for key."""
-        return self._base_path / f"{key}{self._metadata_suffix}"
+        """Get metadata file path for key, with path traversal protection."""
+        resolved = (self._base_path / f"{key}{self._metadata_suffix}").resolve()
+        if not resolved.is_relative_to(self._base_path.resolve()):
+            raise ValueError("Path traversal detected")
+        return resolved
 
     def upload(
         self,
