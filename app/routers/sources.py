@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.database import get_db
+from app.routers.admin import require_admin_key
 
 router = APIRouter(prefix="/v1/sources", tags=["sources"])
 
@@ -93,6 +94,7 @@ def list_sources(
 @router.post("", response_model=SourceResponse, status_code=201)
 def create_source(
     request: SourceCreate,
+    _: None = Depends(require_admin_key),
     db: Session = Depends(get_db),
 ) -> SourceResponse:
     """Add a new source."""
@@ -133,6 +135,7 @@ def create_source(
 @router.delete("/{slug}", status_code=204)
 def delete_source(
     slug: str,
+    _: None = Depends(require_admin_key),
     db: Session = Depends(get_db),
 ):
     """

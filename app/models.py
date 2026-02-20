@@ -617,7 +617,7 @@ class ManipulationSpan(Base):
 
     # Taxonomy binding (references app/taxonomy.py)
     type_id_primary = Column(String(10), nullable=False)  # e.g., "A.1.1"
-    type_ids_secondary = Column(ARRAY(String), default=[])  # Additional types
+    type_ids_secondary = Column(ARRAY(String), default=list)  # Additional types
 
     # Location in original text
     segment = Column(String(20), nullable=False)  # title/deck/lede/body/caption
@@ -637,7 +637,7 @@ class ManipulationSpan(Base):
 
     # Audit / Provenance
     detector_source = Column(String(20), nullable=False)  # lexical/structural/semantic
-    exemptions_applied = Column(ARRAY(String), default=[])  # Guardrails that applied
+    exemptions_applied = Column(ARRAY(String), default=list)  # Guardrails that applied
     rewrite_template_id = Column(String(64), nullable=True)  # Template used (if any)
 
     # Timestamps
@@ -874,7 +874,7 @@ class PipelineRunSummary(Base):
     status = Column(String(20), nullable=False)  # "completed", "partial", "failed"
 
     # Alerts triggered (list of alert codes)
-    alerts = Column(JSONB, default=[], nullable=False)
+    alerts = Column(JSONB, default=list, nullable=False)
 
     # Trigger info
     trigger = Column(String(20), nullable=False)  # "scheduled", "manual", "api"
@@ -926,10 +926,10 @@ class PipelineJob(Base):
     finished_at = Column(DateTime, nullable=True)
 
     # Progress tracking (per-stage details)
-    stage_progress = Column(JSONB, default={}, nullable=False)
+    stage_progress = Column(JSONB, default=dict, nullable=False)
 
     # Error tracking
-    errors = Column(JSONB, default=[], nullable=False)
+    errors = Column(JSONB, default=list, nullable=False)
 
     # Link to final summary
     pipeline_run_summary_id = Column(UUID(as_uuid=True), ForeignKey("pipeline_run_summaries.id"), nullable=True)
