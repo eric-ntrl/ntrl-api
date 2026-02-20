@@ -74,3 +74,6 @@ jobs:
 
       - name: Run unit tests
         run: pipenv run pytest tests/unit/ -v --tb=short -q
+
+      - name: Security audit
+        run: pipenv run pip-audit || true
