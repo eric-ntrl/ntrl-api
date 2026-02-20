@@ -139,15 +139,18 @@ app.openapi = custom_openapi
 
 # CORS middleware — restrict origins in production
 _cors_origins_env = os.getenv("CORS_ORIGINS", "")
-_cors_origins = (
-    [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
-    if _cors_origins_env
-    else [
+_environment = os.getenv("ENVIRONMENT", "development").lower()
+if _cors_origins_env:
+    _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+elif _environment in ("development", "testing"):
+    _cors_origins = [
         "http://localhost:8081",
         "http://localhost:19006",
         "http://localhost:3000",
     ]
-)
+else:
+    _cors_origins = []
+    logger.warning("CORS_ORIGINS not set in non-development environment, no origins allowed")
 
 app.add_middleware(
     CORSMiddleware,
