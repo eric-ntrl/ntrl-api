@@ -217,9 +217,12 @@ def validate_batch(
         "redirect": 0,
     }
 
-    for story in stories:
+    chunk_size = 20
+    for i, story in enumerate(stories):
         result = validate_and_store(db, story)
         stats[result.status] = stats.get(result.status, 0) + 1
+        if (i + 1) % chunk_size == 0:
+            db.commit()
 
     db.commit()
 
