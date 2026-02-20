@@ -1851,8 +1851,7 @@ def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan
 
         # Parse reason to enum
         reason = _parse_span_reason(reason_str)
-        # DEBUG: Log reason mapping at INFO level to trace span diversity issue
-        logger.info(
+        logger.debug(
             f"[SPAN_REASON_TRACE] Phrase: '{phrase[:30]}...' | Input reason: '{reason_str}' → Output: '{reason.value}'"
         )
 
