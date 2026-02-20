@@ -79,7 +79,7 @@ class BriefAssemblyService:
             finished_at=now,
             duration_ms=duration_ms,
             error_message=error_message,
-            metadata=metadata,
+            log_metadata=metadata,
         )
         db.add(log)
         return log
