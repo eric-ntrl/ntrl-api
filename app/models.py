@@ -251,8 +251,8 @@ class Source(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     default_section = Column(String(32), nullable=True)  # Hint for classification
     homepage_url = Column(Text, nullable=True)  # Publisher homepage (e.g., "https://apnews.com")
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Relationships
     stories = relationship("StoryRaw", back_populates="source")
@@ -324,7 +324,7 @@ class StoryRaw(Base):
     url_hash = Column(String(64), nullable=False)  # SHA256 of URL for dedupe
     title_hash = Column(String(64), nullable=False)  # SHA256 of normalized title
     published_at = Column(DateTime, nullable=False)
-    ingested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    ingested_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     # Classification (set during ingestion — keyword heuristic)
     section = Column(String(32), nullable=True)  # Legacy Section enum value
@@ -495,7 +495,7 @@ class StoryNeutralized(Base):
     qc_checked_at = Column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     # Relationships
     story_raw = relationship("StoryRaw", back_populates="neutralized")
@@ -641,7 +641,7 @@ class ManipulationSpan(Base):
     rewrite_template_id = Column(String(64), nullable=True)  # Template used (if any)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     # Relationships
     story_neutralized = relationship("StoryNeutralized", back_populates="manipulation_spans")
@@ -700,7 +700,7 @@ class DailyBrief(Base):
     empty_reason = Column(String(255), nullable=True)
 
     # Assembly metadata
-    assembled_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    assembled_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     assembly_duration_ms = Column(Integer, nullable=True)
 
     # Relationships
@@ -804,7 +804,7 @@ class PipelineLog(Base):
     retry_count = Column(Integer, default=0)
 
     # Details
-    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     finished_at = Column(DateTime, nullable=True)
     duration_ms = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
@@ -921,7 +921,7 @@ class PipelineJob(Base):
     current_stage = Column(String(32), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
 
@@ -983,8 +983,8 @@ class Prompt(Base):
     content = Column(Text, nullable=False)
     version = Column(Integer, default=1, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     # Auto-optimization settings
     current_version_id = Column(UUID(as_uuid=True), nullable=True)  # FK added after PromptVersion
@@ -1026,7 +1026,7 @@ class PromptVersion(Base):
     change_source = Column(String(32), nullable=False)  # ChangeSource enum
     parent_version_id = Column(UUID(as_uuid=True), ForeignKey("prompt_versions.id"), nullable=True)
     avg_score_at_creation = Column(Float, nullable=True)  # Quality score when created
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     # Relationships
     prompt = relationship("Prompt", foreign_keys=[prompt_id], backref="versions")
@@ -1088,7 +1088,7 @@ class EvaluationRun(Base):
     estimated_cost_usd = Column(Float, default=0.0, nullable=False)
 
     # Timing
-    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     finished_at = Column(DateTime, nullable=True)
     duration_ms = Column(Integer, nullable=True)
 
@@ -1162,7 +1162,7 @@ class ArticleEvaluation(Base):
     span_prompt_suggestion = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     # Relationships
     evaluation_run = relationship("EvaluationRun", back_populates="article_evaluations")
@@ -1209,8 +1209,8 @@ class RetentionPolicy(Base):
     is_active = Column(Boolean, default=False, nullable=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC))
 
     __table_args__ = (Index("ix_retention_policies_is_active", "is_active"),)
 
@@ -1239,7 +1239,7 @@ class ContentLifecycleEvent(Base):
 
     # Event details
     event_type = Column(String(32), nullable=False)  # LifecycleEventType enum
-    event_timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
+    event_timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
     initiated_by = Column(String(64), nullable=False)  # 'scheduler', 'admin', 'gdpr_request', 'api'
 
     # Idempotency (prevents duplicate processing)
