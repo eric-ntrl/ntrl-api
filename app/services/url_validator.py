@@ -11,10 +11,13 @@ Usage:
     # result.status: "reachable", "unreachable", "timeout", "redirect"
 """
 
+import ipaddress
 import logging
+import socket
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -22,6 +25,34 @@ from sqlalchemy.orm import Session
 from app import models
 
 logger = logging.getLogger(__name__)
+
+
+def _is_private_ip(ip_str: str) -> bool:
+    """Check if an IP address is in a private/reserved range."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+    except ValueError:
+        return False
+
+
+def _check_ssrf(url: str) -> None:
+    """Block requests to private/internal IP addresses."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return
+        # Resolve DNS and check all returned IPs
+        for info in socket.getaddrinfo(hostname, None):
+            ip = info[4][0]
+            if _is_private_ip(ip):
+                raise ValueError(f"SSRF blocked: {hostname} resolves to private IP {ip}")
+    except socket.gaierror:
+        pass  # DNS resolution failure will be caught by httpx
+    except ValueError:
+        raise
+
 
 # Rate limiting: minimum seconds between requests to the same domain
 _DOMAIN_RATE_LIMIT_S = 0.5
@@ -82,6 +113,13 @@ def validate_url(url: str, timeout: float = 5.0) -> URLValidationResult:
         URLValidationResult with status, HTTP code, and final URL
     """
     if not url or not url.strip():
+        return URLValidationResult(status="unreachable", http_code=None)
+
+    # SSRF protection: block requests to private/internal IPs
+    try:
+        _check_ssrf(url)
+    except ValueError as e:
+        logger.warning(f"[URL_VALIDATOR] {e}")
         return URLValidationResult(status="unreachable", http_code=None)
 
     domain = _extract_domain(url)
