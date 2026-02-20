@@ -38,7 +38,7 @@ router = APIRouter(prefix="/v2", tags=["ntrl-v2"])
 class ScanRequest(BaseModel):
     """Request for detection only."""
 
-    body: str = Field(..., description="Article body text")
+    body: str = Field(..., description="Article body text", max_length=100_000)
     title: str = Field("", description="Article title")
     enable_semantic: bool = Field(True, description="Enable LLM-based semantic detection")
 
@@ -61,7 +61,7 @@ class ScanResponse(BaseModel):
 class ProcessRequest(BaseModel):
     """Request for full pipeline processing."""
 
-    body: str = Field(..., description="Article body text")
+    body: str = Field(..., description="Article body text", max_length=100_000)
     title: str = Field("", description="Article title")
     deck: str | None = Field(None, description="Article deck/subheadline")
     enable_semantic: bool = Field(True, description="Enable semantic detection")
@@ -100,14 +100,14 @@ class BatchArticle(BaseModel):
     """Single article in batch request."""
 
     article_id: str
-    body: str
+    body: str = Field(..., max_length=100_000)
     title: str = ""
 
 
 class BatchRequest(BaseModel):
     """Request for batch processing."""
 
-    articles: list[BatchArticle]
+    articles: list[BatchArticle] = Field(..., max_length=50)
     enable_semantic: bool = Field(True, description="Enable semantic detection")
     mock_mode: bool = Field(False, description="Use mock LLM (for testing)")
 
@@ -139,7 +139,7 @@ class BatchResponse(BaseModel):
 class TransparencyRequest(BaseModel):
     """Request for transparency data."""
 
-    body: str
+    body: str = Field(..., max_length=100_000)
     title: str = ""
 
 
