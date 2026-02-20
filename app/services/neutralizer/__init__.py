@@ -4018,7 +4018,7 @@ async def detect_spans_multi_pass_async(
 
     async def run_high_recall_on_chunk(chunk: ArticleChunk) -> list[TransparencySpan]:
         """Run high-recall pass on a single chunk."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         spans = await loop.run_in_executor(
             executor,
             lambda: detect_spans_high_recall_anthropic(
@@ -4037,7 +4037,7 @@ async def detect_spans_multi_pass_async(
         chunk_pass1_spans: list | None = None,
     ) -> tuple[list[TransparencySpan], list[TransparencySpan]]:
         """Run adversarial pass on a single chunk. Returns (validated, new) spans."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         validated, new = await loop.run_in_executor(
             executor,
             lambda: detect_spans_adversarial_pass(
@@ -4151,7 +4151,7 @@ def detect_spans_multi_pass(
     import asyncio
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if loop.is_running():
             # Already in async context - create new loop
             import nest_asyncio
@@ -4824,7 +4824,7 @@ def _enhance_spans_with_v2_scan(original_body: str, llm_spans: list[Transparency
 
     try:
         # Try to get current event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if loop.is_running():
             # We're in an async context (e.g., FastAPI) - create a new loop in thread
             import concurrent.futures

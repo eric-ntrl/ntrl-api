@@ -186,12 +186,12 @@ class NTRLScanner:
     async def _run_lexical(self, text: str, segment: ArticleSegment) -> ScanResult:
         """Run lexical detector (sync, but wrapped for parallel execution)."""
         # Lexical is sync, run in thread pool to not block
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: self.lexical.detect(text, segment))
 
     async def _run_structural(self, text: str, segment: ArticleSegment) -> ScanResult:
         """Run structural detector (sync, but wrapped for parallel execution)."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, lambda: self.structural.detect(text, segment))
 
     async def _run_semantic(self, text: str, segment: ArticleSegment) -> ScanResult:

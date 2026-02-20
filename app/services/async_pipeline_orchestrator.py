@@ -252,7 +252,7 @@ class AsyncPipelineOrchestrator:
                 service = IngestionService()
 
                 # Run in thread pool since it's a sync operation
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.ingest_all(
@@ -308,7 +308,7 @@ class AsyncPipelineOrchestrator:
                 classifier = LLMClassifier()
 
                 # Run in thread pool since it's a sync operation
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: classifier.classify_pending(
@@ -363,7 +363,7 @@ class AsyncPipelineOrchestrator:
                 service = NeutralizerService()
 
                 # Run in thread pool since it uses ThreadPoolExecutor internally
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.neutralize_pending(
@@ -420,7 +420,7 @@ class AsyncPipelineOrchestrator:
             with log_stage(stage_name, self.trace_id):
                 service = QualityGateService()
 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(None, lambda: service.run_batch(self.db, trace_id=self.trace_id))
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -467,7 +467,7 @@ class AsyncPipelineOrchestrator:
                 service = BriefAssemblyService()
 
                 # Run in thread pool
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.assemble_brief(
@@ -523,7 +523,7 @@ class AsyncPipelineOrchestrator:
 
         try:
             with log_stage(stage_name, self.trace_id):
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 stats = await loop.run_in_executor(None, lambda: validate_batch(self.db, limit=200))
 
                 duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
@@ -573,7 +573,7 @@ class AsyncPipelineOrchestrator:
                 service = EvaluationService(teacher_model=eval_model)
 
                 # Run in thread pool
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.run_evaluation(
@@ -687,7 +687,7 @@ class AsyncPipelineOrchestrator:
                         # Run optimization
                         optimizer = PromptOptimizer(teacher_model=settings.OPTIMIZER_MODEL)
 
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         opt_result = await loop.run_in_executor(
                             None,
                             lambda: optimizer.analyze_and_improve(
