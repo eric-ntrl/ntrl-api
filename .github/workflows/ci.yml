@@ -51,7 +51,7 @@ jobs:
       DATABASE_URL: postgresql://test:test@localhost:5432/ntrl_test
       NEUTRALIZER_PROVIDER: mock
       STORAGE_PROVIDER: local
-      API_KEY: test-key-123
+      ADMIN_API_KEY: test-key-123
       OPENAI_API_KEY: sk-fake-for-ci
       PERIGON_API_KEY: fake-for-ci
 
