@@ -1507,11 +1507,11 @@ def reset_all_data(
     started_at = datetime.utcnow()
 
     # Safety check - refuse to run in production
-    env = os.getenv("ENVIRONMENT", "development").lower()
-    if env == "production":
+    env = os.getenv("ENVIRONMENT", "").lower()
+    if env not in ("development", "testing"):
         raise HTTPException(
             status_code=403,
-            detail="Reset is disabled in production environment",
+            detail="Reset is only allowed in development and testing environments",
         )
 
     db_deleted = {
