@@ -56,13 +56,13 @@ sleep 90
 # 3. Re-neutralize articles with force flag
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": 75, "force": true, "max_workers": 5}'
 
 # 4. Rebuild brief
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"cutoff_hours": 24, "force": true}'
 ```
 

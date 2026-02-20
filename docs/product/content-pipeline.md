@@ -813,7 +813,7 @@ Use the `story_ids` parameter to avoid processing entire batches:
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"story_ids": ["uuid1", "uuid2", "uuid3"], "force": true}'
 ```
 
@@ -823,7 +823,7 @@ The debug endpoint runs detection fresh without writing to the database:
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug/spans" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 Returns the full pipeline trace:

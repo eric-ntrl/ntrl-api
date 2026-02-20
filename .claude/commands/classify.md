@@ -19,7 +19,7 @@ Examples:
 ```bash
 curl -s -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": LIMIT}'
 ```
 
@@ -27,7 +27,7 @@ curl -s -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
 ```bash
 curl -s -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": LIMIT, "force": true}'
 ```
 
@@ -57,7 +57,7 @@ After classification, show the distribution:
 ```bash
 # Get brief to see category counts
 curl -s "https://api-staging-7b4d.up.railway.app/v1/brief" \
-  -H "X-API-Key: staging-key-123" | python3 -c "
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 for s in d.get('sections', []):

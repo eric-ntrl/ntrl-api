@@ -36,7 +36,7 @@ Railway auto-deploys every push to `main`. There is no manual deploy step under 
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
 > **Note:** The `code_version` field in `/v1/status` is not auto-bumped per deploy. To confirm a deploy landed, check the Railway dashboard under Deployments.
@@ -141,7 +141,7 @@ Each invocation of `/v1/pipeline/scheduled-run` performs these steps in order:
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{}'
 ```
 
@@ -150,7 +150,7 @@ To override defaults:
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"max_items_per_source": 50, "classify_limit": 500, "neutralize_limit": 100}'
 ```
 
@@ -203,7 +203,7 @@ eas build --platform android --profile production
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 Returns: system status, LLM config, API key presence, article counts, last pipeline runs, health metrics, and alerts.
@@ -234,7 +234,7 @@ Run through these steps after every deploy to `main`:
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
 2. **Confirm deploy on Railway dashboard** -- look for a green checkmark on the latest deployment.
@@ -244,7 +244,7 @@ Run through these steps after every deploy to `main`:
    ```bash
    curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
      -H "Content-Type: application/json" \
-     -H "X-API-Key: staging-key-123" \
+     -H "X-API-Key: $ADMIN_API_KEY" \
      -d '{}'
    ```
 
@@ -265,7 +265,7 @@ Prompt changes affect neutralization and classification output. Follow these add
    ```bash
    curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
      -H "Content-Type: application/json" \
-     -H "X-API-Key: staging-key-123" \
+     -H "X-API-Key: $ADMIN_API_KEY" \
      -d '{"limit": 5, "force": true}'
    ```
 
@@ -273,14 +273,14 @@ Prompt changes affect neutralization and classification output. Follow these add
 
    ```bash
    curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
-     -H "X-API-Key: staging-key-123"
+     -H "X-API-Key: $ADMIN_API_KEY"
    ```
 
 4. **Inspect output with the debug endpoint:**
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
 ---
@@ -293,7 +293,7 @@ Prompt changes affect neutralization and classification output. Follow these add
 
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/ingest/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 **Classify (up to 200 pending):**
@@ -301,7 +301,7 @@ curl -X POST "https://api-staging-7b4d.up.railway.app/v1/ingest/run" \
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": 200}'
 ```
 
@@ -310,7 +310,7 @@ curl -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": 200, "force": true}'
 ```
 
@@ -319,7 +319,7 @@ curl -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": 50}'
 ```
 
@@ -328,7 +328,7 @@ curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"story_ids": ["id1", "id2"], "force": true}'
 ```
 
@@ -336,7 +336,7 @@ curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
 
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 ### 6.2 Debug Endpoints
@@ -345,14 +345,14 @@ curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 **Story processing spans:**
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug/spans" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 ---

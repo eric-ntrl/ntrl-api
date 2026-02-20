@@ -12,7 +12,7 @@ All examples use the staging environment. Replace the base URL and API key for p
 
 | Environment | Base URL | API Key Header |
 |-------------|----------|----------------|
-| Staging | `https://api-staging-7b4d.up.railway.app` | `X-API-Key: staging-key-123` |
+| Staging | `https://api-staging-7b4d.up.railway.app` | `X-API-Key: $ADMIN_API_KEY` |
 | Production | *(TBD)* | `X-API-Key: <production-admin-key>` |
 
 ---
@@ -25,7 +25,7 @@ This is the single most important endpoint for monitoring. It requires the `X-AP
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 **Response fields:**
@@ -171,7 +171,7 @@ Every invocation of `/v1/pipeline/scheduled-run` creates a `PipelineRunSummary` 
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 **What to look for in the response:**
@@ -187,7 +187,7 @@ curl "https://api-staging-7b4d.up.railway.app/v1/status" \
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{}'
 ```
 
@@ -203,7 +203,7 @@ Returns diagnostic information for a specific story. Useful for investigating wh
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 **Response fields:**
@@ -224,7 +224,7 @@ Runs the span detection pipeline from scratch (not from the database) and return
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug/spans" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 **Response fields:**
@@ -323,7 +323,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
    Look at the `health` field and `latest_pipeline_run.status`.
@@ -335,7 +335,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
      ```bash
      curl -X POST "https://api-staging-7b4d.up.railway.app/v1/ingest/run" \
-       -H "X-API-Key: staging-key-123"
+       -H "X-API-Key: $ADMIN_API_KEY"
      ```
 
 3. **Check classification:** Articles need a `feed_category` to appear in the brief. If articles are ingested but not classified, run classification manually:
@@ -343,7 +343,7 @@ railway logs | grep "\[NEUTRALIZE\]"
    ```bash
    curl -X POST "https://api-staging-7b4d.up.railway.app/v1/classify/run" \
      -H "Content-Type: application/json" \
-     -H "X-API-Key: staging-key-123" \
+     -H "X-API-Key: $ADMIN_API_KEY" \
      -d '{"limit": 200}'
    ```
 
@@ -352,7 +352,7 @@ railway logs | grep "\[NEUTRALIZE\]"
    ```bash
    curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
      -H "Content-Type: application/json" \
-     -H "X-API-Key: staging-key-123" \
+     -H "X-API-Key: $ADMIN_API_KEY" \
      -d '{"limit": 50}'
    ```
 
@@ -360,7 +360,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
    ```bash
    curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
-     -H "X-API-Key: staging-key-123"
+     -H "X-API-Key: $ADMIN_API_KEY"
    ```
 
 6. **Verify the brief now has content:**
@@ -379,7 +379,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
 2. **Review ingest logs** for error patterns:
@@ -413,7 +413,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
    Verify that `has_openai_api_key` (or whichever provider is configured via `neutralizer_provider`) is `true`.
@@ -422,7 +422,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
    Check the `issues` array for specific failure reasons.
@@ -458,7 +458,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
    Verify `has_openai_api_key` and `has_google_api_key` are both `true`. Classification may use either provider.
@@ -481,7 +481,7 @@ railway logs | grep "\[NEUTRALIZE\]"
    ```bash
    curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
      -H "Content-Type: application/json" \
-     -H "X-API-Key: staging-key-123" \
+     -H "X-API-Key: $ADMIN_API_KEY" \
      -d '{"classify_limit": 50}'
    ```
 
@@ -497,7 +497,7 @@ railway logs | grep "\[NEUTRALIZE\]"
 
    ```bash
    curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug/spans" \
-     -H "X-API-Key: staging-key-123" | python3 -m json.tool
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
    ```
 
 3. **Review the pipeline trace:**
@@ -596,7 +596,7 @@ If automated monitoring or external tools are hitting rate limits, reduce pollin
 ```bash
 # Full system status
 curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 
 # Quick uptime check (no auth)
 curl -s -o /dev/null -w "%{http_code}" \
@@ -605,20 +605,20 @@ curl -s -o /dev/null -w "%{http_code}" \
 # Trigger full pipeline run
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{}'
 
 # Debug a specific story
 curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 
 # Debug span detection for a story
 curl "https://api-staging-7b4d.up.railway.app/v1/stories/{id}/debug/spans" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 
 # Rebuild brief manually
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 
 # View Railway logs
 railway logs

@@ -55,7 +55,7 @@ echo "Waiting for deploy to complete..."
 # Poll every 10 seconds for up to 5 minutes
 for i in {1..30}; do
   STATUS=$(curl -s "https://api-staging-7b4d.up.railway.app/v1/status" \
-    -H "X-API-Key: staging-key-123" | python3 -c "
+    -H "X-API-Key: $ADMIN_API_KEY" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 print(data.get('health', 'unknown'))

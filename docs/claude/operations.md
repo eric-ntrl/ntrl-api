@@ -7,7 +7,7 @@
 | Property | Value |
 |----------|-------|
 | URL | `https://api-staging-7b4d.up.railway.app` |
-| Admin Key | `staging-key-123` (header: `X-API-Key`) |
+| Admin Key | `$ADMIN_API_KEY` (header: `X-API-Key`) |
 | Deploy Trigger | Push to `main` branch |
 | Deploy Time | ~2 minutes |
 
@@ -25,7 +25,7 @@
 ### Check Status
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 ### Quick Uptime Check (no auth)
@@ -38,21 +38,21 @@ curl -s -o /dev/null -w "%{http_code}" \
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{}'
 ```
 
 ### Rebuild Brief
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 ### Re-neutralize Specific Articles
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"story_ids": ["uuid1", "uuid2"], "force": true}'
 ```
 

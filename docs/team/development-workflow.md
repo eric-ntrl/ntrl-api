@@ -107,7 +107,7 @@ npx playwright test e2e/
 ## Staging Environment
 
 - **URL:** https://api-staging-7b4d.up.railway.app
-- **Admin key:** staging-key-123 (passed via `X-API-Key` header)
+- **Admin key:** $ADMIN_API_KEY (passed via `X-API-Key` header)
 - **Deployment:** Auto-deploys from `main` on push
 
 ---
