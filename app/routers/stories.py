@@ -12,7 +12,7 @@ import uuid
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, subqueryload
 
 from app import models
 from app.database import get_db
@@ -215,15 +215,20 @@ def list_stories(
         )
 
     total = query.count()
-    stories_raw = query.order_by(models.StoryRaw.published_at.desc()).offset(offset).limit(limit).all()
+    stories_raw = (
+        query.options(subqueryload(models.StoryRaw.neutralized))
+        .order_by(models.StoryRaw.published_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
 
     result = []
     for story in stories_raw:
-        # Get current neutralization if exists
-        neutralized = (
-            db.query(models.StoryNeutralized)
-            .filter(models.StoryNeutralized.story_raw_id == story.id, models.StoryNeutralized.is_current == True)
-            .first()
+        # Find current neutralization from eagerly-loaded relationship
+        neutralized = next(
+            (n for n in story.neutralized if n.is_current),
+            None,
         )
 
         result.append(
