@@ -278,8 +278,8 @@ class RateLimiter:
 
     async def acquire(self, tokens: int = 1) -> None:
         """Acquire tokens, waiting if necessary."""
-        async with self._get_lock():
-            while True:
+        while True:
+            async with self._get_lock():
                 now = time.time()
                 elapsed = now - self._last_update
                 self._tokens = min(self.max_tokens, self._tokens + elapsed * self.tokens_per_second)
@@ -289,10 +289,12 @@ class RateLimiter:
                     self._tokens -= tokens
                     return
 
-                # Calculate wait time
+                # Calculate wait time outside the lock
                 needed = tokens - self._tokens
                 wait_time = needed / self.tokens_per_second
-                await asyncio.sleep(wait_time)
+
+            # Sleep outside the lock so other requests aren't blocked
+            await asyncio.sleep(wait_time)
 
     async def __aenter__(self):
         await self.acquire()
