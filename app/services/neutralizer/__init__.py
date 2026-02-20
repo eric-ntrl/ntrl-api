@@ -1730,7 +1730,8 @@ def get_adversarial_prompt() -> str:
 def build_span_detection_prompt(body: str) -> str:
     """Build the prompt for LLM-based span detection."""
     template = get_span_detection_prompt()
-    return template.format(body=body or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    return template.format(body=wrapped_body)
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -2324,7 +2325,8 @@ def build_synthesis_detail_full_prompt(body: str) -> str:
     Build the user prompt for detail_full synthesis.
     """
     template = get_synthesis_detail_full_prompt()
-    return template.format(body=body or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    return template.format(body=wrapped_body)
 
 
 # -----------------------------------------------------------------------------
@@ -3035,7 +3037,8 @@ def build_synthesis_detail_brief_prompt(body: str) -> str:
         Formatted prompt with article body inserted
     """
     template = get_synthesis_detail_brief_prompt()
-    return template.format(body=body or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    return template.format(body=wrapped_body)
 
 
 def get_compression_feed_outputs_prompt() -> str:
@@ -3064,7 +3067,9 @@ def build_compression_feed_outputs_prompt(body: str, detail_brief: str) -> str:
         Formatted prompt with article body and detail_brief inserted
     """
     template = get_compression_feed_outputs_prompt()
-    return template.format(body=body or "", detail_brief=detail_brief or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    wrapped_brief = f"<detail_brief>\n{detail_brief or ''}\n</detail_brief>"
+    return template.format(body=wrapped_body, detail_brief=wrapped_brief)
 
 
 def _validate_feed_outputs(result: dict) -> None:
@@ -3140,7 +3145,10 @@ def _validate_feed_outputs(result: dict) -> None:
 def build_user_prompt(title: str, description: str | None, body: str | None) -> str:
     """Build the user prompt for neutralization using template from DB."""
     template = get_user_prompt_template()
-    return template.format(title=title, description=description or "N/A", body=(body or "")[:3000])
+    wrapped_title = f"<article_title>{title}</article_title>"
+    wrapped_desc = f"<article_description>{description or 'N/A'}</article_description>"
+    wrapped_body = f"<article_content>\n{(body or '')[:3000]}\n</article_content>"
+    return template.format(title=wrapped_title, description=wrapped_desc, body=wrapped_body)
 
 
 def build_repair_prompt(
@@ -3155,11 +3163,13 @@ def build_repair_prompt(
 
 Fix these issues in your response.
 
-ORIGINAL TITLE: {title}
+<article_title>{title}</article_title>
 
-ORIGINAL DESCRIPTION: {description or "N/A"}
+<article_description>{description or "N/A"}</article_description>
 
-ORIGINAL BODY: {(body or "")[:3000]}
+<article_content>
+{(body or "")[:3000]}
+</article_content>
 
 Respond with JSON:
 {{
@@ -3697,7 +3707,8 @@ def detect_spans_high_recall_anthropic(
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_high_recall_prompt()
         content_type_hint = build_content_type_hint(feed_category)
-        user_prompt = prompt_template.format(body=body, content_type_hint=content_type_hint)
+        wrapped_body = f"<article_content>\n{body}\n</article_content>"
+        user_prompt = prompt_template.format(body=wrapped_body, content_type_hint=content_type_hint)
         logger.info(f"[SPAN_DETECTION] High-recall pass starting, model={model}, body_length={len(body)}")
 
         response = client.messages.create(
@@ -3869,9 +3880,10 @@ def detect_spans_adversarial_pass(
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_adversarial_prompt()
         content_type_hint = build_content_type_hint(feed_category)
+        wrapped_body = f"<article_content>\n{body}\n</article_content>"
         user_prompt = prompt_template.format(
             detected_phrases=detected_list,
-            body=body,
+            body=wrapped_body,
             content_type_hint=content_type_hint,
         )
         logger.info(
