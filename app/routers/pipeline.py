@@ -11,9 +11,10 @@ Provides endpoints for:
 These endpoints use the new two-phase architecture for improved performance.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.routers.admin import require_admin_key
 from app.services.ntrl_batcher import (
     ArticleInput,
     NTRLBatcher,
@@ -161,7 +162,7 @@ class TransparencyResponse(BaseModel):
 
 
 @router.post("/scan", response_model=ScanResponse)
-async def scan_article(request: ScanRequest):
+async def scan_article(request: ScanRequest, _: None = Depends(require_admin_key)):
     """
     Scan article for manipulation (detection only, no rewriting).
 
@@ -216,7 +217,7 @@ async def scan_article(request: ScanRequest):
 
 
 @router.post("/process", response_model=ProcessResponse)
-async def process_article(request: ProcessRequest):
+async def process_article(request: ProcessRequest, _: None = Depends(require_admin_key)):
     """
     Process article through full NTRL pipeline (scan + fix).
 
@@ -287,7 +288,7 @@ async def process_article(request: ProcessRequest):
 
 
 @router.post("/batch", response_model=BatchResponse)
-async def process_batch(request: BatchRequest):
+async def process_batch(request: BatchRequest, _: None = Depends(require_admin_key)):
     """
     Process multiple articles in batch.
 
@@ -374,7 +375,7 @@ async def process_batch(request: BatchRequest):
 
 
 @router.post("/transparency", response_model=TransparencyResponse)
-async def get_transparency(request: TransparencyRequest):
+async def get_transparency(request: TransparencyRequest, _: None = Depends(require_admin_key)):
     """
     Get full transparency package for an article.
 

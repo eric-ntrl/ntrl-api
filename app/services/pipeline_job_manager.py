@@ -46,6 +46,13 @@ class PipelineJobManager:
         Returns:
             PipelineJob: The created job record
         """
+        # Concurrency guard: prevent overlapping pipeline runs
+        running_count = cls.get_running_job_count()
+        if running_count > 0:
+            raise RuntimeError(
+                f"Pipeline job already running ({running_count} active). Wait for it to complete or cancel it first."
+            )
+
         trace_id = str(uuid.uuid4())
         job_id = uuid.uuid4()
 

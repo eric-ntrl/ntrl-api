@@ -316,6 +316,7 @@ class BriefAssemblyService:
 
         except Exception as e:
             logger.error(f"Brief assembly failed: {e}")
+            db.rollback()
             result["status"] = "failed"
             result["error"] = str(e)
 
@@ -326,6 +327,7 @@ class BriefAssemblyService:
                 started_at=started_at,
                 error_message=str(e),
             )
+            db.commit()
 
         return result
 
