@@ -13,12 +13,11 @@ GET  /v1/status - Get system status, config, and pipeline health metrics
 
 import logging
 import os
-import secrets
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -27,6 +26,7 @@ if TYPE_CHECKING:
 
 admin_logger = logging.getLogger(__name__)
 
+from app.auth import require_admin_key
 from app.config import get_settings
 from app.database import get_db
 from app.schemas.admin import (
@@ -117,25 +117,6 @@ class StatusResponse(BaseModel):
     last_brief: LastRunInfo | None = None
     latest_pipeline_run: PipelineHealthInfo | None = None
     thresholds: AlertThresholds = Field(default_factory=AlertThresholds)
-
-
-def require_admin_key(
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-) -> None:
-    """Validate admin API key. Fails closed if ADMIN_API_KEY is not set."""
-    expected_key = os.getenv("ADMIN_API_KEY")
-
-    if not expected_key:
-        raise HTTPException(
-            status_code=500,
-            detail="Server misconfiguration: admin authentication not configured",
-        )
-
-    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid or missing API key",
-        )
 
 
 @router.get("/status", response_model=StatusResponse)

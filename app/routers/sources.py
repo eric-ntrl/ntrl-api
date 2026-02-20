@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app import models
+from app.auth import require_admin_key
 from app.database import get_db
-from app.routers.admin import require_admin_key
 
 router = APIRouter(prefix="/v1/sources", tags=["sources"])
 

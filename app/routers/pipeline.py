@@ -14,7 +14,7 @@ These endpoints use the new two-phase architecture for improved performance.
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.routers.admin import require_admin_key
+from app.auth import require_admin_key
 from app.services.ntrl_batcher import (
     ArticleInput,
     NTRLBatcher,

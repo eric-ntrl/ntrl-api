@@ -11,15 +11,14 @@ POST /v1/admin/retention/dry-run - Preview what would be archived/purged
 """
 
 import logging
-import os
-import secrets
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.auth import require_admin_key
 from app.database import get_db
 from app.services.retention import (
     archive_batch,
@@ -37,22 +36,6 @@ from app.services.retention.purge_service import cleanup_orphaned_records, get_p
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/admin/retention", tags=["admin-retention"])
-
-
-def require_admin_key(
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-) -> None:
-    """Validate admin API key."""
-    expected_key = os.getenv("ADMIN_API_KEY")
-
-    if not expected_key:
-        raise HTTPException(
-            status_code=500,
-            detail="Server misconfiguration: admin authentication not configured",
-        )
-
-    if not x_api_key or not secrets.compare_digest(x_api_key, expected_key):
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 # -----------------------------------------------------------------------------
