@@ -104,6 +104,16 @@ class AsyncPipelineOrchestrator:
             failure_threshold=5,
             reset_timeout_seconds=60,
         )
+        self.storage_breaker = CircuitBreaker(
+            name="storage",
+            failure_threshold=10,
+            reset_timeout_seconds=30,
+        )
+        self.rss_breaker = CircuitBreaker(
+            name="rss",
+            failure_threshold=10,
+            reset_timeout_seconds=30,
+        )
 
         # Errors collected during execution
         self.errors: list[dict[str, Any]] = []
