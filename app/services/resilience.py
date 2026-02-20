@@ -61,7 +61,12 @@ class CircuitBreaker:
     _failure_count: int = field(default=0, init=False)
     _last_failure_time: float = field(default=0, init=False)
     _half_open_calls: int = field(default=0, init=False)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    _lock: asyncio.Lock | None = field(default=None, init=False)
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @property
     def state(self) -> CircuitState:
@@ -79,7 +84,7 @@ class CircuitBreaker:
             CircuitOpenError: If circuit is open
             Exception: Any exception from the wrapped function
         """
-        async with self._lock:
+        async with self._get_lock():
             current_state = self.state
 
             if current_state == CircuitState.OPEN:
@@ -100,7 +105,7 @@ class CircuitBreaker:
                 result = func(*args, **kwargs)
 
             # Success - reset the circuit
-            async with self._lock:
+            async with self._get_lock():
                 self._failure_count = 0
                 self._half_open_calls = 0
                 if self._state != CircuitState.CLOSED:
@@ -110,7 +115,7 @@ class CircuitBreaker:
             return result
 
         except Exception:
-            async with self._lock:
+            async with self._get_lock():
                 self._failure_count += 1
                 self._last_failure_time = time.time()
 
@@ -260,7 +265,12 @@ class RateLimiter:
 
     _tokens: float = field(init=False)
     _last_update: float = field(init=False)
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    _lock: asyncio.Lock | None = field(default=None, init=False)
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     def __post_init__(self):
         self._tokens = float(self.max_tokens)
@@ -268,8 +278,8 @@ class RateLimiter:
 
     async def acquire(self, tokens: int = 1) -> None:
         """Acquire tokens, waiting if necessary."""
-        async with self._lock:
-            while True:
+        while True:
+            async with self._get_lock():
                 now = time.time()
                 elapsed = now - self._last_update
                 self._tokens = min(self.max_tokens, self._tokens + elapsed * self.tokens_per_second)
@@ -279,10 +289,12 @@ class RateLimiter:
                     self._tokens -= tokens
                     return
 
-                # Calculate wait time
+                # Calculate wait time outside the lock
                 needed = tokens - self._tokens
                 wait_time = needed / self.tokens_per_second
-                await asyncio.sleep(wait_time)
+
+            # Sleep outside the lock so other requests aren't blocked
+            await asyncio.sleep(wait_time)
 
     async def __aenter__(self):
         await self.acquire()

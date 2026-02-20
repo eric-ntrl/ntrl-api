@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install ruff
-        run: pip install ruff>=0.9.0
+        run: pip install ruff==0.9.6
 
       - name: Ruff check
         run: ruff check app/ tests/
@@ -51,7 +51,7 @@ jobs:
       DATABASE_URL: postgresql://test:test@localhost:5432/ntrl_test
       NEUTRALIZER_PROVIDER: mock
       STORAGE_PROVIDER: local
-      API_KEY: test-key-123
+      ADMIN_API_KEY: test-key-123
       OPENAI_API_KEY: sk-fake-for-ci
       PERIGON_API_KEY: fake-for-ci
 
@@ -74,3 +74,6 @@ jobs:
 
       - name: Run unit tests
         run: pipenv run pytest tests/unit/ -v --tb=short -q
+
+      - name: Security audit
+        run: pipenv run pip-audit || true

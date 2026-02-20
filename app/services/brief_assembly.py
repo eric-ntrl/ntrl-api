@@ -15,7 +15,7 @@ No personalization, trending, or popularity signals.
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, NamedTuple
 
 from sqlalchemy.orm import Session
@@ -65,7 +65,7 @@ class BriefAssemblyService:
         metadata: dict | None = None,
     ) -> models.PipelineLog:
         """Create a pipeline log entry."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         duration_ms = None
         if started_at:
             duration_ms = int((now - started_at).total_seconds() * 1000)
@@ -79,7 +79,7 @@ class BriefAssemblyService:
             finished_at=now,
             duration_ms=duration_ms,
             error_message=error_message,
-            metadata=metadata,
+            log_metadata=metadata,
         )
         db.add(log)
         return log
@@ -176,9 +176,9 @@ class BriefAssemblyService:
         Returns:
             Dict with brief info and stats
         """
-        started_at = datetime.utcnow()
-        brief_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        cutoff_time = datetime.utcnow() - timedelta(hours=cutoff_hours)
+        started_at = datetime.now(UTC)
+        brief_date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff_time = datetime.now(UTC) - timedelta(hours=cutoff_hours)
 
         result = {
             "status": "completed",
@@ -208,13 +208,13 @@ class BriefAssemblyService:
 
             if existing and not force:
                 # Check if it's recent enough (within last hour)
-                if (datetime.utcnow() - existing.assembled_at).total_seconds() < 3600:
+                if (datetime.now(UTC) - existing.assembled_at).total_seconds() < 3600:
                     result["status"] = "skipped"
                     result["brief_id"] = str(existing.id)
                     result["total_stories"] = existing.total_stories
                     result["is_empty"] = existing.is_empty
                     result["empty_reason"] = existing.empty_reason
-                    result["finished_at"] = datetime.utcnow()
+                    result["finished_at"] = datetime.now(UTC)
                     result["duration_ms"] = int((result["finished_at"] - started_at).total_seconds() * 1000)
                     return result
 
@@ -248,7 +248,7 @@ class BriefAssemblyService:
                 is_current=True,
                 is_empty=is_empty,
                 empty_reason=empty_reason,
-                assembled_at=datetime.utcnow(),
+                assembled_at=datetime.now(UTC),
             )
             db.add(brief)
             db.flush()
@@ -284,7 +284,7 @@ class BriefAssemblyService:
                     db.add(item)
 
             # Calculate duration
-            finished_at = datetime.utcnow()
+            finished_at = datetime.now(UTC)
             duration_ms = int((finished_at - started_at).total_seconds() * 1000)
             brief.assembly_duration_ms = duration_ms
 

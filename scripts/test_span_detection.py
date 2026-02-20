@@ -17,7 +17,6 @@ import argparse
 import json
 import os
 import sys
-from typing import Optional
 
 import requests
 
@@ -27,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Staging API config
 STAGING_API_URL = "https://api-staging-7b4d.up.railway.app"
-API_KEY = "staging-key-123"
+API_KEY = os.environ.get("ADMIN_API_KEY", "")
 
 
 def get_brief_articles(hours: int = 24, limit: int = 10) -> list:
@@ -43,11 +42,13 @@ def get_brief_articles(hours: int = 24, limit: int = 10) -> list:
     articles = []
     for section in data.get("sections", []):
         for story in section.get("stories", []):
-            articles.append({
-                "id": story["id"],
-                "title": story.get("title", ""),
-                "section": section.get("section", ""),
-            })
+            articles.append(
+                {
+                    "id": story["id"],
+                    "title": story.get("title", ""),
+                    "section": section.get("section", ""),
+                }
+            )
             if len(articles) >= limit:
                 return articles
     return articles
@@ -66,6 +67,7 @@ def debug_spans(article_id: str) -> dict:
 def test_local_body(body: str) -> dict:
     """Test span detection locally against a body text."""
     from dotenv import load_dotenv
+
     load_dotenv()
 
     from app.services.neutralizer import detect_spans_debug_openai
@@ -94,8 +96,8 @@ def test_local_body(body: str) -> dict:
         "final_spans": [
             {
                 "text": s.original_text,
-                "reason": s.reason.value if hasattr(s.reason, 'value') else str(s.reason),
-                "action": s.action.value if hasattr(s.action, 'value') else str(s.action),
+                "reason": s.reason.value if hasattr(s.reason, "value") else str(s.reason),
+                "action": s.action.value if hasattr(s.action, "value") else str(s.action),
             }
             for s in result.spans_final
         ],
@@ -105,15 +107,15 @@ def test_local_body(body: str) -> dict:
 
 def print_result(article_id: str, title: str, result: dict) -> None:
     """Pretty print a debug result."""
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"Article: {article_id}")
     print(f"Title: {title[:60]}..." if len(title) > 60 else f"Title: {title}")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     print(f"\nLLM returned {result.get('llm_phrases_count', 0)} phrases")
 
     trace = result.get("pipeline_trace", {})
-    print(f"\nPipeline trace:")
+    print("\nPipeline trace:")
     print(f"  After position matching: {trace.get('after_position_matching', 0)}")
     print(f"  After quote filter: {trace.get('after_quote_filter', 0)}")
     print(f"  After FP filter: {trace.get('after_false_positive_filter', 0)}")
@@ -133,7 +135,7 @@ def print_result(article_id: str, title: str, result: dict) -> None:
         for p in llm_phrases[:15]:  # Show first 15
             phrase = p.get("phrase", "") if isinstance(p, dict) else p
             reason = p.get("reason", "?") if isinstance(p, dict) else "?"
-            print(f"  - \"{phrase}\" ({reason})")
+            print(f'  - "{phrase}" ({reason})')
         if len(llm_phrases) > 15:
             print(f"  ... and {len(llm_phrases) - 15} more")
 
@@ -143,7 +145,7 @@ def print_result(article_id: str, title: str, result: dict) -> None:
         for s in final_spans:
             text = s.get("text") or s.get("original_text", "")
             reason = s.get("reason", "?")
-            print(f"  - \"{text}\" ({reason})")
+            print(f'  - "{text}" ({reason})')
 
 
 def main():
@@ -188,11 +190,13 @@ def main():
     for article in articles:
         try:
             result = debug_spans(article["id"])
-            results.append({
-                "id": article["id"],
-                "title": article["title"],
-                "result": result,
-            })
+            results.append(
+                {
+                    "id": article["id"],
+                    "title": article["title"],
+                    "result": result,
+                }
+            )
             if not args.json:
                 print_result(article["id"], article["title"], result)
         except Exception as e:
@@ -202,9 +206,9 @@ def main():
         print(json.dumps(results, indent=2))
     else:
         # Summary
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("SUMMARY")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         for r in results:
             span_count = r["result"].get("final_span_count", 0)
             llm_count = r["result"].get("llm_phrases_count", 0)

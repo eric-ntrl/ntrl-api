@@ -14,7 +14,7 @@ import gzip
 import hashlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 
@@ -182,5 +182,5 @@ class StorageProvider(ABC):
 
         Format: raw/{year}/{month}/{day}/{story_id}_{field}.txt.gz
         """
-        ts = timestamp or datetime.utcnow()
+        ts = timestamp or datetime.now(UTC)
         return f"raw/{ts.year}/{ts.month:02d}/{ts.day:02d}/{story_id}_{field}.txt.gz"

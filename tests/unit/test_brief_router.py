@@ -8,7 +8,7 @@ Covers:
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.schemas.brief import BriefStory
 
@@ -24,7 +24,7 @@ class TestBriefStoryPublisherUrl:
             feed_summary="Test summary for the article.",
             source_name="AP News",
             source_url="https://example.com/article",
-            published_at=datetime.utcnow(),
+            published_at=datetime.now(UTC),
             has_manipulative_content=False,
             publisher_url="https://apnews.com",
             position=0,
@@ -39,7 +39,7 @@ class TestBriefStoryPublisherUrl:
             feed_summary="Test summary for the article.",
             source_name="AP News",
             source_url="https://example.com/article",
-            published_at=datetime.utcnow(),
+            published_at=datetime.now(UTC),
             has_manipulative_content=False,
             position=0,
         )
@@ -53,7 +53,7 @@ class TestBriefStoryPublisherUrl:
             feed_summary="Test summary.",
             source_name="Reuters",
             source_url="https://example.com/article",
-            published_at=datetime.utcnow(),
+            published_at=datetime.now(UTC),
             has_manipulative_content=True,
             publisher_url="https://www.reuters.com",
             position=1,
@@ -70,7 +70,7 @@ class TestBriefStoryPublisherUrl:
             feed_summary="Test summary.",
             source_name="Unknown Source",
             source_url="https://example.com/article",
-            published_at=datetime.utcnow(),
+            published_at=datetime.now(UTC),
             has_manipulative_content=False,
             position=0,
         )

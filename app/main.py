@@ -89,11 +89,13 @@ async def lifespan(app: FastAPI):
     logger.info("NTRL API shutting down")
 
 
+APP_VERSION = "2.0.0"
+
 # Create app
 app = FastAPI(
     title="NTRL API",
     description="Neutral News Backend - Phase 1 POC",
-    version="1.0.0",
+    version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -137,15 +139,18 @@ app.openapi = custom_openapi
 
 # CORS middleware — restrict origins in production
 _cors_origins_env = os.getenv("CORS_ORIGINS", "")
-_cors_origins = (
-    [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
-    if _cors_origins_env
-    else [
+_environment = os.getenv("ENVIRONMENT", "development").lower()
+if _cors_origins_env:
+    _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+elif _environment in ("development", "testing"):
+    _cors_origins = [
         "http://localhost:8081",
         "http://localhost:19006",
         "http://localhost:3000",
     ]
-)
+else:
+    _cors_origins = []
+    logger.warning("CORS_ORIGINS not set in non-development environment, no origins allowed")
 
 app.add_middleware(
     CORSMiddleware,
@@ -189,7 +194,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "service": "ntrl-api",
-        "version": "1.0.0",
+        "version": APP_VERSION,
     }
 
 
@@ -198,7 +203,7 @@ def root() -> dict:
     """Root endpoint with API info."""
     return {
         "service": "NTRL API",
-        "version": "2.0.0",
+        "version": APP_VERSION,
         "description": "Neutral News Backend",
         "docs": "/docs",
         "endpoints": {

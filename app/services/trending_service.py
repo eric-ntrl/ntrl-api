@@ -8,7 +8,7 @@ Extracts trending topics from recent articles using TF-IDF-style keyword extract
 import logging
 import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -263,7 +263,7 @@ class TrendingService:
         Returns:
             TrendingTopicsResponse with sorted topics
         """
-        cutoff = datetime.utcnow() - timedelta(hours=window_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=window_hours)
 
         # Fetch recent article titles
         articles = (
@@ -284,7 +284,7 @@ class TrendingService:
         if not articles:
             return TrendingTopicsResponse(
                 topics=[],
-                generated_at=datetime.utcnow(),
+                generated_at=datetime.now(UTC),
                 window_hours=window_hours,
             )
 
@@ -341,6 +341,6 @@ class TrendingService:
 
         return TrendingTopicsResponse(
             topics=topics,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC),
             window_hours=window_hours,
         )

@@ -13,7 +13,7 @@ Covers:
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 from app.services.quality_gate import (
@@ -54,7 +54,7 @@ def _make_story_raw(
     """Create a mock StoryRaw object."""
     raw = MagicMock()
     raw.id = story_id or uuid.uuid4()
-    raw.published_at = published_at or datetime.utcnow() - timedelta(hours=1)
+    raw.published_at = published_at or datetime.now(UTC) - timedelta(hours=1)
     raw.source_id = source_id or uuid.uuid4()
     raw.feed_category = feed_category
     raw.is_duplicate = is_duplicate
@@ -168,7 +168,7 @@ class TestRequiredSource:
 
 class TestRequiredPublishedAt:
     def test_pass(self):
-        raw = _make_story_raw(published_at=datetime.utcnow() - timedelta(hours=2))
+        raw = _make_story_raw(published_at=datetime.now(UTC) - timedelta(hours=2))
         result = _service()._check_required_published_at(raw, _make_neutralized(), _make_source(), QCConfig())
         assert result.passed is True
 
@@ -180,14 +180,14 @@ class TestRequiredPublishedAt:
         assert "not set" in result.reason
 
     def test_fail_future(self):
-        raw = _make_story_raw(published_at=datetime.utcnow() + timedelta(hours=5))
+        raw = _make_story_raw(published_at=datetime.now(UTC) + timedelta(hours=5))
         result = _service()._check_required_published_at(raw, _make_neutralized(), _make_source(), QCConfig())
         assert result.passed is False
         assert "future" in result.reason
 
     def test_pass_near_future_within_buffer(self):
         """Published 30 min in future should pass with 1h buffer."""
-        raw = _make_story_raw(published_at=datetime.utcnow() + timedelta(minutes=30))
+        raw = _make_story_raw(published_at=datetime.now(UTC) + timedelta(minutes=30))
         result = _service()._check_required_published_at(raw, _make_neutralized(), _make_source(), QCConfig())
         assert result.passed is True
 

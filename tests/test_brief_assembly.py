@@ -9,7 +9,7 @@ Covers:
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 from app.models import FEED_CATEGORY_ORDER, FeedCategory
@@ -44,7 +44,7 @@ def _make_story_raw(
     """Create a mock StoryRaw object."""
     raw = MagicMock()
     raw.id = story_id or uuid.uuid4()
-    raw.published_at = published_at or datetime.utcnow()
+    raw.published_at = published_at or datetime.now(UTC)
     raw.source_id = source_id or uuid.uuid4()
     raw.feed_category = feed_category
     raw.section = section
@@ -141,7 +141,7 @@ class TestSortStories:
 
     def test_sort_by_published_at_desc(self):
         """Most recent stories should come first."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         older = _make_story_row(slug="ap", published_at=now - timedelta(hours=2))
         newer = _make_story_row(slug="ap", published_at=now - timedelta(hours=1))
         newest = _make_story_row(slug="ap", published_at=now)
@@ -198,7 +198,7 @@ class TestSortStories:
 
     def test_full_tiebreak_cascade(self):
         """Verify the full 3-tier tiebreak: published_at DESC, source ASC, ID ASC."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Same time, same source, different IDs
         id_1 = uuid.UUID("aaaaaaaa-0000-0000-0000-000000000001")
@@ -244,7 +244,7 @@ class TestEmptyCategories:
         mock_query.filter.return_value = mock_query
         mock_query.all.return_value = []
 
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
         result = self.service.get_qualifying_stories(mock_db, cutoff)
 
         # All 10 categories should exist as keys
@@ -267,7 +267,7 @@ class TestEmptyCategories:
         neutralized = _make_neutralized(story_raw_id=raw.id)
         mock_query.all.return_value = [(neutralized, raw, source)]
 
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
         result = self.service.get_qualifying_stories(mock_db, cutoff)
 
         assert len(result[FeedCategory.TECHNOLOGY]) == 1
@@ -297,7 +297,7 @@ class TestStoryGrouping:
         mock_query.filter.return_value = mock_query
         mock_query.all.return_value = db_results
 
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
         return self.service.get_qualifying_stories(mock_db, cutoff)
 
     def test_stories_group_by_feed_category(self):
@@ -376,7 +376,7 @@ class TestStoryGrouping:
         """Stories within each category should be sorted deterministically."""
         source_ap = _make_source(slug="ap")
         source_reuters = _make_source(slug="reuters")
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Two stories in same category, different times
         raw_old = _make_story_raw(

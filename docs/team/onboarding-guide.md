@@ -227,23 +227,23 @@ With the backend running locally, walk through all four stages:
 ```bash
 # Stage 1: Ingest articles from RSS feeds
 curl -X POST "http://localhost:8000/v1/ingest/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 
 # Stage 2: Classify the ingested articles
 curl -X POST "http://localhost:8000/v1/classify/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": 25}'
 
 # Stage 3: Neutralize the classified articles
 curl -X POST "http://localhost:8000/v1/neutralize/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": 25}'
 
 # Stage 4: Assemble the daily brief
 curl -X POST "http://localhost:8000/v1/brief/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 
 # View the assembled brief
 curl "http://localhost:8000/v1/brief" | python3 -m json.tool
@@ -255,7 +255,7 @@ You can also run all four stages at once:
 
 ```bash
 curl -X POST "http://localhost:8000/v1/pipeline/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 ---
@@ -318,7 +318,7 @@ These are the minimum variables to get the backend running locally. They should 
 | Detail | Value |
 |--------|-------|
 | API URL | `https://api-staging-7b4d.up.railway.app` |
-| Admin API Key | `staging-key-123` (use in `X-API-Key` header) |
+| Admin API Key | `$ADMIN_API_KEY` (use in `X-API-Key` header) |
 | Deployment | Auto-deploys from `main` branch on push via Railway |
 
 Example: hitting the staging brief endpoint:
@@ -331,7 +331,7 @@ Example: triggering a pipeline run on staging:
 
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 ---
@@ -460,7 +460,7 @@ A: These screens are deprecated and no longer in use. FeedScreen was replaced by
 A: Set `NEUTRALIZER_PROVIDER=openai` and `OPENAI_API_KEY=sk-...` in your `.env` file, then restart the server and re-run the neutralize stage.
 
 **Q: How do I access admin endpoints?**
-A: Include the `X-API-Key` header in your request. For local development, use the value from your `.env` file. For staging, use `staging-key-123`.
+A: Include the `X-API-Key` header in your request. For local development, use the value from your `.env` file. For staging, use `$ADMIN_API_KEY`.
 
 ---
 

@@ -23,13 +23,13 @@
 ```bash
 # Start job (returns immediately with job_id)
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run-async" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"enable_evaluation": true}'
 
 # Poll status
 curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 ## Key Benefits

@@ -10,7 +10,7 @@ Handles:
 
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import and_
@@ -56,7 +56,7 @@ class LifecycleService:
         - Were ingested more than retention_days ago
         """
         days = retention_days or self.DEFAULT_RETENTION_DAYS
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(UTC) - timedelta(days=days)
 
         return (
             db.query(models.StoryRaw)
@@ -99,7 +99,7 @@ class LifecycleService:
 
             # Update Postgres record
             story.raw_content_available = False
-            story.raw_content_expired_at = datetime.utcnow()
+            story.raw_content_expired_at = datetime.now(UTC)
             db.add(story)
 
             return True
@@ -127,7 +127,7 @@ class LifecycleService:
         Returns:
             Dict with cleanup results
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
         result = {
             "status": "completed",
             "started_at": started_at,
@@ -174,5 +174,5 @@ class LifecycleService:
             result["status"] = "failed"
             result["errors"].append(str(e))
 
-        result["finished_at"] = datetime.utcnow()
+        result["finished_at"] = datetime.now(UTC)
         return result

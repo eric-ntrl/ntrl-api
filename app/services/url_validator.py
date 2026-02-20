@@ -11,10 +11,13 @@ Usage:
     # result.status: "reachable", "unreachable", "timeout", "redirect"
 """
 
+import ipaddress
 import logging
+import socket
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -23,8 +26,37 @@ from app import models
 
 logger = logging.getLogger(__name__)
 
+
+def _is_private_ip(ip_str: str) -> bool:
+    """Check if an IP address is in a private/reserved range."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        return addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved
+    except ValueError:
+        return False
+
+
+def _check_ssrf(url: str) -> None:
+    """Block requests to private/internal IP addresses."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return
+        # Resolve DNS and check all returned IPs
+        for info in socket.getaddrinfo(hostname, None):
+            ip = info[4][0]
+            if _is_private_ip(ip):
+                raise ValueError(f"SSRF blocked: {hostname} resolves to private IP {ip}")
+    except socket.gaierror:
+        pass  # DNS resolution failure will be caught by httpx
+    except ValueError:
+        raise
+
+
 # Rate limiting: minimum seconds between requests to the same domain
 _DOMAIN_RATE_LIMIT_S = 0.5
+_MAX_DOMAIN_ENTRIES = 1000
 _last_request_by_domain: dict[str, float] = {}
 
 
@@ -58,6 +90,10 @@ def _rate_limit(domain: str) -> None:
     if elapsed < _DOMAIN_RATE_LIMIT_S:
         time.sleep(_DOMAIN_RATE_LIMIT_S - elapsed)
     _last_request_by_domain[domain] = time.monotonic()
+    if len(_last_request_by_domain) > _MAX_DOMAIN_ENTRIES:
+        sorted_domains = sorted(_last_request_by_domain, key=_last_request_by_domain.get)
+        for d in sorted_domains[: len(sorted_domains) // 2]:
+            del _last_request_by_domain[d]
 
 
 def validate_url(url: str, timeout: float = 5.0) -> URLValidationResult:
@@ -77,6 +113,13 @@ def validate_url(url: str, timeout: float = 5.0) -> URLValidationResult:
         URLValidationResult with status, HTTP code, and final URL
     """
     if not url or not url.strip():
+        return URLValidationResult(status="unreachable", http_code=None)
+
+    # SSRF protection: block requests to private/internal IPs
+    try:
+        _check_ssrf(url)
+    except ValueError as e:
+        logger.warning(f"[URL_VALIDATOR] {e}")
         return URLValidationResult(status="unreachable", http_code=None)
 
     domain = _extract_domain(url)
@@ -166,7 +209,7 @@ def validate_and_store(
     result = validate_url(story_raw.original_url)
 
     story_raw.url_status = result.status
-    story_raw.url_checked_at = datetime.utcnow()
+    story_raw.url_checked_at = datetime.now(UTC)
     story_raw.url_http_status = result.http_code
     story_raw.url_final_location = result.final_url
 
@@ -212,9 +255,12 @@ def validate_batch(
         "redirect": 0,
     }
 
-    for story in stories:
+    chunk_size = 20
+    for i, story in enumerate(stories):
         result = validate_and_store(db, story)
         stats[result.status] = stats.get(result.status, 0) + 1
+        if (i + 1) % chunk_size == 0:
+            db.commit()
 
     db.commit()
 

@@ -14,7 +14,7 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
@@ -118,7 +118,7 @@ def _log_lifecycle_event(
     event = ContentLifecycleEvent(
         story_raw_id=story_id,
         event_type=event_type.value,
-        event_timestamp=datetime.utcnow(),
+        event_timestamp=datetime.now(UTC),
         initiated_by=initiated_by,
         idempotency_key=idempotency_key,
         event_metadata=event_metadata,
@@ -146,7 +146,7 @@ def soft_delete_story(
         logger.warning(f"Cannot delete story {story.id} - under legal hold")
         return False
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     if story.preserve_until and story.preserve_until > now:
         logger.warning(f"Cannot delete story {story.id} - preserved until {story.preserve_until}")
         return False
@@ -245,7 +245,7 @@ def _hard_delete_story_cascade(
         story_id,
         LifecycleEventType.HARD_DELETED,
         initiated_by,
-        idempotency_key=f"hard_delete:{story_id}:{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+        idempotency_key=f"hard_delete:{story_id}:{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}",
         event_metadata={"deleted_counts": counts},
     )
 
@@ -285,8 +285,8 @@ def purge_expired_content(
     result.protected_by_brief = len(protected_ids)
 
     # Find stories past compliance window
-    compliance_cutoff = datetime.utcnow() - timedelta(days=policy.compliance_days)
-    grace_period_cutoff = datetime.utcnow() - timedelta(hours=24)
+    compliance_cutoff = datetime.now(UTC) - timedelta(days=policy.compliance_days)
+    grace_period_cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     # Step 1: Soft delete stories past compliance window (not already deleted)
     stories_to_soft_delete = (
@@ -304,7 +304,7 @@ def purge_expired_content(
     )
 
     for story in stories_to_soft_delete:
-        if story.preserve_until and story.preserve_until > datetime.utcnow():
+        if story.preserve_until and story.preserve_until > datetime.now(UTC):
             result.protected_by_hold += 1
             result.stories_skipped += 1
             continue
@@ -382,7 +382,7 @@ def purge_development_mode(
     protected_ids = _get_brief_protected_story_ids(db)
     result.protected_by_brief = len(protected_ids)
 
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
 
     # Find all stories older than cutoff
     stories = (
@@ -401,7 +401,7 @@ def purge_development_mode(
     logger.info(f"Development purge: found {len(stories)} stories older than {days} days")
 
     for story in stories:
-        if story.preserve_until and story.preserve_until > datetime.utcnow():
+        if story.preserve_until and story.preserve_until > datetime.now(UTC):
             result.protected_by_hold += 1
             result.stories_skipped += 1
             continue
@@ -516,7 +516,7 @@ def get_purge_preview(db: Session) -> dict:
     if not policy:
         return {"error": "No active retention policy"}
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     compliance_cutoff = now - timedelta(days=policy.compliance_days)
     grace_period_cutoff = now - timedelta(hours=24)
 

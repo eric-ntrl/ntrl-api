@@ -7,7 +7,7 @@ Neutral news backend: removes manipulative language, creates calm news briefs.
 | Resource | Location |
 |----------|----------|
 | Staging URL | `https://api-staging-7b4d.up.railway.app` |
-| Admin Key | `staging-key-123` (header: `X-API-Key`) |
+| Admin Key | `$ADMIN_API_KEY` (header: `X-API-Key`) |
 | Dev Server | `pipenv run uvicorn app.main:app --reload --port 8000` |
 | Tests | `pipenv run pytest tests/` |
 | Unit Tests | `pipenv run pytest tests/unit/` (439 tests) |
@@ -39,13 +39,13 @@ The pipeline now supports async execution via background jobs to avoid HTTP time
 ```bash
 # Start job (returns immediately with job_id)
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run-async" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"enable_evaluation": true}'
 
 # Poll status
 curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 ### Key Benefits
@@ -168,7 +168,7 @@ Editing hardcoded prompts and seeing tests pass (mock provider) does NOT mean pr
 Returns truncation rates, body sizes, QC pass rates, and auto-generated alerts per source type. Example:
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/admin/sources/health?hours=12&source_type=perigon" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 Alerts trigger when: truncation >20%, QC pass rate <80%, avg body size <1KB, or URL reachability <90%.

@@ -18,7 +18,7 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
@@ -285,7 +285,7 @@ class QualityGateService:
         Returns:
             Dict with total_checked, passed, failed, failures_by_check
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         # Query articles needing QC
         query = (
@@ -331,7 +331,7 @@ class QualityGateService:
         db.commit()
 
         # Log batch summary
-        duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+        duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
         self._log_batch_summary(
             db,
             trace_id,
@@ -454,7 +454,7 @@ class QualityGateService:
             )
         # Check not too far in the future
         buffer = timedelta(hours=config.future_publish_buffer_hours)
-        if raw.published_at > datetime.utcnow() + buffer:
+        if raw.published_at > datetime.now(UTC) + buffer:
             return QCCheckResult(
                 check="required_published_at",
                 passed=False,
@@ -1083,7 +1083,7 @@ class QualityGateService:
             status=PipelineStatus.COMPLETED.value if failed == 0 else PipelineStatus.COMPLETED.value,
             trace_id=trace_id,
             started_at=started_at,
-            finished_at=datetime.utcnow(),
+            finished_at=datetime.now(UTC),
             duration_ms=duration_ms,
             log_metadata={
                 "total_checked": total_checked,

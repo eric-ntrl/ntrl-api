@@ -207,13 +207,15 @@ def clear_classification_prompt_cache() -> None:
 
 def _build_user_prompt(title: str, description: str, body_excerpt: str, source_slug: str) -> str:
     """Build the user prompt for classification."""
-    parts = [f"TITLE: {title}"]
+    parts = ["<article_content>"]
+    parts.append(f"TITLE: {title}")
     if description:
         parts.append(f"DESCRIPTION: {description}")
     if source_slug:
         parts.append(f"SOURCE: {source_slug}")
     if body_excerpt:
         parts.append(f"EXCERPT: {body_excerpt[:2000]}")
+    parts.append("</article_content>")
     return "\n".join(parts)
 
 

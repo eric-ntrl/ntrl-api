@@ -9,7 +9,7 @@ Fail fast with clear error messages if required config is missing.
 from functools import lru_cache
 from typing import ClassVar
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -196,10 +196,11 @@ class Settings(BaseSettings):
             return v.replace("postgresql://", "postgresql+psycopg2://", 1)
         return v
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = True
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+    )
 
 
 @lru_cache(maxsize=1)

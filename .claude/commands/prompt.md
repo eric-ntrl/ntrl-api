@@ -27,7 +27,7 @@ Examples:
 If no arguments:
 ```bash
 curl -s "https://api-staging-7b4d.up.railway.app/v1/admin/prompts" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 Display as table: name, model, version, is_active, updated_at
@@ -36,7 +36,7 @@ Display as table: name, model, version, is_active, updated_at
 If prompt name provided:
 ```bash
 curl -s "https://api-staging-7b4d.up.railway.app/v1/admin/prompts/{name}" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 Display: full content, version, model, last updated
@@ -45,7 +45,7 @@ Display: full content, version, model, last updated
 If "versions" flag:
 ```bash
 curl -s "https://api-staging-7b4d.up.railway.app/v1/admin/prompts/{name}/versions" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 Display table: version, change_source (manual/auto_optimize/rollback), change_reason, created_at
@@ -60,7 +60,7 @@ If "update" flag:
    ```bash
    curl -s -X PUT "https://api-staging-7b4d.up.railway.app/v1/admin/prompts/{name}" \
      -H "Content-Type: application/json" \
-     -H "X-API-Key: staging-key-123" \
+     -H "X-API-Key: $ADMIN_API_KEY" \
      -d '{"content": "NEW_CONTENT", "model": "MODEL", "change_reason": "REASON"}'
    ```
 4. Confirm success and show new version number
@@ -71,7 +71,7 @@ If "rollback" flag:
 ```bash
 curl -s -X POST "https://api-staging-7b4d.up.railway.app/v1/admin/prompts/{name}/rollback" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"target_version": VERSION, "reason": "REASON"}'
 ```
 

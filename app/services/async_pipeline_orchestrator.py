@@ -14,7 +14,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -104,6 +104,16 @@ class AsyncPipelineOrchestrator:
             failure_threshold=5,
             reset_timeout_seconds=60,
         )
+        self.storage_breaker = CircuitBreaker(
+            name="storage",
+            failure_threshold=10,
+            reset_timeout_seconds=30,
+        )
+        self.rss_breaker = CircuitBreaker(
+            name="rss",
+            failure_threshold=10,
+            reset_timeout_seconds=30,
+        )
 
         # Errors collected during execution
         self.errors: list[dict[str, Any]] = []
@@ -118,7 +128,7 @@ class AsyncPipelineOrchestrator:
         Returns:
             Dict containing status, summary_id, stage_progress, and errors
         """
-        self._started_at = datetime.utcnow()
+        self._started_at = datetime.now(UTC)
         logger.info(
             f"Pipeline orchestrator starting for job {self.job_id}",
             extra={
@@ -182,7 +192,7 @@ class AsyncPipelineOrchestrator:
             summary.status = overall_status
             self.db.commit()
 
-            finished_at = datetime.utcnow()
+            finished_at = datetime.now(UTC)
             duration_ms = int((finished_at - self._started_at).total_seconds() * 1000)
 
             logger.info(
@@ -213,7 +223,7 @@ class AsyncPipelineOrchestrator:
                 }
             )
 
-            finished_at = datetime.utcnow()
+            finished_at = datetime.now(UTC)
             duration_ms = int((finished_at - self._started_at).total_seconds() * 1000)
 
             return PipelineResult(
@@ -245,14 +255,14 @@ class AsyncPipelineOrchestrator:
         stage_name = "ingest"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         try:
             with log_stage(stage_name, self.trace_id):
                 service = IngestionService()
 
                 # Run in thread pool since it's a sync operation
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.ingest_all(
@@ -262,7 +272,7 @@ class AsyncPipelineOrchestrator:
                     ),
                 )
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 self.stage_results[stage_name] = StageResult(
@@ -284,7 +294,7 @@ class AsyncPipelineOrchestrator:
                 )
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -301,14 +311,14 @@ class AsyncPipelineOrchestrator:
         stage_name = "classify"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         try:
             with log_stage(stage_name, self.trace_id):
                 classifier = LLMClassifier()
 
                 # Run in thread pool since it's a sync operation
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: classifier.classify_pending(
@@ -317,7 +327,7 @@ class AsyncPipelineOrchestrator:
                     ),
                 )
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 self.stage_results[stage_name] = StageResult(
@@ -339,7 +349,7 @@ class AsyncPipelineOrchestrator:
                 )
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -356,14 +366,14 @@ class AsyncPipelineOrchestrator:
         stage_name = "neutralize"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         try:
             with log_stage(stage_name, self.trace_id):
                 service = NeutralizerService()
 
                 # Run in thread pool since it uses ThreadPoolExecutor internally
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.neutralize_pending(
@@ -373,7 +383,7 @@ class AsyncPipelineOrchestrator:
                     ),
                 )
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 total = result.get("total_processed", 0) + result.get("total_skipped", 0)
@@ -397,7 +407,7 @@ class AsyncPipelineOrchestrator:
                 )
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -414,16 +424,16 @@ class AsyncPipelineOrchestrator:
         stage_name = "quality_check"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         try:
             with log_stage(stage_name, self.trace_id):
                 service = QualityGateService()
 
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(None, lambda: service.run_batch(self.db, trace_id=self.trace_id))
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 self.stage_results[stage_name] = StageResult(
@@ -443,7 +453,7 @@ class AsyncPipelineOrchestrator:
                 )
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -460,14 +470,14 @@ class AsyncPipelineOrchestrator:
         stage_name = "brief"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         try:
             with log_stage(stage_name, self.trace_id):
                 service = BriefAssemblyService()
 
                 # Run in thread pool
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.assemble_brief(
@@ -477,7 +487,7 @@ class AsyncPipelineOrchestrator:
                     ),
                 )
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 self.stage_results[stage_name] = StageResult(
@@ -502,7 +512,7 @@ class AsyncPipelineOrchestrator:
                 invalidate_brief_cache()
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -519,14 +529,14 @@ class AsyncPipelineOrchestrator:
         stage_name = "url_validation"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         try:
             with log_stage(stage_name, self.trace_id):
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 stats = await loop.run_in_executor(None, lambda: validate_batch(self.db, limit=200))
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 self.stage_results[stage_name] = StageResult(
@@ -542,7 +552,7 @@ class AsyncPipelineOrchestrator:
                 )
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -561,7 +571,7 @@ class AsyncPipelineOrchestrator:
         stage_name = "evaluation"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
         settings = get_settings()
 
         try:
@@ -573,7 +583,7 @@ class AsyncPipelineOrchestrator:
                 service = EvaluationService(teacher_model=eval_model)
 
                 # Run in thread pool
-                loop = asyncio.get_event_loop()
+                loop = asyncio.get_running_loop()
                 result = await loop.run_in_executor(
                     None,
                     lambda: service.run_evaluation(
@@ -583,7 +593,7 @@ class AsyncPipelineOrchestrator:
                     ),
                 )
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 self.stage_results[stage_name] = StageResult(
@@ -626,7 +636,7 @@ class AsyncPipelineOrchestrator:
                 )
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -645,7 +655,7 @@ class AsyncPipelineOrchestrator:
         stage_name = "optimization"
         PipelineJobManager.update_job_stage(self.db, self.job_id, stage_name)
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
         settings = get_settings()
 
         try:
@@ -687,7 +697,7 @@ class AsyncPipelineOrchestrator:
                         # Run optimization
                         optimizer = PromptOptimizer(teacher_model=settings.OPTIMIZER_MODEL)
 
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         opt_result = await loop.run_in_executor(
                             None,
                             lambda: optimizer.analyze_and_improve(
@@ -699,7 +709,7 @@ class AsyncPipelineOrchestrator:
 
                         prompts_updated = len([p for p in opt_result.prompts_updated if p.get("applied")])
 
-                duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+                duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
 
                 self.stage_results[stage_name] = StageResult(
@@ -718,7 +728,7 @@ class AsyncPipelineOrchestrator:
                 )
 
         except Exception as e:
-            duration_ms = int((datetime.utcnow() - started_at).total_seconds() * 1000)
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
             self.stage_results[stage_name] = StageResult(
                 stage=stage_name,
                 status="failed",
@@ -775,7 +785,7 @@ class AsyncPipelineOrchestrator:
             id=uuid.uuid4(),
             trace_id=self.trace_id,
             started_at=self._started_at,
-            finished_at=datetime.utcnow(),
+            finished_at=datetime.now(UTC),
             duration_ms=total_duration,
             ingest_total=ingest.metrics.get("total", 0),
             ingest_success=ingest.metrics.get("success", 0),

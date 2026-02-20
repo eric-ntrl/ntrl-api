@@ -854,7 +854,7 @@ GROUP BY classification_method, classification_model;
 | Aspect | Detail |
 |--------|--------|
 | URL | `https://api-staging-7b4d.up.railway.app` |
-| Admin API Key | `staging-key-123` |
+| Admin API Key | `$ADMIN_API_KEY` |
 | Deploy trigger | Auto-deploy from `main` branch |
 | Database | Separate Railway PostgreSQL instance |
 | S3 bucket | Shared `ntrl-raw-content` (same as production, different key prefixes) |
@@ -865,7 +865,7 @@ GROUP BY classification_method, classification_model;
 
 ```bash
 curl "https://api-staging-7b4d.up.railway.app/v1/status" \
-  -H "X-API-Key: staging-key-123" | python3 -m json.tool
+  -H "X-API-Key: $ADMIN_API_KEY" | python3 -m json.tool
 ```
 
 **Check brief has content:**
@@ -879,7 +879,7 @@ curl "https://api-staging-7b4d.up.railway.app/v1/brief"
 ```bash
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/pipeline/scheduled-run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{}'
 ```
 

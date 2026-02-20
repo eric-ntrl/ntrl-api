@@ -15,7 +15,7 @@ Examples:
 ### View Brief Status
 ```bash
 curl -s "https://api-staging-7b4d.up.railway.app/v1/brief" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 Parse and display:
@@ -47,7 +47,7 @@ Flag issues:
 If "rebuild" flag:
 ```bash
 curl -s -X POST "https://api-staging-7b4d.up.railway.app/v1/brief/run" \
-  -H "X-API-Key: staging-key-123"
+  -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
 Then show updated status.

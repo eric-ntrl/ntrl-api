@@ -6,7 +6,7 @@ Tests article normalization, full content handling, error handling,
 and API response processing.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -71,7 +71,7 @@ class TestNewsDataFetcher:
 
     def test_normalize_article_success(self, fetcher, sample_article):
         """Test successful article normalization."""
-        start_time = datetime.utcnow().timestamp()
+        start_time = datetime.now(UTC).timestamp()
         result = fetcher._normalize_article(sample_article, start_time)
 
         assert result is not None
@@ -92,7 +92,7 @@ class TestNewsDataFetcher:
 
     def test_normalize_article_fallback_to_content(self, fetcher, sample_article_no_full_content):
         """Test normalization falls back to content when no full_content."""
-        result = fetcher._normalize_article(sample_article_no_full_content, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(sample_article_no_full_content, datetime.now(UTC).timestamp())
 
         assert result is not None
         assert result["body"] == "Shorter content without full text."
@@ -107,7 +107,7 @@ class TestNewsDataFetcher:
             "description": "Just a description",
             "pubDate": "2024-01-15 12:00:00",
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
 
         assert result is not None
         assert result["body"] == "Just a description"
@@ -115,13 +115,13 @@ class TestNewsDataFetcher:
     def test_normalize_article_missing_url(self, fetcher):
         """Test normalization returns None for missing URL."""
         article = {"title": "Test", "full_content": "Body"}
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is None
 
     def test_normalize_article_missing_title(self, fetcher):
         """Test normalization returns None for missing title."""
         article = {"link": "https://example.com", "full_content": "Body"}
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
         assert result is None
 
     def test_normalize_article_no_body(self, fetcher):
@@ -131,7 +131,7 @@ class TestNewsDataFetcher:
             "title": "Test Article",
             "pubDate": "2024-01-15 12:00:00",
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
 
         assert result is not None
         assert result["body"] == ""
@@ -146,7 +146,7 @@ class TestNewsDataFetcher:
             "creator": "Single Author",
             "pubDate": "2024-01-15 12:00:00",
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
 
         assert result is not None
         assert result["author"] == "Single Author"
@@ -159,7 +159,7 @@ class TestNewsDataFetcher:
             "category": "technology",
             "pubDate": "2024-01-15 12:00:00",
         }
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
 
         assert result is not None
         assert "technology" in result["categories"]
@@ -172,7 +172,7 @@ class TestNewsDataFetcher:
             "title": "Test",
             "pubDate": "2024-01-15 12:30:00",
         }
-        result1 = fetcher._normalize_article(article1, datetime.utcnow().timestamp())
+        result1 = fetcher._normalize_article(article1, datetime.now(UTC).timestamp())
         assert result1["published_at"] == datetime(2024, 1, 15, 12, 30, 0)
 
         # ISO format with Z
@@ -181,7 +181,7 @@ class TestNewsDataFetcher:
             "title": "Test",
             "pubDate": "2024-01-15T12:30:00Z",
         }
-        result2 = fetcher._normalize_article(article2, datetime.utcnow().timestamp())
+        result2 = fetcher._normalize_article(article2, datetime.now(UTC).timestamp())
         assert result2 is not None
 
     def test_normalize_article_invalid_date(self, fetcher):
@@ -191,9 +191,9 @@ class TestNewsDataFetcher:
             "title": "Test",
             "pubDate": "not-a-date",
         }
-        before = datetime.utcnow()
-        result = fetcher._normalize_article(article, datetime.utcnow().timestamp())
-        after = datetime.utcnow()
+        before = datetime.now(UTC)
+        result = fetcher._normalize_article(article, datetime.now(UTC).timestamp())
+        after = datetime.now(UTC)
 
         assert result is not None
         assert before <= result["published_at"] <= after

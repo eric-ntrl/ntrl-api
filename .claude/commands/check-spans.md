@@ -11,13 +11,13 @@ Quickly check span reason diversity for an article to verify fix deployment.
 1. If no story_id provided, get first article from brief:
    ```bash
    STORY_ID=$(curl -s "https://api-staging-7b4d.up.railway.app/v1/brief" \
-     -H "X-API-Key: staging-key-123" | jq -r '.sections[0].stories[0].id')
+     -H "X-API-Key: $ADMIN_API_KEY" | jq -r '.sections[0].stories[0].id')
    ```
 
 2. Fetch transparency data and analyze:
    ```bash
    curl -s "https://api-staging-7b4d.up.railway.app/v1/stories/$STORY_ID/transparency" \
-     -H "X-API-Key: staging-key-123" | python3 -c "
+     -H "X-API-Key: $ADMIN_API_KEY" | python3 -c "
    import sys, json
    d = json.load(sys.stdin)
    if 'spans' in d:

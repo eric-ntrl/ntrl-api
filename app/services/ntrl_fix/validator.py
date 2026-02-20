@@ -32,16 +32,20 @@ from .types import (
     ValidationStatus,
 )
 
+ALLOWED_SPACY_MODELS = {"en_core_web_sm", "en_core_web_md", "en_core_web_lg"}
+
 
 @lru_cache(maxsize=1)
 def _get_spacy_model(model_name: str = "en_core_web_sm"):
     """Lazy-load and cache the spaCy model as a singleton."""
+    if model_name not in ALLOWED_SPACY_MODELS:
+        raise ValueError(f"Model '{model_name}' not in allowlist: {ALLOWED_SPACY_MODELS}")
     try:
         nlp = spacy.load(model_name)
     except OSError:
         import subprocess
 
-        subprocess.run(["python", "-m", "spacy", "download", model_name])
+        subprocess.run(["python", "-m", "spacy", "download", model_name], check=True)
         nlp = spacy.load(model_name)
     return nlp
 

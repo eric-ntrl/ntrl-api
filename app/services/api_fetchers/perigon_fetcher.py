@@ -11,7 +11,7 @@ API Documentation: https://docs.perigon.io
 import logging
 import re
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlparse
 
@@ -236,9 +236,9 @@ class PerigonFetcher(BaseFetcher):
             try:
                 published_at = datetime.fromisoformat(pub_date_str.replace("Z", "+00:00"))
             except (ValueError, TypeError):
-                published_at = datetime.utcnow()
+                published_at = datetime.now(UTC)
         else:
-            published_at = datetime.utcnow()
+            published_at = datetime.now(UTC)
 
         # Extract source info
         source = article.get("source", {})

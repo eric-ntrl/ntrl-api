@@ -282,12 +282,12 @@ The highlights achieve the "calm reading" aesthetic goal:
 # Re-neutralize with editorial content
 curl -X POST "https://api-staging-7b4d.up.railway.app/v1/neutralize/run" \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: staging-key-123" \
+  -H "X-API-Key: $ADMIN_API_KEY" \
   -d '{"limit": 10, "force": true}'
 
 # Check for articles with different span reasons
 curl -s "https://api-staging-7b4d.up.railway.app/v1/brief?hours=24" \
-  -H "X-API-Key: staging-key-123" | jq '.sections[].stories[] | {title: .title, span_count: .span_count}'
+  -H "X-API-Key: $ADMIN_API_KEY" | jq '.sections[].stories[] | {title: .title, span_count: .span_count}'
 
 # Capture UI screenshots
 cd /Users/ericrbrown/Documents/NTRL/code/ntrl-app

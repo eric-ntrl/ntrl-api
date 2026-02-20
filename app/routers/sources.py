@@ -8,15 +8,15 @@ DELETE /v1/sources/{slug}    - Remove a source
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app import models
+from app.auth import require_admin_key
 from app.database import get_db
-from app.routers.admin import require_admin_key
 
 router = APIRouter(prefix="/v1/sources", tags=["sources"])
 
@@ -115,7 +115,7 @@ def create_source(
         rss_url=request.rss_url,
         default_section=request.default_section,
         is_active=request.is_active,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
     db.add(source)
     db.commit()

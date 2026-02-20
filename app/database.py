@@ -1,3 +1,4 @@
+import logging
 import os
 
 from dotenv import load_dotenv
@@ -81,6 +82,6 @@ def get_system_prompt_value(db: Session, name: str) -> str | None:
             .first()
         )
         return prompt.prompt_text if prompt else None
-    except SQLAlchemyError:
-        # For now just fail quietly and let caller handle the None
+    except SQLAlchemyError as e:
+        logging.getLogger(__name__).warning(f"DB error fetching system prompt '{name}': {e}")
         return None

@@ -8,7 +8,7 @@ trend charts, and prompt change summaries.
 
 import logging
 import urllib.parse
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -231,7 +231,7 @@ class EmailService:
 
         return {
             "evaluation_run_id": str(eval_run.id),
-            "finished_at": eval_run.finished_at or datetime.utcnow(),
+            "finished_at": eval_run.finished_at or datetime.now(UTC),
             "overall_quality_score": eval_run.overall_quality_score,
             "quality_delta": quality_delta,
             "classification_accuracy": eval_run.classification_accuracy,
@@ -332,7 +332,7 @@ class EmailService:
         recall_delta = data.get("recall_delta")
         cost = data.get("estimated_cost_usd") or 0
         run_id = data.get("evaluation_run_id", "")[:8]
-        finished_at = data.get("finished_at", datetime.utcnow())
+        finished_at = data.get("finished_at", datetime.now(UTC))
 
         def format_delta(val, is_percentage=False):
             if val is None:

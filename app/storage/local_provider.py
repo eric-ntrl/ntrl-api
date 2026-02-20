@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import shutil
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from app.storage.base import (
@@ -56,12 +56,18 @@ class LocalStorageProvider(StorageProvider):
         return "local"
 
     def _get_path(self, key: str) -> Path:
-        """Get filesystem path for key."""
-        return self._base_path / key
+        """Get filesystem path for key, with path traversal protection."""
+        resolved = (self._base_path / key).resolve()
+        if not resolved.is_relative_to(self._base_path.resolve()):
+            raise ValueError("Path traversal detected")
+        return resolved
 
     def _get_metadata_path(self, key: str) -> Path:
-        """Get metadata file path for key."""
-        return self._base_path / f"{key}{self._metadata_suffix}"
+        """Get metadata file path for key, with path traversal protection."""
+        resolved = (self._base_path / f"{key}{self._metadata_suffix}").resolve()
+        if not resolved.is_relative_to(self._base_path.resolve()):
+            raise ValueError("Path traversal detected")
+        return resolved
 
     def upload(
         self,
@@ -81,7 +87,7 @@ class LocalStorageProvider(StorageProvider):
         # Calculate expiration
         expires_at = None
         if expires_days:
-            expires_at = datetime.utcnow() + timedelta(days=expires_days)
+            expires_at = datetime.now(UTC) + timedelta(days=expires_days)
 
         # Create directory structure
         file_path = self._get_path(key)
@@ -98,7 +104,7 @@ class LocalStorageProvider(StorageProvider):
             content_encoding=ContentEncoding.GZIP,
             size_bytes=compressed_size,
             original_size_bytes=original_size,
-            uploaded_at=datetime.utcnow(),
+            uploaded_at=datetime.now(UTC),
             expires_at=expires_at,
             custom_metadata=metadata or {},
         )
@@ -142,11 +148,11 @@ class LocalStorageProvider(StorageProvider):
                 content_encoding=ContentEncoding.GZIP,
                 size_bytes=len(compressed),
                 original_size_bytes=len(content),
-                uploaded_at=datetime.utcnow(),
+                uploaded_at=datetime.now(UTC),
             )
 
         # Check expiration
-        if metadata.expires_at and metadata.expires_at < datetime.utcnow():
+        if metadata.expires_at and metadata.expires_at < datetime.now(UTC):
             logger.debug(f"Object expired: {key}")
             return None
 
@@ -210,7 +216,7 @@ class LocalStorageProvider(StorageProvider):
         older_than_days: int = 90,
     ) -> list:
         """List expired objects."""
-        cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff = datetime.now(UTC) - timedelta(days=older_than_days)
         expired_keys = []
 
         prefix_path = self._base_path / prefix

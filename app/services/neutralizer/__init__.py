@@ -21,7 +21,7 @@ import re
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import func, or_
@@ -1730,7 +1730,8 @@ def get_adversarial_prompt() -> str:
 def build_span_detection_prompt(body: str) -> str:
     """Build the prompt for LLM-based span detection."""
     template = get_span_detection_prompt()
-    return template.format(body=body or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    return template.format(body=wrapped_body)
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -1851,8 +1852,7 @@ def find_phrase_positions(body: str, llm_phrases: list) -> list[TransparencySpan
 
         # Parse reason to enum
         reason = _parse_span_reason(reason_str)
-        # DEBUG: Log reason mapping at INFO level to trace span diversity issue
-        logger.info(
+        logger.debug(
             f"[SPAN_REASON_TRACE] Phrase: '{phrase[:30]}...' | Input reason: '{reason_str}' → Output: '{reason.value}'"
         )
 
@@ -2097,6 +2097,9 @@ from app.services.neutralizer.spans import (
     FALSE_POSITIVE_PHRASES as FALSE_POSITIVE_PHRASES,
 )
 from app.services.neutralizer.spans import (
+    _parse_span_reason as _parse_span_reason,
+)
+from app.services.neutralizer.spans import (
     filter_false_positives as _filter_false_positives_from_spans,
 )
 
@@ -2322,7 +2325,8 @@ def build_synthesis_detail_full_prompt(body: str) -> str:
     Build the user prompt for detail_full synthesis.
     """
     template = get_synthesis_detail_full_prompt()
-    return template.format(body=body or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    return template.format(body=wrapped_body)
 
 
 # -----------------------------------------------------------------------------
@@ -2840,7 +2844,7 @@ def get_active_model() -> str:
     global _active_model_cache, _prompt_cache_time
 
     # Check if cache is stale
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     if _prompt_cache_time is None or (now - _prompt_cache_time).total_seconds() > PROMPT_CACHE_TTL_SECONDS:
         _active_model_cache = None
         _prompt_cache_time = now
@@ -3033,7 +3037,8 @@ def build_synthesis_detail_brief_prompt(body: str) -> str:
         Formatted prompt with article body inserted
     """
     template = get_synthesis_detail_brief_prompt()
-    return template.format(body=body or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    return template.format(body=wrapped_body)
 
 
 def get_compression_feed_outputs_prompt() -> str:
@@ -3062,7 +3067,9 @@ def build_compression_feed_outputs_prompt(body: str, detail_brief: str) -> str:
         Formatted prompt with article body and detail_brief inserted
     """
     template = get_compression_feed_outputs_prompt()
-    return template.format(body=body or "", detail_brief=detail_brief or "")
+    wrapped_body = f"<article_content>\n{body or ''}\n</article_content>"
+    wrapped_brief = f"<detail_brief>\n{detail_brief or ''}\n</detail_brief>"
+    return template.format(body=wrapped_body, detail_brief=wrapped_brief)
 
 
 def _validate_feed_outputs(result: dict) -> None:
@@ -3138,7 +3145,10 @@ def _validate_feed_outputs(result: dict) -> None:
 def build_user_prompt(title: str, description: str | None, body: str | None) -> str:
     """Build the user prompt for neutralization using template from DB."""
     template = get_user_prompt_template()
-    return template.format(title=title, description=description or "N/A", body=(body or "")[:3000])
+    wrapped_title = f"<article_title>{title}</article_title>"
+    wrapped_desc = f"<article_description>{description or 'N/A'}</article_description>"
+    wrapped_body = f"<article_content>\n{(body or '')[:3000]}\n</article_content>"
+    return template.format(title=wrapped_title, description=wrapped_desc, body=wrapped_body)
 
 
 def build_repair_prompt(
@@ -3153,11 +3163,13 @@ def build_repair_prompt(
 
 Fix these issues in your response.
 
-ORIGINAL TITLE: {title}
+<article_title>{title}</article_title>
 
-ORIGINAL DESCRIPTION: {description or "N/A"}
+<article_description>{description or "N/A"}</article_description>
 
-ORIGINAL BODY: {(body or "")[:3000]}
+<article_content>
+{(body or "")[:3000]}
+</article_content>
 
 Respond with JSON:
 {{
@@ -3208,56 +3220,6 @@ def _parse_span_action(action: str) -> SpanAction:
         return SpanAction.SOFTENED
     else:
         return SpanAction.SOFTENED  # Default
-
-
-def _parse_span_reason(reason: str) -> SpanReason:
-    """Parse reason string to SpanReason enum.
-
-    Maps both the 8 canonical categories AND defensive aliases for
-    any category names that might appear in LLM output or DB prompts.
-    """
-    reason_lower = reason.lower().strip()  # Strip whitespace to handle LLM formatting variations
-    mapping = {
-        # 8 canonical categories
-        "clickbait": SpanReason.CLICKBAIT,
-        "urgency_inflation": SpanReason.URGENCY_INFLATION,
-        "emotional_trigger": SpanReason.EMOTIONAL_TRIGGER,
-        "selling": SpanReason.SELLING,
-        "agenda_signaling": SpanReason.AGENDA_SIGNALING,
-        "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
-        "editorial_voice": SpanReason.EDITORIAL_VOICE,
-        "selective_quoting": SpanReason.SELECTIVE_QUOTING,
-        # Defensive aliases (prompt categories that might appear)
-        "selective_quote": SpanReason.SELECTIVE_QUOTING,
-        "scare_quotes": SpanReason.SELECTIVE_QUOTING,
-        "cherry_picked_quote": SpanReason.SELECTIVE_QUOTING,
-        "loaded_verbs": SpanReason.RHETORICAL_FRAMING,
-        "loaded_idioms": SpanReason.RHETORICAL_FRAMING,
-        "loaded_personal_descriptors": SpanReason.EMOTIONAL_TRIGGER,
-        "hyperbolic_adjectives": SpanReason.EMOTIONAL_TRIGGER,
-        "sports_event_hype": SpanReason.SELLING,
-        "entertainment_celebrity_hype": SpanReason.SELLING,
-        "agenda_framing": SpanReason.AGENDA_SIGNALING,
-        "publisher_cruft": SpanReason.SELLING,
-        # Manipulation technique aliases (from journalism review)
-        "false_equivalence": SpanReason.RHETORICAL_FRAMING,
-        "manufactured_consensus": SpanReason.RHETORICAL_FRAMING,
-        "horse_race_framing": SpanReason.RHETORICAL_FRAMING,
-        "framing_bias": SpanReason.RHETORICAL_FRAMING,
-        "corporate_anthropomorphism": SpanReason.RHETORICAL_FRAMING,
-        # Old/alternative names
-        "emotional_manipulation": SpanReason.EMOTIONAL_TRIGGER,
-        "emotional": SpanReason.EMOTIONAL_TRIGGER,
-        "urgency": SpanReason.URGENCY_INFLATION,
-        "hype": SpanReason.SELLING,
-        "selling_hype": SpanReason.SELLING,
-        "framing": SpanReason.RHETORICAL_FRAMING,
-    }
-    result = mapping.get(reason_lower)
-    if result is None:
-        logger.warning(f"[SPAN_DETECTION] Unknown reason '{reason}', defaulting to RHETORICAL_FRAMING")
-        return SpanReason.RHETORICAL_FRAMING
-    return result
 
 
 def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> list[TransparencySpan]:
@@ -3745,7 +3707,8 @@ def detect_spans_high_recall_anthropic(
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_high_recall_prompt()
         content_type_hint = build_content_type_hint(feed_category)
-        user_prompt = prompt_template.format(body=body, content_type_hint=content_type_hint)
+        wrapped_body = f"<article_content>\n{body}\n</article_content>"
+        user_prompt = prompt_template.format(body=wrapped_body, content_type_hint=content_type_hint)
         logger.info(f"[SPAN_DETECTION] High-recall pass starting, model={model}, body_length={len(body)}")
 
         response = client.messages.create(
@@ -3917,9 +3880,10 @@ def detect_spans_adversarial_pass(
         # Get prompt from DB (falls back to hardcoded default)
         prompt_template = get_adversarial_prompt()
         content_type_hint = build_content_type_hint(feed_category)
+        wrapped_body = f"<article_content>\n{body}\n</article_content>"
         user_prompt = prompt_template.format(
             detected_phrases=detected_list,
-            body=body,
+            body=wrapped_body,
             content_type_hint=content_type_hint,
         )
         logger.info(
@@ -4066,7 +4030,7 @@ async def detect_spans_multi_pass_async(
 
     async def run_high_recall_on_chunk(chunk: ArticleChunk) -> list[TransparencySpan]:
         """Run high-recall pass on a single chunk."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         spans = await loop.run_in_executor(
             executor,
             lambda: detect_spans_high_recall_anthropic(
@@ -4085,7 +4049,7 @@ async def detect_spans_multi_pass_async(
         chunk_pass1_spans: list | None = None,
     ) -> tuple[list[TransparencySpan], list[TransparencySpan]]:
         """Run adversarial pass on a single chunk. Returns (validated, new) spans."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         validated, new = await loop.run_in_executor(
             executor,
             lambda: detect_spans_adversarial_pass(
@@ -4199,7 +4163,7 @@ def detect_spans_multi_pass(
     import asyncio
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if loop.is_running():
             # Already in async context - create new loop
             import nest_asyncio
@@ -4872,7 +4836,7 @@ def _enhance_spans_with_v2_scan(original_body: str, llm_spans: list[Transparency
 
     try:
         # Try to get current event loop
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         if loop.is_running():
             # We're in an async context (e.g., FastAPI) - create a new loop in thread
             import concurrent.futures
@@ -6222,7 +6186,7 @@ class NeutralizerService:
         metadata: dict | None = None,
     ) -> models.PipelineLog:
         """Create a pipeline log entry."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         duration_ms = None
         if started_at:
             duration_ms = int((now - started_at).total_seconds() * 1000)
@@ -6264,7 +6228,7 @@ class NeutralizerService:
         Returns:
             The neutralized story record, or None if skipped/failed
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         # Check if already neutralized
         existing = (
@@ -6339,7 +6303,7 @@ class NeutralizerService:
                             prompt_version="v3",
                             neutralization_status=detail_full_result.status,
                             failure_reason=detail_full_result.failure_reason,
-                            created_at=datetime.utcnow(),
+                            created_at=datetime.now(UTC),
                         )
                         db.add(failed_neutralized)
                         db.flush()
@@ -6483,7 +6447,7 @@ class NeutralizerService:
                 prompt_version="v3",  # Updated for 3-call pipeline
                 neutralization_status="success",
                 failure_reason=None,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
             )
             db.add(neutralized)
             db.flush()
@@ -6730,7 +6694,7 @@ class NeutralizerService:
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
         # Get stories to process
         if story_ids:
@@ -6818,7 +6782,7 @@ class NeutralizerService:
         }
 
         if not stories:
-            result["finished_at"] = datetime.utcnow()
+            result["finished_at"] = datetime.now(UTC)
             result["duration_ms"] = int((result["finished_at"] - started_at).total_seconds() * 1000)
             return result
 
@@ -6927,7 +6891,7 @@ class NeutralizerService:
                     has_manipulative_content=neutralization.has_manipulative_content,
                     model_name=self.provider.model_name,
                     prompt_version="v3",  # Updated for 3-call pipeline
-                    created_at=datetime.utcnow(),
+                    created_at=datetime.now(UTC),
                 )
                 db.add(neutralized)
                 db.flush()  # Flush to get neutralized.id for span FK
@@ -6999,7 +6963,7 @@ class NeutralizerService:
 
         db.commit()
 
-        finished_at = datetime.utcnow()
+        finished_at = datetime.now(UTC)
         result["finished_at"] = finished_at
         result["duration_ms"] = int((finished_at - started_at).total_seconds() * 1000)
 
