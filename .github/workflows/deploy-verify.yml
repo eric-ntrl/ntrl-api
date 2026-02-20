@@ -9,17 +9,18 @@ jobs:
     name: Verify Staging Deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for Railway deploy
-        run: echo "Waiting 120s for Railway..." && sleep 120
-
-      - name: Health check
+      - name: Wait for deployment and health check
         run: |
-          response=$(curl -s -o /dev/null -w '%{http_code}' https://api-staging-7b4d.up.railway.app/health)
-          if [ "$response" != "200" ]; then
-            echo "FAIL - Health check returned $response"
-            exit 1
-          fi
-          echo "PASS - Health check returned 200"
+          for i in $(seq 1 18); do
+            if curl -sf https://api-staging-7b4d.up.railway.app/health > /dev/null 2>&1; then
+              echo "Health check passed after $((i * 10))s"
+              exit 0
+            fi
+            echo "Waiting... attempt $i/18"
+            sleep 10
+          done
+          echo "Health check failed after 180s"
+          exit 1
 
       - name: Brief endpoint check
         env:
