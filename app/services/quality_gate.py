@@ -72,7 +72,7 @@ class QCResult:
     status: QCStatus
     checks: list[QCCheckResult]
     failures: list[QCCheckResult]
-    checked_at: datetime = field(default_factory=datetime.utcnow)
+    checked_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass

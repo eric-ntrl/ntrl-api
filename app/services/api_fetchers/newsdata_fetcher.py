@@ -220,7 +220,8 @@ class NewsDataFetcher(BaseFetcher):
                     normalized = self._normalize_article(article, start_time)
                     if normalized:
                         articles.append(normalized)
-                except Exception:
+                except Exception as e:
+                    logger.warning(f"Failed to normalize NewsData article: {e}")
                     continue
 
         return articles

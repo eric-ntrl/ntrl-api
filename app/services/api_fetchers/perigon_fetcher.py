@@ -255,8 +255,8 @@ class PerigonFetcher(BaseFetcher):
                 if parsed.netloc:
                     source_name = parsed.netloc.lower().removeprefix("www.")
                     logger.debug(f"Perigon article missing source.name, derived from URL: {source_name}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to parse Perigon article URL: {e}")
 
         # Extract categories and map to NTRL
         categories = []
