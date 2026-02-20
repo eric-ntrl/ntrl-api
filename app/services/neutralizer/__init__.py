@@ -2097,6 +2097,9 @@ from app.services.neutralizer.spans import (
     FALSE_POSITIVE_PHRASES as FALSE_POSITIVE_PHRASES,
 )
 from app.services.neutralizer.spans import (
+    _parse_span_action as _parse_span_action,
+)
+from app.services.neutralizer.spans import (
     _parse_span_reason as _parse_span_reason,
 )
 from app.services.neutralizer.spans import (
@@ -3207,19 +3210,6 @@ def parse_llm_response(
         spans=[],  # Simplified: no granular spans for v1
         removed_phrases=removed_phrases,  # Store for audit consistency check
     )
-
-
-def _parse_span_action(action: str) -> SpanAction:
-    """Parse action string to SpanAction enum."""
-    action_lower = action.lower()
-    if action_lower in ("removed", "remove"):
-        return SpanAction.REMOVED
-    elif action_lower in ("replaced", "replace"):
-        return SpanAction.REPLACED
-    elif action_lower in ("softened", "soften"):
-        return SpanAction.SOFTENED
-    else:
-        return SpanAction.SOFTENED  # Default
 
 
 def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> list[TransparencySpan]:
