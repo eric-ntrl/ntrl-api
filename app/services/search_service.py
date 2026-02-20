@@ -265,57 +265,74 @@ class SearchService:
         suggestions = []
         query_lower = query.lower()
 
-        # Match section names
+        # Batch category counts in a single GROUP BY query
+        matching_categories = []
         for cat in FeedCategory:
             label = FEED_CATEGORY_DISPLAY.get(cat.value, cat.value.title())
             if query_lower in label.lower() or query_lower in cat.value.lower():
-                # Get count for this category
-                count = (
-                    self.db.query(func.count(models.StoryNeutralized.id))
-                    .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
-                    .filter(
-                        models.StoryNeutralized.is_current == True,
-                        models.StoryNeutralized.neutralization_status == "success",
-                        models.StoryRaw.is_duplicate == False,
-                        models.StoryRaw.feed_category == cat.value,
-                    )
-                    .scalar()
-                    or 0
+                matching_categories.append(cat.value)
+
+        if matching_categories:
+            category_counts = (
+                self.db.query(
+                    models.StoryRaw.feed_category,
+                    func.count(models.StoryNeutralized.id).label("count"),
                 )
+                .join(models.StoryNeutralized, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
+                .filter(
+                    models.StoryNeutralized.is_current == True,
+                    models.StoryNeutralized.neutralization_status == "success",
+                    models.StoryRaw.is_duplicate == False,
+                    models.StoryRaw.feed_category.in_(matching_categories),
+                )
+                .group_by(models.StoryRaw.feed_category)
+                .all()
+            )
+            for cat_value, count in category_counts:
                 if count > 0:
+                    label = FEED_CATEGORY_DISPLAY.get(cat_value, cat_value.title())
                     suggestions.append(
                         SearchSuggestion(
                             type="section",
-                            value=cat.value,
+                            value=cat_value,
                             label=label,
                             count=count,
                         )
                     )
 
-        # Match publisher names
+        # Batch source counts in a single GROUP BY query
         sources = self.db.query(models.Source).filter(models.Source.is_active == True).all()
-
+        matching_source_ids = []
+        source_info = {}
         for source in sources:
             display_name = get_source_display_name(source.slug, source.name)
             if query_lower in display_name.lower() or query_lower in source.slug.lower():
-                # Get count for this source
-                count = (
-                    self.db.query(func.count(models.StoryNeutralized.id))
-                    .join(models.StoryRaw, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
-                    .filter(
-                        models.StoryNeutralized.is_current == True,
-                        models.StoryNeutralized.neutralization_status == "success",
-                        models.StoryRaw.is_duplicate == False,
-                        models.StoryRaw.source_id == source.id,
-                    )
-                    .scalar()
-                    or 0
+                matching_source_ids.append(source.id)
+                source_info[source.id] = (source.slug, display_name)
+
+        if matching_source_ids:
+            source_counts = (
+                self.db.query(
+                    models.StoryRaw.source_id,
+                    func.count(models.StoryNeutralized.id).label("count"),
                 )
-                if count > 0:
+                .join(models.StoryNeutralized, models.StoryNeutralized.story_raw_id == models.StoryRaw.id)
+                .filter(
+                    models.StoryNeutralized.is_current == True,
+                    models.StoryNeutralized.neutralization_status == "success",
+                    models.StoryRaw.is_duplicate == False,
+                    models.StoryRaw.source_id.in_(matching_source_ids),
+                )
+                .group_by(models.StoryRaw.source_id)
+                .all()
+            )
+            for source_id, count in source_counts:
+                if count > 0 and source_id in source_info:
+                    slug, display_name = source_info[source_id]
                     suggestions.append(
                         SearchSuggestion(
                             type="publisher",
-                            value=source.slug,
+                            value=slug,
                             label=display_name,
                             count=count,
                         )
