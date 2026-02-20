@@ -315,6 +315,7 @@ def _parse_span_reason(reason_str: str) -> SpanReason:
         "sports_event_hype": SpanReason.SELLING,
         "entertainment_celebrity_hype": SpanReason.SELLING,
         "agenda_framing": SpanReason.AGENDA_SIGNALING,
+        "publisher_cruft": SpanReason.SELLING,
         # Manipulation technique aliases (from journalism review)
         "false_equivalence": SpanReason.RHETORICAL_FRAMING,
         "manufactured_consensus": SpanReason.RHETORICAL_FRAMING,

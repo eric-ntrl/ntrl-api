@@ -2096,6 +2096,9 @@ from app.services.neutralizer.spans import (
     FALSE_POSITIVE_PHRASES as FALSE_POSITIVE_PHRASES,
 )
 from app.services.neutralizer.spans import (
+    _parse_span_reason as _parse_span_reason,
+)
+from app.services.neutralizer.spans import (
     filter_false_positives as _filter_false_positives_from_spans,
 )
 
@@ -3207,56 +3210,6 @@ def _parse_span_action(action: str) -> SpanAction:
         return SpanAction.SOFTENED
     else:
         return SpanAction.SOFTENED  # Default
-
-
-def _parse_span_reason(reason: str) -> SpanReason:
-    """Parse reason string to SpanReason enum.
-
-    Maps both the 8 canonical categories AND defensive aliases for
-    any category names that might appear in LLM output or DB prompts.
-    """
-    reason_lower = reason.lower().strip()  # Strip whitespace to handle LLM formatting variations
-    mapping = {
-        # 8 canonical categories
-        "clickbait": SpanReason.CLICKBAIT,
-        "urgency_inflation": SpanReason.URGENCY_INFLATION,
-        "emotional_trigger": SpanReason.EMOTIONAL_TRIGGER,
-        "selling": SpanReason.SELLING,
-        "agenda_signaling": SpanReason.AGENDA_SIGNALING,
-        "rhetorical_framing": SpanReason.RHETORICAL_FRAMING,
-        "editorial_voice": SpanReason.EDITORIAL_VOICE,
-        "selective_quoting": SpanReason.SELECTIVE_QUOTING,
-        # Defensive aliases (prompt categories that might appear)
-        "selective_quote": SpanReason.SELECTIVE_QUOTING,
-        "scare_quotes": SpanReason.SELECTIVE_QUOTING,
-        "cherry_picked_quote": SpanReason.SELECTIVE_QUOTING,
-        "loaded_verbs": SpanReason.RHETORICAL_FRAMING,
-        "loaded_idioms": SpanReason.RHETORICAL_FRAMING,
-        "loaded_personal_descriptors": SpanReason.EMOTIONAL_TRIGGER,
-        "hyperbolic_adjectives": SpanReason.EMOTIONAL_TRIGGER,
-        "sports_event_hype": SpanReason.SELLING,
-        "entertainment_celebrity_hype": SpanReason.SELLING,
-        "agenda_framing": SpanReason.AGENDA_SIGNALING,
-        "publisher_cruft": SpanReason.SELLING,
-        # Manipulation technique aliases (from journalism review)
-        "false_equivalence": SpanReason.RHETORICAL_FRAMING,
-        "manufactured_consensus": SpanReason.RHETORICAL_FRAMING,
-        "horse_race_framing": SpanReason.RHETORICAL_FRAMING,
-        "framing_bias": SpanReason.RHETORICAL_FRAMING,
-        "corporate_anthropomorphism": SpanReason.RHETORICAL_FRAMING,
-        # Old/alternative names
-        "emotional_manipulation": SpanReason.EMOTIONAL_TRIGGER,
-        "emotional": SpanReason.EMOTIONAL_TRIGGER,
-        "urgency": SpanReason.URGENCY_INFLATION,
-        "hype": SpanReason.SELLING,
-        "selling_hype": SpanReason.SELLING,
-        "framing": SpanReason.RHETORICAL_FRAMING,
-    }
-    result = mapping.get(reason_lower)
-    if result is None:
-        logger.warning(f"[SPAN_DETECTION] Unknown reason '{reason}', defaulting to RHETORICAL_FRAMING")
-        return SpanReason.RHETORICAL_FRAMING
-    return result
 
 
 def detect_spans_via_llm_openai(body: str, api_key: str, model: str) -> list[TransparencySpan]:
