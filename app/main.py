@@ -89,11 +89,13 @@ async def lifespan(app: FastAPI):
     logger.info("NTRL API shutting down")
 
 
+APP_VERSION = "2.0.0"
+
 # Create app
 app = FastAPI(
     title="NTRL API",
     description="Neutral News Backend - Phase 1 POC",
-    version="1.0.0",
+    version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -189,7 +191,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "service": "ntrl-api",
-        "version": "1.0.0",
+        "version": APP_VERSION,
     }
 
 
@@ -198,7 +200,7 @@ def root() -> dict:
     """Root endpoint with API info."""
     return {
         "service": "NTRL API",
-        "version": "2.0.0",
+        "version": APP_VERSION,
         "description": "Neutral News Backend",
         "docs": "/docs",
         "endpoints": {
