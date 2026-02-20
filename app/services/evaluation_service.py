@@ -1048,8 +1048,6 @@ Evaluate the span detection quality (precision and recall)."""
 
     def _call_teacher_anthropic(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Call Anthropic Claude for evaluation."""
-        import re
-
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
@@ -1078,10 +1076,16 @@ Evaluate the span detection quality (precision and recall)."""
             try:
                 return json.loads(content)
             except json.JSONDecodeError:
-                # Extract JSON from response (Claude may include text before/after)
-                json_match = re.search(r"\{[\s\S]*\}", content)
-                if json_match:
-                    return json.loads(json_match.group())
+                # Extract first valid JSON object from response
+                # (Claude may include text before/after, or multiple objects)
+                decoder = json.JSONDecoder()
+                for i, char in enumerate(content):
+                    if char == "{":
+                        try:
+                            obj, _ = decoder.raw_decode(content, i)
+                            return obj
+                        except json.JSONDecodeError:
+                            continue
                 raise ValueError(f"No valid JSON found in response: {content[:200]}")
 
         except Exception as e:
