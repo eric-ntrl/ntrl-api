@@ -101,7 +101,16 @@ def get_brief(
 
         # Apply time filter if specified
         if time_cutoff:
-            category_items = [item for item in category_items if item.published_at >= time_cutoff]
+            category_items = [
+                item
+                for item in category_items
+                if (
+                    item.published_at.replace(tzinfo=UTC)
+                    if item.published_at and item.published_at.tzinfo is None
+                    else item.published_at
+                )
+                >= time_cutoff
+            ]
 
         if not category_items:
             continue
