@@ -26,7 +26,7 @@ from app.logging_config import (
 )
 from app.models import PipelineJobStatus, PipelineRunSummary
 from app.services.pipeline_job_manager import PipelineJobManager
-from app.services.resilience import CircuitBreaker
+from app.services.resilience import CircuitBreaker, CircuitOpenError
 
 logger = logging.getLogger(__name__)
 
@@ -263,14 +263,18 @@ class AsyncPipelineOrchestrator:
 
                 # Run in thread pool since it's a sync operation
                 loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: service.ingest_all(
-                        self.db,
-                        max_items_per_source=self.config.get("max_items_per_source", 25),
-                        trace_id=self.trace_id,
-                    ),
-                )
+
+                async def _ingest():
+                    return await loop.run_in_executor(
+                        None,
+                        lambda: service.ingest_all(
+                            self.db,
+                            max_items_per_source=self.config.get("max_items_per_source", 25),
+                            trace_id=self.trace_id,
+                        ),
+                    )
+
+                result = await self.rss_breaker.call(_ingest)
 
                 duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
@@ -292,6 +296,16 @@ class AsyncPipelineOrchestrator:
                 PipelineJobManager.update_job_stage(
                     self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
+
+        except CircuitOpenError as e:
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
+            self.stage_results[stage_name] = StageResult(
+                stage=stage_name,
+                status="skipped",
+                duration_ms=duration_ms,
+                errors=[f"Circuit breaker open: {e}"],
+            )
+            logger.warning(f"{stage_name} stage skipped: circuit breaker open for {e}")
 
         except Exception as e:
             duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
@@ -319,13 +333,17 @@ class AsyncPipelineOrchestrator:
 
                 # Run in thread pool since it's a sync operation
                 loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: classifier.classify_pending(
-                        self.db,
-                        limit=self.config.get("classify_limit", 200),
-                    ),
-                )
+
+                async def _classify():
+                    return await loop.run_in_executor(
+                        None,
+                        lambda: classifier.classify_pending(
+                            self.db,
+                            limit=self.config.get("classify_limit", 200),
+                        ),
+                    )
+
+                result = await self.llm_breaker.call(_classify)
 
                 duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
@@ -347,6 +365,16 @@ class AsyncPipelineOrchestrator:
                 PipelineJobManager.update_job_stage(
                     self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
+
+        except CircuitOpenError as e:
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
+            self.stage_results[stage_name] = StageResult(
+                stage=stage_name,
+                status="skipped",
+                duration_ms=duration_ms,
+                errors=[f"Circuit breaker open: {e}"],
+            )
+            logger.warning(f"{stage_name} stage skipped: circuit breaker open for {e}")
 
         except Exception as e:
             duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
@@ -374,14 +402,18 @@ class AsyncPipelineOrchestrator:
 
                 # Run in thread pool since it uses ThreadPoolExecutor internally
                 loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: service.neutralize_pending(
-                        self.db,
-                        limit=self.config.get("neutralize_limit", 25),
-                        max_workers=self.config.get("max_workers", 5),
-                    ),
-                )
+
+                async def _neutralize():
+                    return await loop.run_in_executor(
+                        None,
+                        lambda: service.neutralize_pending(
+                            self.db,
+                            limit=self.config.get("neutralize_limit", 25),
+                            max_workers=self.config.get("max_workers", 5),
+                        ),
+                    )
+
+                result = await self.llm_breaker.call(_neutralize)
 
                 duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
@@ -405,6 +437,16 @@ class AsyncPipelineOrchestrator:
                 PipelineJobManager.update_job_stage(
                     self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
+
+        except CircuitOpenError as e:
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
+            self.stage_results[stage_name] = StageResult(
+                stage=stage_name,
+                status="skipped",
+                duration_ms=duration_ms,
+                errors=[f"Circuit breaker open: {e}"],
+            )
+            logger.warning(f"{stage_name} stage skipped: circuit breaker open for {e}")
 
         except Exception as e:
             duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
@@ -534,7 +576,11 @@ class AsyncPipelineOrchestrator:
         try:
             with log_stage(stage_name, self.trace_id):
                 loop = asyncio.get_running_loop()
-                stats = await loop.run_in_executor(None, lambda: validate_batch(self.db, limit=200))
+
+                async def _validate():
+                    return await loop.run_in_executor(None, lambda: validate_batch(self.db, limit=200))
+
+                stats = await self.storage_breaker.call(_validate)
 
                 duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
                 self.metrics.record_stage_timing(stage_name, duration_ms)
@@ -550,6 +596,16 @@ class AsyncPipelineOrchestrator:
                 PipelineJobManager.update_job_stage(
                     self.db, self.job_id, stage_name, progress=self.stage_results[stage_name].metrics
                 )
+
+        except CircuitOpenError as e:
+            duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
+            self.stage_results[stage_name] = StageResult(
+                stage=stage_name,
+                status="skipped",
+                duration_ms=duration_ms,
+                errors=[f"Circuit breaker open: {e}"],
+            )
+            logger.warning(f"{stage_name} stage skipped: circuit breaker open for {e}")
 
         except Exception as e:
             duration_ms = int((datetime.now(UTC) - started_at).total_seconds() * 1000)
