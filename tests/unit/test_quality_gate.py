@@ -191,6 +191,22 @@ class TestRequiredPublishedAt:
         result = _service()._check_required_published_at(raw, _make_neutralized(), _make_source(), QCConfig())
         assert result.passed is True
 
+    def test_pass_naive_datetime(self):
+        """DB may return naive datetimes — should not crash."""
+        naive_dt = datetime.utcnow() - timedelta(hours=1)
+        assert naive_dt.tzinfo is None  # confirm it's naive
+        raw = _make_story_raw(published_at=naive_dt)
+        result = _service()._check_required_published_at(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_fail_naive_future_datetime(self):
+        """Naive future datetime should fail without crashing."""
+        naive_dt = datetime.utcnow() + timedelta(hours=5)
+        raw = _make_story_raw(published_at=naive_dt)
+        result = _service()._check_required_published_at(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+        assert "future" in result.reason
+
 
 class TestRequiredOriginalUrl:
     def test_pass_https(self):
