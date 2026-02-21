@@ -307,7 +307,18 @@ class QualityGateService:
         failures_by_category: dict[str, int] = {}
 
         for neutralized, story_raw, source in articles:
-            result = self.check_article(story_raw, neutralized, source)
+            try:
+                result = self.check_article(story_raw, neutralized, source)
+            except Exception as e:
+                logger.error(
+                    f"QC check crashed for article {story_raw.id}: {e}",
+                    extra={"trace_id": trace_id, "story_raw_id": str(story_raw.id)},
+                )
+                total_checked += 1
+                failed += 1
+                neutralized.qc_status = QCStatus.FAILED.value
+                neutralized.qc_failures = [{"check": "internal_error", "category": "system", "reason": str(e)}]
+                continue
             total_checked += 1
 
             neutralized.qc_status = result.status.value
@@ -453,8 +464,12 @@ class QualityGateService:
                 reason="published_at is not set",
             )
         # Check not too far in the future
+        # Normalize to aware datetime — DB may return naive timestamps
+        published_at = raw.published_at
+        if published_at.tzinfo is None:
+            published_at = published_at.replace(tzinfo=UTC)
         buffer = timedelta(hours=config.future_publish_buffer_hours)
-        if raw.published_at > datetime.now(UTC) + buffer:
+        if published_at > datetime.now(UTC) + buffer:
             return QCCheckResult(
                 check="required_published_at",
                 passed=False,
