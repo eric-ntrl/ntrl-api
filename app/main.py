@@ -9,6 +9,7 @@ No personalization, trending, or recommendations.
 No urgency language or "breaking" alerts.
 """
 
+import asyncio
 import logging
 import os
 import uuid
@@ -87,6 +88,56 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("NTRL API shutting down")
+
+    # Cancel any running pipeline jobs
+    from app.services.pipeline_job_manager import PipelineJobManager as _ShutdownJobManager
+
+    running_tasks = {job_id: task for job_id, task in _ShutdownJobManager._running_jobs.items() if not task.done()}
+
+    if running_tasks:
+        logger.warning(f"Cancelling {len(running_tasks)} running pipeline jobs on shutdown")
+
+        for job_id, task in running_tasks.items():
+            task.cancel()
+            logger.info(f"Cancelled pipeline job {job_id}")
+
+        # Wait for tasks to finish with timeout
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*running_tasks.values(), return_exceptions=True),
+                timeout=30,
+            )
+        except TimeoutError:
+            logger.warning("Timed out waiting for pipeline jobs to cancel")
+        except Exception:
+            pass  # Tasks were cancelled, exceptions are expected
+
+        # Mark remaining running jobs as cancelled in DB
+        try:
+            from app.database import SessionLocal
+
+            db = SessionLocal()
+            try:
+                from datetime import UTC, datetime
+
+                from app.models import PipelineJob, PipelineJobStatus
+
+                for job_id in running_tasks:
+                    job = db.query(PipelineJob).filter(PipelineJob.id == job_id).first()
+                    if job and job.status in [
+                        PipelineJobStatus.PENDING.value,
+                        PipelineJobStatus.RUNNING.value,
+                    ]:
+                        job.status = PipelineJobStatus.CANCELLED.value
+                        job.finished_at = datetime.now(UTC)
+                        job.errors = [{"message": "Server shutdown", "stage": job.current_stage or "unknown"}]
+                db.commit()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Failed to update job statuses on shutdown: {e}")
+
+    logger.info("NTRL API shutdown complete")
 
 
 APP_VERSION = "2.0.0"
