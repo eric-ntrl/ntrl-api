@@ -19,6 +19,7 @@ import logging
 import os
 import ssl
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.request import Request, urlopen
@@ -464,6 +465,47 @@ class IngestionService:
 
         return result
 
+    def _fetch_and_normalize_source(
+        self,
+        source: models.Source,
+        max_items: int = 20,
+    ) -> dict[str, Any]:
+        """
+        Fetch RSS feed and normalize entries (IO-bound, thread-safe, no DB access).
+
+        This method handles network IO (feed fetch + body extraction via web scraping)
+        and can safely be called from multiple threads in parallel.
+
+        Returns:
+            Dict with source info and list of normalized entries
+        """
+        result = {
+            "source_slug": source.slug,
+            "source_name": source.name,
+            "source_id": source.id,
+            "rss_url": source.rss_url,
+            "entries": [],
+            "errors": [],
+        }
+
+        try:
+            feed = self._fetch_feed(source.rss_url)
+            raw_entries = feed.entries[:max_items]
+
+            for entry in raw_entries:
+                try:
+                    normalized = self._normalize_entry(entry, source)
+                    if normalized["url"]:
+                        result["entries"].append(normalized)
+                except Exception as e:
+                    result["errors"].append(f"Entry normalization: {e}")
+
+        except Exception as e:
+            logger.error(f"Error fetching feed from {source.slug}: {e}")
+            result["errors"].append(f"Feed fetch failed: {e}")
+
+        return result
+
     def ingest_all(
         self,
         db: Session,
@@ -504,8 +546,154 @@ class IngestionService:
             "errors": [],
         }
 
+        # Phase 1: Parallel fetch + normalize (IO-bound: HTTP requests, web scraping)
+        # No DB access in this phase — thread-safe
+        source_data_map: dict[str, dict] = {}
+        max_workers = min(len(sources), 5) if sources else 1
+
+        if sources:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        self._fetch_and_normalize_source,
+                        source,
+                        max_items_per_source,
+                    ): source
+                    for source in sources
+                }
+                for future in as_completed(futures):
+                    source = futures[future]
+                    try:
+                        data = future.result()
+                        source_data_map[source.slug] = data
+                    except Exception as e:
+                        logger.error(f"Parallel fetch failed for {source.slug}: {e}")
+                        source_data_map[source.slug] = {
+                            "source_slug": source.slug,
+                            "source_name": source.name,
+                            "entries": [],
+                            "errors": [f"Parallel fetch failed: {e}"],
+                        }
+
+            logger.info(
+                f"[INGEST] Parallel fetch complete: {len(source_data_map)} sources, "
+                f"{sum(len(d['entries']) for d in source_data_map.values())} entries"
+            )
+
+        # Phase 2: Sequential DB writes (dedup, classify, S3 upload, store)
         for source in sources:
-            source_result = self.ingest_source(db, source, max_items=max_items_per_source, trace_id=trace_id)
+            data = source_data_map.get(source.slug, {"entries": [], "errors": []})
+            source_result = {
+                "source_slug": source.slug,
+                "source_name": source.name,
+                "ingested": 0,
+                "skipped_duplicate": 0,
+                "body_downloaded": 0,
+                "body_failed": 0,
+                "errors": list(data.get("errors", [])),
+            }
+
+            for normalized in data.get("entries", []):
+                entry_started_at = datetime.now(UTC)
+                try:
+                    # Track body extraction metrics
+                    if normalized.get("body_downloaded"):
+                        source_result["body_downloaded"] += 1
+                    elif normalized.get("extraction_failure_reason"):
+                        source_result["body_failed"] += 1
+
+                    # Check for duplicates (DB query)
+                    is_dup, original = self.deduper.is_duplicate(
+                        db,
+                        url=normalized["url"],
+                        title=normalized["title"],
+                    )
+
+                    if is_dup:
+                        source_result["skipped_duplicate"] += 1
+                        continue
+
+                    # Classify section
+                    section = self.classifier.classify(
+                        title=normalized["title"],
+                        description=normalized["description"],
+                        body=normalized["body"],
+                        source_slug=source.slug,
+                    )
+
+                    # Create story
+                    story_id = uuid.uuid4()
+
+                    # Upload body to object storage
+                    storage_meta = self._upload_body_to_storage(
+                        story_id=str(story_id),
+                        body=normalized["body"],
+                        published_at=normalized["published_at"],
+                    )
+
+                    story = models.StoryRaw(
+                        id=story_id,
+                        source_id=source.id,
+                        original_url=normalized["url"],
+                        original_title=normalized["title"],
+                        original_description=normalized["description"],
+                        original_author=normalized["author"],
+                        url_hash=self.deduper.hash_url(normalized["url"]),
+                        title_hash=self.deduper.hash_title(normalized["title"]),
+                        published_at=normalized["published_at"],
+                        ingested_at=datetime.now(UTC),
+                        section=section.value,
+                        is_duplicate=False,
+                        feed_entry_id=normalized["raw_entry"].get("id"),
+                        body_is_truncated=normalized.get("body_is_truncated", False),
+                        raw_content_uri=storage_meta["uri"] if storage_meta else None,
+                        raw_content_hash=storage_meta["hash"] if storage_meta else None,
+                        raw_content_type=storage_meta["type"] if storage_meta else None,
+                        raw_content_encoding=storage_meta["encoding"] if storage_meta else None,
+                        raw_content_size=storage_meta["size"] if storage_meta else None,
+                        raw_content_available=storage_meta is not None,
+                    )
+                    db.add(story)
+                    db.flush()
+                    source_result["ingested"] += 1
+
+                    self._log_pipeline(
+                        db,
+                        stage=PipelineStage.INGEST,
+                        status=PipelineStatus.COMPLETED,
+                        story_raw_id=story.id,
+                        started_at=entry_started_at,
+                        trace_id=trace_id,
+                        entry_url=normalized["url"],
+                        metadata={
+                            "source": source.slug,
+                            "body_downloaded": normalized.get("body_downloaded", False),
+                            "extractor_used": normalized.get("extractor_used"),
+                            "extraction_duration_ms": normalized.get("extraction_duration_ms", 0),
+                        },
+                    )
+
+                except Exception as e:
+                    logger.error(f"Error storing entry from {source.slug}: {e}")
+                    source_result["errors"].append(str(e))
+                    self._log_pipeline(
+                        db,
+                        stage=PipelineStage.INGEST,
+                        status=PipelineStatus.FAILED,
+                        started_at=entry_started_at,
+                        trace_id=trace_id,
+                        entry_url=normalized.get("url", ""),
+                        error_message=str(e),
+                        metadata={"source": source.slug},
+                    )
+
+            try:
+                db.commit()
+            except Exception as e:
+                db.rollback()
+                logger.error(f"Error committing entries from {source.slug}: {e}")
+                source_result["errors"].append(f"Commit failed: {e}")
+
             result["source_results"].append(source_result)
             result["sources_processed"] += 1
             result["total_ingested"] += source_result["ingested"]
