@@ -249,6 +249,7 @@ class Source(Base):
     slug = Column(String(64), unique=True, nullable=False)  # e.g., "ap", "reuters"
     rss_url = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    is_blocked = Column(Boolean, default=False, nullable=False)  # Prevents articles from appearing in brief
     default_section = Column(String(32), nullable=True)  # Hint for classification
     homepage_url = Column(Text, nullable=True)  # Publisher homepage (e.g., "https://apnews.com")
     created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
