@@ -10,7 +10,7 @@ Neutral news backend: removes manipulative language, creates calm news briefs.
 | Admin Key | `$ADMIN_API_KEY` (header: `X-API-Key`) |
 | Dev Server | `pipenv run uvicorn app.main:app --reload --port 8000` |
 | Tests | `pipenv run pytest tests/` |
-| Unit Tests | `pipenv run pytest tests/unit/` (439 tests) |
+| Unit Tests | `pipenv run pytest tests/unit/` (518 tests) |
 | E2E Tests | `pipenv run pytest tests/e2e/` (13 tests) |
 | Migrations | `pipenv run alembic upgrade head` |
 
@@ -63,13 +63,13 @@ curl "https://api-staging-7b4d.up.railway.app/v1/pipeline/jobs/{job_id}" \
 | Ingest | ~20s | Parallel RSS fetches |
 | Classify | ~2.5 min | LLM classification |
 | Neutralize | ~5.5 min | LLM neutralization |
-| QC Gate | <1s | 19 checks per article |
+| QC Gate | <1s | 20 checks per article |
 | Brief | ~125ms | Assembly |
 | **Total** | **~8.5 min** | vs 9-14 min sequential |
 
 ## QC Gate
 
-Runs between NEUTRALIZE and BRIEF ASSEMBLE. Articles must pass **all 19 checks** to appear in the brief. Failed articles are excluded with structured reason codes. Span detection uses **14 manipulation categories** and **8 SpanReason values** (including `selective_quoting` for cherry-picked/scare quotes).
+Runs between NEUTRALIZE and BRIEF ASSEMBLE. Articles must pass **all 20 checks** to appear in the brief. Failed articles are excluded with structured reason codes. Span detection uses **14 manipulation categories** and **8 SpanReason values** (including `selective_quoting` for cherry-picked/scare quotes).
 
 **Implementation**: `app/services/quality_gate.py`
 
@@ -78,9 +78,16 @@ Runs between NEUTRALIZE and BRIEF ASSEMBLE. Articles must pass **all 19 checks**
 | Category | Checks | What They Catch |
 |----------|--------|-----------------|
 | **Required Fields** (7) | `required_feed_title`, `required_feed_summary`, `required_source`, `required_published_at`, `required_original_url`, `required_feed_category`, `source_name_not_generic` | Missing metadata, generic API source names |
-| **Content Quality** (7) | `original_body_complete`, `original_body_sufficient`, `min_body_length`, `feed_title_bounds`, `feed_summary_bounds`, `no_garbled_output`, `no_llm_refusal` | Truncated bodies, paywall snippets, LLM refusals/apologies, placeholder text |
+| **Content Quality** (8) | `original_body_complete`, `original_body_sufficient`, `min_body_length`, `feed_title_bounds`, `feed_summary_bounds`, `no_garbled_output`, `no_llm_refusal`, `content_coherence` | Truncated bodies, paywall snippets, LLM refusals/apologies, placeholder text, spam/SEO junk, ALL-CAPS titles, content spinning |
 | **Pipeline Integrity** (3) | `neutralization_success`, `not_duplicate`, `url_reachable` | Failed neutralization, duplicate articles, dead URLs (404/410/403) |
 | **View Completeness** (2) | `views_renderable`, `brief_full_different` | Blank detail views, missing disclosure text, identical brief/full tabs |
+
+### Source Filtering
+
+- **`Source.is_blocked`**: Prevents articles from any source from appearing in the brief. Set via `POST /v1/admin/sources/{slug}/block`.
+- **`BLOCKED_DOMAINS`**: In `app/constants.py` (`SourceFiltering` class). Checked at ingestion time to skip articles from blocked domains.
+- **Source diversity cap**: Max 3 articles per source per category (`MAX_PER_SOURCE_PER_CATEGORY`). Enforced in brief assembly after sorting.
+- **Artifact cleanup**: `clean_body_artifacts()` in `app/utils/content_sanitizer.py`. Strips web scraping artifacts (RECOMMENDED STORIES, Advertisement, etc.) at ingestion time.
 
 ### Key Design Decisions
 

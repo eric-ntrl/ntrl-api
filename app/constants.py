@@ -127,6 +127,10 @@ class SourceFiltering:
         "healthimpactnews.com",
         "imdb.com",
         "www.imdb.com",
+        "worldtechtoday.com",
+        "www.worldtechtoday.com",
+        "spadepoker.tv",
+        "www.spadepoker.tv",
     }
 
     # Max articles from a single source per category in the brief
