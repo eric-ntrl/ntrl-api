@@ -134,22 +134,7 @@ EXAMPLES:
 - "Sharad Pawar Admitted to Hospital in Pune" → governance_politics, international
 - "FanDuel Promo Code for USA vs Canada Game" → sports_competition, us
 - "Whitechapel Police Launch Investigation" → crime_public_safety, international
-- "Atal Dulloo Reviews Education Progress in J&K" → governance_politics, international
-
-Respond with valid JSON only. No markdown, no explanation.
-
-Output schema:
-{
-  "domain": "<one of the domain values above>",
-  "confidence": <0.0-1.0>,
-  "tags": {
-    "geography": "<international|us|local|mixed>",
-    "geography_detail": "<brief geographic note>",
-    "actors": ["<key actors mentioned>"],
-    "action_type": "<legislation|ruling|announcement|report|incident|other>",
-    "topic_keywords": ["<2-5 key topic words>"]
-  }
-}"""
+- "Atal Dulloo Reviews Education Progress in J&K" → governance_politics, international"""
 
 CLASSIFICATION_SIMPLIFIED_PROMPT = """Classify this news article. Pick one domain and one geography.
 
@@ -162,6 +147,77 @@ Respond with JSON only:
 
 # Valid domain values for validation
 VALID_DOMAINS = {d.value for d in Domain}
+VALID_GEOGRAPHIES = {"international", "us", "local", "mixed"}
+
+
+# ---------------------------------------------------------------------------
+# Structured output schema for OpenAI classification
+# ---------------------------------------------------------------------------
+
+_CLASSIFICATION_SCHEMA: dict | None = None
+
+
+def _build_classification_schema() -> dict:
+    """Build JSON schema for structured classification output.
+
+    Generated dynamically from Domain enum to stay in sync with valid values.
+    """
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "classification_result",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "domain": {
+                        "type": "string",
+                        "enum": sorted(VALID_DOMAINS),
+                    },
+                    "confidence": {
+                        "type": "number",
+                    },
+                    "tags": {
+                        "type": "object",
+                        "properties": {
+                            "geography": {
+                                "type": "string",
+                                "enum": sorted(VALID_GEOGRAPHIES),
+                            },
+                            "geography_detail": {"type": "string"},
+                            "actors": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "action_type": {"type": "string"},
+                            "topic_keywords": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": [
+                            "geography",
+                            "geography_detail",
+                            "actors",
+                            "action_type",
+                            "topic_keywords",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+                "required": ["domain", "confidence", "tags"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def _get_classification_schema() -> dict:
+    """Get cached classification schema (built once on first call)."""
+    global _CLASSIFICATION_SCHEMA
+    if _CLASSIFICATION_SCHEMA is None:
+        _CLASSIFICATION_SCHEMA = _build_classification_schema()
+    return _CLASSIFICATION_SCHEMA
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +325,7 @@ def _parse_llm_response(content: str) -> dict | None:
         if not isinstance(tags, dict):
             tags = {}
         geography = tags.get("geography", "us")
-        if geography not in ("international", "us", "local", "mixed"):
+        if geography not in VALID_GEOGRAPHIES:
             geography = "us"
         tags["geography"] = geography
 
@@ -313,7 +369,7 @@ def _classify_openai(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            "response_format": {"type": "json_object"},
+            "response_format": _get_classification_schema(),
         }
         # gpt-5-mini only supports temperature=1
         if not model.startswith("gpt-5"):

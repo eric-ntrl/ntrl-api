@@ -14,10 +14,52 @@ import json
 
 from app.services.llm_classifier import (
     VALID_DOMAINS,
+    VALID_GEOGRAPHIES,
+    _build_classification_schema,
     _build_user_prompt,
     _classify_from_api_categories,
     _parse_llm_response,
 )
+
+# ---------------------------------------------------------------------------
+# _build_classification_schema tests
+# ---------------------------------------------------------------------------
+
+
+class TestClassificationSchema:
+    def test_schema_contains_all_domains(self):
+        schema = _build_classification_schema()
+        domain_enum = schema["json_schema"]["schema"]["properties"]["domain"]["enum"]
+        assert set(domain_enum) == VALID_DOMAINS
+
+    def test_schema_contains_all_geographies(self):
+        schema = _build_classification_schema()
+        geo_enum = schema["json_schema"]["schema"]["properties"]["tags"]["properties"]["geography"]["enum"]
+        assert set(geo_enum) == VALID_GEOGRAPHIES
+
+    def test_schema_has_strict_mode(self):
+        schema = _build_classification_schema()
+        assert schema["json_schema"]["strict"] is True
+
+    def test_schema_requires_all_fields(self):
+        schema = _build_classification_schema()
+        top_required = schema["json_schema"]["schema"]["required"]
+        assert set(top_required) == {"domain", "confidence", "tags"}
+
+        tags_required = schema["json_schema"]["schema"]["properties"]["tags"]["required"]
+        assert set(tags_required) == {
+            "geography",
+            "geography_detail",
+            "actors",
+            "action_type",
+            "topic_keywords",
+        }
+
+    def test_schema_no_additional_properties(self):
+        schema = _build_classification_schema()
+        assert schema["json_schema"]["schema"]["additionalProperties"] is False
+        assert schema["json_schema"]["schema"]["properties"]["tags"]["additionalProperties"] is False
+
 
 # ---------------------------------------------------------------------------
 # _parse_llm_response tests
