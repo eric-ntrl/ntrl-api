@@ -944,6 +944,9 @@ class IngestionService:
                 else:
                     article_source = api_source
 
+                # Store API-provided categories for classification bypass
+                api_categories = article.get("categories") or None
+
                 # Create StoryRaw record
                 story = models.StoryRaw(
                     id=story_id,
@@ -964,6 +967,8 @@ class IngestionService:
                     api_source_id=article.get("api_article_id"),
                     # Content completeness
                     body_is_truncated=body_is_truncated,
+                    # API-provided categories for classification bypass
+                    api_categories=api_categories,
                     # S3 storage references
                     raw_content_uri=storage_meta["uri"] if storage_meta else None,
                     raw_content_hash=storage_meta["hash"] if storage_meta else None,

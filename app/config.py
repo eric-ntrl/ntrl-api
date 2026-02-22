@@ -66,8 +66,8 @@ class Settings(BaseSettings):
 
     # Classification
     CLASSIFICATION_MODEL: str = Field(
-        default="gpt-5-nano",
-        description="OpenAI model for article classification (supports gpt-5-nano, gpt-4o-mini)",
+        default="gpt-4o-mini",
+        description="OpenAI model for article classification (supports gpt-4o-mini, gpt-5-nano)",
     )
 
     # Teacher LLM Configuration

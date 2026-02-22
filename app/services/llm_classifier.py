@@ -92,10 +92,10 @@ DOMAINS (pick exactly one):
 - health_medicine: Medical, diseases, treatments, public health, mental health, pharmaceuticals
 - technology: AI, software, hardware, internet, tech companies, innovation, cybersecurity, hacking, data breaches, malware
 - media_information: Journalism, social media, misinformation, content moderation, press
-- sports_competition: Professional/amateur sports, competitions, athletes, leagues, sports broadcasting, sports punditry, commentary about athletes
+- sports_competition: Professional/amateur sports, competitions, athletes, leagues, sports broadcasting, sports punditry, commentary about athletes, sports betting
 - society_culture: Social issues, education, arts, religion, cultural movements
 - lifestyle_personal: Celebrity, entertainment, food, travel, fashion, personal finance
-- incidents_disasters: Natural disasters, accidents, emergencies, mass incidents, weather events
+- incidents_disasters: Natural disasters, accidents, emergencies, mass incidents, weather events, weather forecasts
 
 BOUNDARY CASES — classify by primary subject matter, not incidental angles:
 - Sports broadcasting, punditry, and commentary about athletes or games → sports_competition (NOT media_information)
@@ -103,17 +103,38 @@ BOUNDARY CASES — classify by primary subject matter, not incidental angles:
 - Athlete career milestones, youth academy promotions, transfers, retirements → sports_competition
 - Olympic athletes, Winter/Summer Olympics coverage → sports_competition
 - Sports TV presenters clashing or sports media disputes → sports_competition (NOT media_information)
+- Sports betting, promo codes, odds, FanDuel/DraftKings → sports_competition (NOT business_industry)
+- Tournament coverage with prize money → sports_competition (prize purse is context, not primary subject)
 - Cybersecurity incidents, hacking, data breaches, malware, ransomware → technology (NOT crime_public_safety or security_defense)
 - Financial fraud or corporate crime → crime_public_safety only if the focus is on arrests/prosecution; otherwise business_industry or finance_markets
 - Celebrity legal cases → law_justice if focused on the court proceedings; lifestyle_personal if focused on the celebrity
 - Movie trailers, film reviews, entertainment industry news → lifestyle_personal (NOT media_information)
 - Shopping deals, sales events, product promotions → business_industry (NOT lifestyle_personal)
+- Weather forecasts, temperature reports, current conditions → incidents_disasters (NOT environment_climate)
+- Politician hospitalized or health emergency → governance_politics (person's primary role determines domain, NOT health_medicine)
+
+GEOGRAPHY DETECTION (CRITICAL — wrong geography puts articles in wrong sections):
+- UK indicators: Whitechapel, Parliament (UK context), NHS, England, Scotland, Wales, Downing Street, Westminster, London police → international
+- India indicators: J&K, Jammu, Kashmir, Pune, Mumbai, Delhi, Lok Sabha, Rajya Sabha, Modi (PM context) → international
+- EU indicators: European Commission, Bundestag, Élysée, Brussels → international
+- Other non-US: Any non-US country, city, or government institution as PRIMARY subject → international
+- When in doubt between "us" and "international": prefer "international" (foreign news in U.S. section is worse than the reverse)
+- US indicators: Congress, Senate, House (US context), White House, Supreme Court (US), state names, US cities → us
 
 GEOGRAPHY (pick exactly one):
 - international: Non-US or multi-country focus
 - us: US national scope
 - local: City/county/neighborhood scope within US
 - mixed: Both US and international elements
+
+EXAMPLES:
+- "Chicago Weather Saturday: Light Snow, -2°C" → incidents_disasters, local
+- "Bridget Phillipson Announces Education Overhaul in England" → governance_politics, international
+- "PGA Tour Hosts Genesis Invitational" → sports_competition, us
+- "Sharad Pawar Admitted to Hospital in Pune" → governance_politics, international
+- "FanDuel Promo Code for USA vs Canada Game" → sports_competition, us
+- "Whitechapel Police Launch Investigation" → crime_public_safety, international
+- "Atal Dulloo Reviews Education Progress in J&K" → governance_politics, international
 
 Respond with valid JSON only. No markdown, no explanation.
 
@@ -273,7 +294,7 @@ def _classify_openai(
     body_excerpt: str,
     source_slug: str,
     system_prompt: str,
-    model: str = "gpt-5-mini",
+    model: str = "gpt-4o-mini",
 ) -> dict | None:
     """Classify using OpenAI API with JSON mode."""
     api_key = os.getenv("OPENAI_API_KEY")
@@ -355,6 +376,152 @@ def _classify_gemini(
 # ---------------------------------------------------------------------------
 # Main classifier
 # ---------------------------------------------------------------------------
+
+
+# Perigon category → NTRL domain mapping (more granular than feed_category)
+PERIGON_CATEGORY_TO_DOMAIN: dict[str, str] = {
+    "Politics": "governance_politics",
+    "Business": "business_industry",
+    "Finance": "finance_markets",
+    "Tech": "technology",
+    "Science": "science_research",
+    "Health": "health_medicine",
+    "Environment": "environment_climate",
+    "Sports": "sports_competition",
+    "Entertainment": "lifestyle_personal",
+    "Lifestyle": "lifestyle_personal",
+    "Arts": "society_culture",
+    "World": "global_affairs",
+    "International": "global_affairs",
+    "Weather": "incidents_disasters",
+    "Crime": "crime_public_safety",
+    "Education": "society_culture",
+    "Travel": "lifestyle_personal",
+}
+
+# Country/domain indicators for geography detection on API articles
+INTERNATIONAL_INDICATORS = {
+    # Country TLDs
+    ".co.uk",
+    ".uk",
+    ".in",
+    ".au",
+    ".ca",
+    ".de",
+    ".fr",
+    ".jp",
+    ".cn",
+    ".eu",
+    ".ie",
+    ".nz",
+    ".za",
+    ".br",
+    ".mx",
+    ".kr",
+    ".it",
+    ".es",
+}
+
+
+def _classify_from_api_categories(
+    api_categories: list[str],
+    source_domain: str | None = None,
+    title: str = "",
+) -> ClassificationResult | None:
+    """
+    Classify using API-provided categories (e.g., from Perigon).
+
+    Returns ClassificationResult if a confident mapping exists, None to fall through to LLM.
+    Skips "General" and unmapped categories — those need LLM classification.
+    """
+    if not api_categories:
+        return None
+
+    # Find the first mapped category
+    domain = None
+    for cat in api_categories:
+        cat_name = cat if isinstance(cat, str) else cat.get("name", "") if isinstance(cat, dict) else ""
+        if cat_name in PERIGON_CATEGORY_TO_DOMAIN:
+            domain = PERIGON_CATEGORY_TO_DOMAIN[cat_name]
+            break
+
+    if not domain:
+        return None
+
+    # Determine geography — check source domain and title for international signals
+    geography = "us"  # Default for US-focused app
+
+    # Check source domain TLD for international indicators
+    if source_domain:
+        domain_lower = source_domain.lower()
+        for tld in INTERNATIONAL_INDICATORS:
+            if domain_lower.endswith(tld):
+                geography = "international"
+                break
+
+    # For Politics specifically, check title for international indicators
+    if domain == "governance_politics" and geography == "us":
+        title_lower = title.lower()
+        international_keywords = [
+            "uk ",
+            "britain",
+            "british",
+            "england",
+            "parliament",
+            "india",
+            "modi",
+            "delhi",
+            "mumbai",
+            "pune",
+            "lok sabha",
+            "j&k",
+            "jammu",
+            "kashmir",
+            "eu ",
+            "european",
+            "brussels",
+            "bundestag",
+            "china",
+            "beijing",
+            "xi jinping",
+            "russia",
+            "kremlin",
+            "putin",
+            "france",
+            "macron",
+            "élysée",
+            "japan",
+            "tokyo",
+            "canada",
+            "trudeau",
+            "ottawa",
+            "australia",
+            "canberra",
+        ]
+        if any(kw in title_lower for kw in international_keywords):
+            geography = "international"
+
+    feed_category = map_domain_to_feed_category(domain, geography)
+
+    logger.info(
+        f"[CLASSIFY] API category bypass: {api_categories} → domain={domain}, "
+        f"geography={geography}, feed_category={feed_category}"
+    )
+
+    return ClassificationResult(
+        domain=domain,
+        feed_category=feed_category,
+        confidence=0.85,
+        tags={
+            "geography": geography,
+            "geography_detail": f"API categories: {', '.join(str(c) for c in api_categories[:3])}",
+            "actors": [],
+            "action_type": "other",
+            "topic_keywords": [str(c) for c in api_categories[:5]],
+        },
+        model="api_source",
+        method="api_source",
+    )
 
 
 class LLMClassifier:
@@ -536,9 +703,47 @@ class LLMClassifier:
         get_classification_prompt("classification_system_prompt")
         get_classification_prompt("classification_simplified_prompt")
 
-        # 1. Extract data from ORM objects (main thread — no ORM in threads)
-        classify_inputs = []
+        # 1. Try API category bypass first (no LLM needed)
+        results: dict[str, ClassificationResult | Exception] = {}
+        llm_needed: list = []
+
         for story in stories:
+            sid = str(story.id)
+            api_cats = getattr(story, "api_categories", None)
+            source_domain = None
+            if story.source and hasattr(story.source, "homepage_url") and story.source.homepage_url:
+                from urllib.parse import urlparse
+
+                try:
+                    source_domain = urlparse(story.source.homepage_url).netloc
+                except Exception:
+                    pass
+            if not source_domain and story.source:
+                # Try to extract domain from slug (e.g., "perigon-reuters-com" → "reuters.com")
+                slug = story.source.slug or ""
+                parts = slug.split("-", 1)
+                if len(parts) > 1:
+                    source_domain = parts[1].replace("-", ".")
+
+            api_result = _classify_from_api_categories(
+                api_categories=api_cats,
+                source_domain=source_domain,
+                title=story.original_title or "",
+            )
+            if api_result:
+                results[sid] = api_result
+            else:
+                llm_needed.append(story)
+
+        api_classified = len(results)
+        if api_classified:
+            logger.info(
+                f"[CLASSIFY] {api_classified} stories classified via API categories, {len(llm_needed)} need LLM"
+            )
+
+        # 2. Extract data for stories needing LLM classification
+        classify_inputs = []
+        for story in llm_needed:
             classify_inputs.append(
                 {
                     "story_id": str(story.id),
@@ -549,28 +754,28 @@ class LLMClassifier:
                 }
             )
 
-        # 2. Parallel LLM calls — NO DB, NO ORM objects
-        results: dict[str, ClassificationResult | Exception] = {}
+        # 3. Parallel LLM calls — NO DB, NO ORM objects
         failed_count = 0
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(
-                    self._classify_safe,
-                    title=ci["title"],
-                    description=ci["description"],
-                    body_excerpt=ci["body_excerpt"],
-                    source_slug=ci["source_slug"],
-                ): ci["story_id"]
-                for ci in classify_inputs
-            }
-            for future in as_completed(futures):
-                sid = futures[future]
-                result = future.result()
-                if isinstance(result, Exception):
-                    failed_count += 1
-                results[sid] = result
+        if classify_inputs:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        self._classify_safe,
+                        title=ci["title"],
+                        description=ci["description"],
+                        body_excerpt=ci["body_excerpt"],
+                        source_slug=ci["source_slug"],
+                    ): ci["story_id"]
+                    for ci in classify_inputs
+                }
+                for future in as_completed(futures):
+                    sid = futures[future]
+                    result = future.result()
+                    if isinstance(result, Exception):
+                        failed_count += 1
+                    results[sid] = result
 
-        # 3. Sequential DB writes (main thread)
+        # 4. Sequential DB writes (main thread)
         story_map = {str(s.id): s for s in stories}
         for sid, result in results.items():
             if isinstance(result, Exception):
@@ -651,9 +856,41 @@ class LLMClassifier:
         get_classification_prompt("classification_system_prompt")
         get_classification_prompt("classification_simplified_prompt")
 
-        # 1. Extract data from ORM objects (main thread)
-        classify_inputs = []
+        # 1. Try API category bypass first
+        results: dict[str, ClassificationResult | Exception] = {}
+        llm_needed: list = []
+
         for story in stories:
+            sid = str(story.id)
+            api_cats = getattr(story, "api_categories", None)
+            source_domain = None
+            if story.source and hasattr(story.source, "homepage_url") and story.source.homepage_url:
+                from urllib.parse import urlparse
+
+                try:
+                    source_domain = urlparse(story.source.homepage_url).netloc
+                except Exception:
+                    pass
+
+            api_result = _classify_from_api_categories(
+                api_categories=api_cats,
+                source_domain=source_domain,
+                title=story.original_title or "",
+            )
+            if api_result:
+                results[sid] = api_result
+            else:
+                llm_needed.append(story)
+
+        api_classified = len(results)
+        if api_classified:
+            logger.info(
+                f"[CLASSIFY] {api_classified} stories classified via API categories, {len(llm_needed)} need LLM"
+            )
+
+        # 2. Extract data for LLM classification
+        classify_inputs = []
+        for story in llm_needed:
             classify_inputs.append(
                 {
                     "story_id": str(story.id),
@@ -664,24 +901,24 @@ class LLMClassifier:
                 }
             )
 
-        # 2. Parallel LLM calls — NO DB, NO ORM objects
-        results: dict[str, ClassificationResult | Exception] = {}
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {
-                executor.submit(
-                    self._classify_safe,
-                    title=ci["title"],
-                    description=ci["description"],
-                    body_excerpt=ci["body_excerpt"],
-                    source_slug=ci["source_slug"],
-                ): ci["story_id"]
-                for ci in classify_inputs
-            }
-            for future in as_completed(futures):
-                sid = futures[future]
-                results[sid] = future.result()
+        # 3. Parallel LLM calls
+        if classify_inputs:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        self._classify_safe,
+                        title=ci["title"],
+                        description=ci["description"],
+                        body_excerpt=ci["body_excerpt"],
+                        source_slug=ci["source_slug"],
+                    ): ci["story_id"]
+                    for ci in classify_inputs
+                }
+                for future in as_completed(futures):
+                    sid = futures[future]
+                    results[sid] = future.result()
 
-        # 3. Sequential DB writes (main thread)
+        # 4. Sequential DB writes (main thread)
         story_map = {str(s.id): s for s in stories}
         for sid, result in results.items():
             if isinstance(result, Exception):

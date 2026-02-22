@@ -352,6 +352,9 @@ class StoryRaw(Base):
     # Content completeness flag (True when API truncated body and scraping failed)
     body_is_truncated = Column(Boolean, default=False, server_default="false", nullable=False)
 
+    # API-provided categories (e.g., Perigon categories) for classification bypass
+    api_categories = Column(JSONB, nullable=True)
+
     # URL validation (populated during ingestion, checked by QC gate)
     url_status = Column(String(16), nullable=True)  # "reachable", "unreachable", "timeout", "redirect"
     url_checked_at = Column(DateTime, nullable=True)

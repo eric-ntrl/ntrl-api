@@ -117,6 +117,29 @@ class CacheConfig:
     TRANSPARENCY_MAX_ENTRIES = 200
 
 
+class NonNewsPatterns:
+    """Patterns for detecting non-news content that should be filtered from the brief."""
+
+    import re
+
+    # Weather forecast patterns (titles)
+    WEATHER_TITLE_PATTERNS = [
+        re.compile(r"[-−]\d+°[CF]|(?<!\w)\d+°[CF]", re.IGNORECASE),  # Temperature readings
+        re.compile(r"\b(?:weather forecast|current conditions|weather outlook|weather alert)\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:mostly sunny|partly cloudy|light snow|heavy rain|thunderstorms?)\b.*\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+            re.IGNORECASE,
+        ),
+    ]
+
+    # Gambling/promo patterns (titles)
+    GAMBLING_TITLE_PATTERNS = [
+        re.compile(r"\b(?:promo code|bonus bet|sportsbook offer|sign[- ]?up bonus)\b", re.IGNORECASE),
+        re.compile(r"\b(?:fanduel|draftkings|betmgm|caesars sportsbook)\b.*\bpromo\b", re.IGNORECASE),
+        re.compile(r"\bfree\s+bets?\b", re.IGNORECASE),
+    ]
+
+
 class SourceFiltering:
     """Source-level filtering constants."""
 
