@@ -263,8 +263,11 @@ class IngestionService:
         if not body:
             body = rss_body
 
-        # Remove duplicate paragraphs (common in news sites with captions/pull quotes)
+        # Clean scraping artifacts and remove duplicate paragraphs
         if body:
+            from app.utils.content_sanitizer import clean_body_artifacts
+
+            body = clean_body_artifacts(body)
             body = self._deduplicate_paragraphs(body)
 
         # Get author
@@ -836,6 +839,16 @@ class IngestionService:
             entry_url = article.get("url", "")
 
             try:
+                # Check if publisher domain is blocked
+                from app.constants import SourceFiltering
+
+                publisher_domain = article.get("source_domain", "")
+                if publisher_domain and publisher_domain.lower() in SourceFiltering.BLOCKED_DOMAINS:
+                    result.setdefault("skipped_blocked", 0)
+                    result["skipped_blocked"] += 1
+                    logger.debug(f"Skipping blocked domain: {publisher_domain}")
+                    continue
+
                 # Track body metrics
                 if article.get("body_downloaded"):
                     result["body_downloaded"] += 1
@@ -902,6 +915,9 @@ class IngestionService:
                     logger.info(f"Body still truncated after scraping fallback for {entry_url}")
 
                 if body:
+                    from app.utils.content_sanitizer import clean_body_artifacts
+
+                    body = clean_body_artifacts(body)
                     body = self._deduplicate_paragraphs(body)
 
                 storage_meta = self._upload_body_to_storage(

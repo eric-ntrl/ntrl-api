@@ -3,7 +3,7 @@
 Unit tests for the Quality Control gate service.
 
 Covers:
-- Each of the 18 individual QC checks (pass and fail cases)
+- Each of the 20 individual QC checks (pass and fail cases)
 - Aggregate check_article() behavior
 - QC configuration overrides
 - Edge cases (empty fields, boundary values, garbled output detection)
@@ -94,7 +94,24 @@ def _make_neutralized(
     n.feed_title = feed_title
     n.feed_summary = feed_summary
     n.detail_brief = "This is a test detail brief. " * 10 if detail_brief is _SENTINEL else detail_brief
-    n.detail_full = "This is a test detail full. " * 20 if detail_full is _SENTINEL else detail_full
+    n.detail_full = (
+        (
+            "The economy showed mixed signals in the latest quarterly report. "
+            "Growth remained steady at two percent while consumer spending held firm. "
+            "Exports declined slightly due to ongoing trade tensions between major economies. "
+            "The labor market added jobs across multiple sectors including technology and healthcare. "
+            "Inflation stayed within the target range set by the central bank during the period. "
+            "Housing starts rose modestly in suburban areas driven by demand from remote workers. "
+            "Retail sales exceeded expectations for the third straight month boosted by holiday spending. "
+            "Manufacturing output was flat compared to the prior quarter amid supply chain adjustments. "
+            "Analysts expect moderate growth to continue into next year based on current indicators. "
+            "The federal reserve signaled it would maintain current interest rate levels through spring. "
+            "International markets responded positively to the economic data released on Friday morning. "
+            "Small business confidence improved according to the latest survey from the commerce department."
+        )
+        if detail_full is _SENTINEL
+        else detail_full
+    )
     n.has_manipulative_content = has_manipulative_content
     n.disclosure = disclosure
     n.failure_reason = failure_reason
@@ -807,7 +824,7 @@ class TestCheckArticle:
         )
         assert result.status == QCStatus.PASSED
         assert len(result.failures) == 0
-        assert len(result.checks) == 19  # All 19 checks ran
+        assert len(result.checks) == 20  # All 20 checks ran
 
     def test_single_failure(self):
         """An article with one failing check should fail overall."""

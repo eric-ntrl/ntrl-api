@@ -208,6 +208,12 @@ class QualityGateService:
             "No LLM refusal/apology messages in content",
             self._check_no_llm_refusal,
         )
+        self._register(
+            "content_coherence",
+            QCCategory.CONTENT_QUALITY,
+            "Content is coherent (not spam/junk)",
+            self._check_content_coherence,
+        )
 
         # C. Pipeline Integrity
         self._register(
@@ -843,6 +849,73 @@ class QualityGateService:
             )
         return QCCheckResult(
             check="no_llm_refusal",
+            passed=True,
+            category=QCCategory.CONTENT_QUALITY.value,
+        )
+
+    # Patterns indicating spam, SEO junk, or incoherent content
+    SPAM_CONTENT_PATTERNS = [
+        # Unicode-obfuscated titles (pirate streaming spam)
+        re.compile(r"[\u2460-\u24FF\u2700-\u27BF\u2B50-\u2B55]{3,}"),
+        # Template/boilerplate markers
+        re.compile(r"(?:lorem ipsum|template boutique|sample text|placeholder)", re.IGNORECASE),
+        # Pirate streaming domains
+        re.compile(r"(?:123movies|putlocker|fmovies|soap2day|yesmovies)", re.IGNORECASE),
+    ]
+
+    @staticmethod
+    def _check_content_coherence(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: models.Source | None,
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Detect spam, SEO junk, and incoherent content that passes basic checks."""
+        issues = []
+
+        title = neutralized.feed_title or ""
+
+        # Check feed_title for spam patterns
+        for pattern in QualityGateService.SPAM_CONTENT_PATTERNS:
+            if pattern.search(title):
+                issues.append(f"feed_title matches spam pattern: '{title[:60]}'")
+                break
+
+        # ALL-CAPS ratio check for titles (>50% ALL-CAPS words in titles with >3 words)
+        words = title.split()
+        if len(words) > 3:
+            caps_words = sum(1 for w in words if w.isupper() and len(w) > 1)
+            if caps_words / len(words) > 0.5:
+                issues.append(f"feed_title has excessive ALL-CAPS ({caps_words}/{len(words)} words)")
+
+        # Check detail_full for spam patterns and sentence repetition
+        detail_full = neutralized.detail_full or ""
+        for pattern in QualityGateService.SPAM_CONTENT_PATTERNS:
+            if pattern.search(detail_full):
+                issues.append("detail_full matches spam pattern")
+                break
+
+        # Content spinning detection: same sentence repeated 3+ times
+        if detail_full:
+            sentences = [s.strip() for s in re.split(r"[.!?]+", detail_full) if len(s.strip()) > 20]
+            if sentences:
+                from collections import Counter
+
+                counts = Counter(sentences)
+                for sentence, count in counts.most_common(1):
+                    if count >= 3:
+                        issues.append(f"detail_full has repeated sentence ({count}x): '{sentence[:50]}...'")
+
+        if issues:
+            return QCCheckResult(
+                check="content_coherence",
+                passed=False,
+                category=QCCategory.CONTENT_QUALITY.value,
+                reason="; ".join(issues),
+                details={"issues": issues},
+            )
+        return QCCheckResult(
+            check="content_coherence",
             passed=True,
             category=QCCategory.CONTENT_QUALITY.value,
         )

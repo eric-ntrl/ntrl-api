@@ -2743,3 +2743,48 @@ def run_url_validation(
     )
 
     return stats
+
+
+# -----------------------------------------------------------------------------
+# Source Blocking
+# -----------------------------------------------------------------------------
+
+
+@router.post("/admin/sources/{slug}/block")
+def block_source(
+    slug: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> dict:
+    """Block a source from appearing in the brief."""
+    from app import models
+
+    source = db.query(models.Source).filter(models.Source.slug == slug).first()
+    if not source:
+        raise HTTPException(status_code=404, detail=f"Source '{slug}' not found")
+
+    source.is_blocked = True
+    db.commit()
+
+    admin_logger.info(f"[SOURCE-BLOCK] Blocked source: {slug} ({source.name})")
+    return {"slug": slug, "name": source.name, "is_blocked": True}
+
+
+@router.post("/admin/sources/{slug}/unblock")
+def unblock_source(
+    slug: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin_key),
+) -> dict:
+    """Unblock a previously blocked source."""
+    from app import models
+
+    source = db.query(models.Source).filter(models.Source.slug == slug).first()
+    if not source:
+        raise HTTPException(status_code=404, detail=f"Source '{slug}' not found")
+
+    source.is_blocked = False
+    db.commit()
+
+    admin_logger.info(f"[SOURCE-UNBLOCK] Unblocked source: {slug} ({source.name})")
+    return {"slug": slug, "name": source.name, "is_blocked": False}

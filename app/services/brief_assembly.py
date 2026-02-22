@@ -21,6 +21,7 @@ from typing import Any, NamedTuple
 from sqlalchemy.orm import Session
 
 from app import models
+from app.constants import SourceFiltering
 from app.models import (
     FEED_CATEGORY_ORDER,
     FeedCategory,
@@ -135,6 +136,7 @@ class BriefAssemblyService:
                 models.StoryNeutralized.qc_status == "passed",
                 models.StoryRaw.is_duplicate == False,
                 models.StoryRaw.published_at >= cutoff_time,
+                models.Source.is_blocked == False,
             )
             .all()
         )
@@ -154,11 +156,26 @@ class BriefAssemblyService:
             except ValueError:
                 continue
 
-        # Sort each category
+        # Sort each category and enforce source diversity
         for cat in by_category:
             by_category[cat] = self._sort_stories(by_category[cat])
+            by_category[cat] = self._enforce_source_diversity(by_category[cat])
 
         return by_category
+
+    @staticmethod
+    def _enforce_source_diversity(stories: list[StoryRow]) -> list[StoryRow]:
+        """Limit articles per source per category to prevent any single publisher from dominating."""
+        seen: dict[str, int] = {}
+        diverse: list[StoryRow] = []
+        cap = SourceFiltering.MAX_PER_SOURCE_PER_CATEGORY
+        for story in stories:
+            slug = story.source.slug
+            count = seen.get(slug, 0)
+            if count < cap:
+                diverse.append(story)
+                seen[slug] = count + 1
+        return diverse
 
     def assemble_brief(
         self,

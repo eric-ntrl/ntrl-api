@@ -115,3 +115,19 @@ class CacheConfig:
 
     TRANSPARENCY_TTL_SECONDS = 3600  # 1 hour
     TRANSPARENCY_MAX_ENTRIES = 200
+
+
+class SourceFiltering:
+    """Source-level filtering constants."""
+
+    # Domains permanently blocked from appearing in the brief.
+    # Matched against Source.slug or publisher domain during ingestion.
+    BLOCKED_DOMAINS: set[str] = {
+        "dev.healthimpactnews.com",
+        "healthimpactnews.com",
+        "imdb.com",
+        "www.imdb.com",
+    }
+
+    # Max articles from a single source per category in the brief
+    MAX_PER_SOURCE_PER_CATEGORY = 3
