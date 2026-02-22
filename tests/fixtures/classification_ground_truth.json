@@ -1,0 +1,227 @@
+[
+  {
+    "id": "gt-001",
+    "title": "NYC Weather Saturday: Light Snow, -2\u00b0C Expected",
+    "description": "Temperatures drop as winter storm moves through the tri-state area",
+    "expected_domain": "incidents_disasters",
+    "expected_geography": "local",
+    "expected_feed_category": "local",
+    "notes": "Weather forecast should be incidents_disasters, NOT environment_climate"
+  },
+  {
+    "id": "gt-002",
+    "title": "Chicago Weather Forecast: Frigid Temperatures Through the Weekend",
+    "description": "Wind chill values could reach -15 degrees in some areas",
+    "expected_domain": "incidents_disasters",
+    "expected_geography": "local",
+    "expected_feed_category": "local",
+    "notes": "Weather forecast should be incidents_disasters, NOT environment_climate"
+  },
+  {
+    "id": "gt-003",
+    "title": "Sharad Pawar Admitted to Hospital in Pune",
+    "description": "NCP leader hospitalized for routine health checkup",
+    "expected_domain": "governance_politics",
+    "expected_geography": "international",
+    "expected_feed_category": "world",
+    "notes": "Indian politician - primary role determines domain, not health topic"
+  },
+  {
+    "id": "gt-004",
+    "title": "FanDuel Promo Code for USA vs Canada: Get $200 Bonus Bets",
+    "description": "Best sportsbook deals for today's hockey game",
+    "expected_domain": "sports_competition",
+    "expected_geography": "us",
+    "expected_feed_category": "sports",
+    "notes": "Sports betting/promo is sports_competition, NOT business_industry"
+  },
+  {
+    "id": "gt-005",
+    "title": "PGA Tour: Genesis Invitational Final Round at Riviera",
+    "description": "Tournament concludes with $20M purse at prestigious LA course",
+    "expected_domain": "sports_competition",
+    "expected_geography": "us",
+    "expected_feed_category": "sports",
+    "notes": "Tournament with prize money is still sports, NOT business"
+  },
+  {
+    "id": "gt-006",
+    "title": "Bridget Phillipson Announces Education Overhaul in England",
+    "description": "UK education secretary reveals new curriculum plans",
+    "expected_domain": "governance_politics",
+    "expected_geography": "international",
+    "expected_feed_category": "world",
+    "notes": "UK politician - should be world, NOT us"
+  },
+  {
+    "id": "gt-007",
+    "title": "Atal Dulloo Reviews Education Progress in J&K",
+    "description": "Chief Secretary examines school enrollment in Jammu and Kashmir",
+    "expected_domain": "governance_politics",
+    "expected_geography": "international",
+    "expected_feed_category": "world",
+    "notes": "Indian government official - should be world, NOT us"
+  },
+  {
+    "id": "gt-008",
+    "title": "Whitechapel Police Launch Knife Crime Investigation",
+    "description": "Metropolitan Police increase patrols in east London area",
+    "expected_domain": "crime_public_safety",
+    "expected_geography": "international",
+    "expected_feed_category": "world",
+    "notes": "UK police - should be world, NOT us"
+  },
+  {
+    "id": "gt-009",
+    "title": "Congress Passes Bipartisan Infrastructure Bill",
+    "description": "House approves $1.2 trillion package for roads and bridges",
+    "expected_domain": "governance_politics",
+    "expected_geography": "us",
+    "expected_feed_category": "us",
+    "notes": "US Congress is clearly US politics"
+  },
+  {
+    "id": "gt-010",
+    "title": "Apple Reports Record Q4 Revenue of $89 Billion",
+    "description": "iPhone sales drive strong quarterly results for tech giant",
+    "expected_domain": "business_industry",
+    "expected_geography": "us",
+    "expected_feed_category": "business",
+    "notes": "Corporate earnings are business_industry"
+  },
+  {
+    "id": "gt-011",
+    "title": "Fed Holds Interest Rates Steady at 5.25%",
+    "description": "Federal Reserve signals potential rate cut in coming months",
+    "expected_domain": "economy_macroeconomics",
+    "expected_geography": "us",
+    "expected_feed_category": "business",
+    "notes": "Fed policy is economy_macroeconomics"
+  },
+  {
+    "id": "gt-012",
+    "title": "SpaceX Successfully Launches Starship on Fifth Test Flight",
+    "description": "Booster returns to launch pad in historic catch maneuver",
+    "expected_domain": "science_research",
+    "expected_geography": "us",
+    "expected_feed_category": "science",
+    "notes": "Space missions are science_research"
+  },
+  {
+    "id": "gt-013",
+    "title": "WHO Declares New Mpox Variant a Public Health Emergency",
+    "description": "International health agency raises alarm over spreading virus",
+    "expected_domain": "health_medicine",
+    "expected_geography": "international",
+    "expected_feed_category": "health",
+    "notes": "WHO health declarations are health_medicine"
+  },
+  {
+    "id": "gt-014",
+    "title": "COP29 Reaches Agreement on Climate Finance",
+    "description": "Nations agree to $300 billion annual climate fund",
+    "expected_domain": "environment_climate",
+    "expected_geography": "international",
+    "expected_feed_category": "environment",
+    "notes": "Climate summit is environment_climate"
+  },
+  {
+    "id": "gt-015",
+    "title": "DraftKings Promo: Bet $5, Get $200 in Bonus Bets",
+    "description": "Best signup offer for new DraftKings Sportsbook users",
+    "expected_domain": "sports_competition",
+    "expected_geography": "us",
+    "expected_feed_category": "sports",
+    "notes": "Sports betting promo is sports_competition, NOT business"
+  },
+  {
+    "id": "gt-016",
+    "title": "Super Bowl LXII: Chiefs vs 49ers Pregame Analysis",
+    "description": "Expert picks and matchup breakdown for the big game",
+    "expected_domain": "sports_competition",
+    "expected_geography": "us",
+    "expected_feed_category": "sports",
+    "notes": "Sports event coverage"
+  },
+  {
+    "id": "gt-017",
+    "title": "Tokyo Stock Exchange Hits Record High",
+    "description": "Nikkei 225 surpasses 1989 bubble-era peak for first time",
+    "expected_domain": "finance_markets",
+    "expected_geography": "international",
+    "expected_feed_category": "business",
+    "notes": "International stock market is finance_markets"
+  },
+  {
+    "id": "gt-018",
+    "title": "OpenAI Releases GPT-5 with Reasoning Capabilities",
+    "description": "Latest model demonstrates improved problem-solving and coding",
+    "expected_domain": "technology",
+    "expected_geography": "us",
+    "expected_feed_category": "technology",
+    "notes": "AI company news is technology"
+  },
+  {
+    "id": "gt-019",
+    "title": "Modi Addresses Lok Sabha on Economic Reforms",
+    "description": "Indian PM outlines budget priorities for next fiscal year",
+    "expected_domain": "governance_politics",
+    "expected_geography": "international",
+    "expected_feed_category": "world",
+    "notes": "Indian parliament = international governance"
+  },
+  {
+    "id": "gt-020",
+    "title": "European Commission Proposes New AI Regulation",
+    "description": "Brussels unveils comprehensive framework for AI oversight",
+    "expected_domain": "governance_politics",
+    "expected_geography": "international",
+    "expected_feed_category": "world",
+    "notes": "EU regulation = international governance"
+  },
+  {
+    "id": "gt-021",
+    "title": "Hurricane Season 2026: First Storm Forms in Atlantic",
+    "description": "Tropical Storm Ana develops off the coast of Florida",
+    "expected_domain": "incidents_disasters",
+    "expected_geography": "us",
+    "expected_feed_category": "us",
+    "notes": "Hurricane/natural disaster"
+  },
+  {
+    "id": "gt-022",
+    "title": "Major Data Breach Exposes 50 Million User Records",
+    "description": "Hackers exploit SQL injection vulnerability in cloud platform",
+    "expected_domain": "technology",
+    "expected_geography": "us",
+    "expected_feed_category": "technology",
+    "notes": "Cybersecurity = technology, NOT crime"
+  },
+  {
+    "id": "gt-023",
+    "title": "NHS England Faces Record Waiting Times",
+    "description": "Over 7 million patients on hospital treatment waiting lists",
+    "expected_domain": "health_medicine",
+    "expected_geography": "international",
+    "expected_feed_category": "health",
+    "notes": "NHS is UK health system = international"
+  },
+  {
+    "id": "gt-024",
+    "title": "Bundestag Debates Immigration Reform Bill",
+    "description": "German parliament considers new asylum processing rules",
+    "expected_domain": "governance_politics",
+    "expected_geography": "international",
+    "expected_feed_category": "world",
+    "notes": "German parliament = international governance"
+  },
+  {
+    "id": "gt-025",
+    "title": "Best Weather Forecast Apps for 2026",
+    "description": "Top-rated weather apps compared: accuracy, features, and price",
+    "expected_domain": "technology",
+    "expected_geography": "us",
+    "expected_feed_category": "technology",
+    "notes": "App review is technology, NOT weather. 'Weather forecast' in context of apps."
+  }
+]

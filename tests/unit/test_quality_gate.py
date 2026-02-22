@@ -3,7 +3,7 @@
 Unit tests for the Quality Control gate service.
 
 Covers:
-- Each of the 20 individual QC checks (pass and fail cases)
+- Each of the 21 individual QC checks (pass and fail cases)
 - Aggregate check_article() behavior
 - QC configuration overrides
 - Edge cases (empty fields, boundary values, garbled output detection)
@@ -577,6 +577,54 @@ class TestOriginalBodySufficient:
         assert result.passed is False
 
 
+class TestContentIsNews:
+    def test_pass_normal_article(self):
+        raw = _make_story_raw()
+        raw.original_title = "Congress Passes New Infrastructure Bill"
+        result = _service()._check_content_is_news(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_fail_weather_forecast_temperature(self):
+        raw = _make_story_raw()
+        raw.original_title = "NYC Weather Saturday: Light Snow, -2°C Expected"
+        result = _service()._check_content_is_news(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+        assert "weather" in result.reason.lower()
+
+    def test_fail_weather_forecast_keyword(self):
+        raw = _make_story_raw()
+        raw.original_title = "Chicago Weather Forecast for the Week Ahead"
+        result = _service()._check_content_is_news(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+
+    def test_fail_gambling_promo(self):
+        raw = _make_story_raw()
+        raw.original_title = "FanDuel Promo Code for USA vs Canada: Get $200 Bonus Bets"
+        result = _service()._check_content_is_news(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+        assert "gambling" in result.reason.lower() or "promo" in result.reason.lower()
+
+    def test_fail_sportsbook_offer(self):
+        raw = _make_story_raw()
+        raw.original_title = "Best Sportsbook Offer for Super Bowl: Free Bets Available"
+        result = _service()._check_content_is_news(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is False
+
+    def test_pass_sports_article(self):
+        """Sports news should pass — only promos/forecasts are blocked."""
+        raw = _make_story_raw()
+        raw.original_title = "PGA Tour: Genesis Invitational Final Round Results"
+        result = _service()._check_content_is_news(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+    def test_pass_climate_article(self):
+        """Climate change articles should not be caught by weather patterns."""
+        raw = _make_story_raw()
+        raw.original_title = "Global Warming Effects on Arctic Ice Shelf Studied"
+        result = _service()._check_content_is_news(raw, _make_neutralized(), _make_source(), QCConfig())
+        assert result.passed is True
+
+
 # ---------------------------------------------------------------------------
 # C. Pipeline Integrity checks
 # ---------------------------------------------------------------------------
@@ -824,7 +872,7 @@ class TestCheckArticle:
         )
         assert result.status == QCStatus.PASSED
         assert len(result.failures) == 0
-        assert len(result.checks) == 20  # All 20 checks ran
+        assert len(result.checks) == 21  # All 21 checks ran
 
     def test_single_failure(self):
         """An article with one failing check should fail overall."""

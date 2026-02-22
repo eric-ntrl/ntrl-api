@@ -214,6 +214,12 @@ class QualityGateService:
             "Content is coherent (not spam/junk)",
             self._check_content_coherence,
         )
+        self._register(
+            "content_is_news",
+            QCCategory.CONTENT_QUALITY,
+            "Content is actual news (not weather forecast or gambling promo)",
+            self._check_content_is_news,
+        )
 
         # C. Pipeline Integrity
         self._register(
@@ -916,6 +922,43 @@ class QualityGateService:
             )
         return QCCheckResult(
             check="content_coherence",
+            passed=True,
+            category=QCCategory.CONTENT_QUALITY.value,
+        )
+
+    @staticmethod
+    def _check_content_is_news(
+        raw: models.StoryRaw,
+        neutralized: models.StoryNeutralized,
+        source: models.Source | None,
+        config: QCConfig,
+    ) -> QCCheckResult:
+        """Detect non-news content: weather forecasts, gambling promos."""
+        from app.constants import NonNewsPatterns
+
+        title = raw.original_title or ""
+        issues = []
+
+        for pattern in NonNewsPatterns.WEATHER_TITLE_PATTERNS:
+            if pattern.search(title):
+                issues.append(f"Title matches weather forecast pattern: '{title[:60]}'")
+                break
+
+        for pattern in NonNewsPatterns.GAMBLING_TITLE_PATTERNS:
+            if pattern.search(title):
+                issues.append(f"Title matches gambling/promo pattern: '{title[:60]}'")
+                break
+
+        if issues:
+            return QCCheckResult(
+                check="content_is_news",
+                passed=False,
+                category=QCCategory.CONTENT_QUALITY.value,
+                reason="; ".join(issues),
+                details={"issues": issues, "title": title[:100]},
+            )
+        return QCCheckResult(
+            check="content_is_news",
             passed=True,
             category=QCCategory.CONTENT_QUALITY.value,
         )
